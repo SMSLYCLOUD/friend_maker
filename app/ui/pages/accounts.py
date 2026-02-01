@@ -22,8 +22,11 @@ class AccountsPage(BasePage):
         self.title_lbl = ctk.CTkLabel(self.header_frame, text="Accounts", font=("Arial", 24, "bold"))
         self.title_lbl.pack(side="left")
 
-        self.add_btn = ctk.CTkButton(self.header_frame, text="+ Add Instagram", command=self.add_account_instagram)
-        self.add_btn.pack(side="right")
+        self.add_btn = ctk.CTkButton(self.header_frame, text="+ Add Instagram", command=lambda: self.add_account("instagram"))
+        self.add_btn.pack(side="right", padx=5)
+
+        self.add_tw_btn = ctk.CTkButton(self.header_frame, text="+ Add Twitter", command=lambda: self.add_account("twitter"))
+        self.add_tw_btn.pack(side="right", padx=5)
 
         # List
         self.list_frame = ctk.CTkScrollableFrame(self)
@@ -47,45 +50,48 @@ class AccountsPage(BasePage):
             status_color = "green" if acc.is_active else "red"
             ctk.CTkLabel(row, text="Active" if acc.is_active else "Inactive", text_color=status_color).pack(side="right", padx=10)
 
-    def add_account_instagram(self):
+    def add_account(self, platform):
         # We need to run this in a thread to not block UI
-        dialog = ctk.CTkInputDialog(text="Enter Username (for reference):", title="Add Account")
+        dialog = ctk.CTkInputDialog(text="Enter Username (for reference):", title=f"Add {platform.title()}")
         username = dialog.get_input()
         if not username: return
 
-        self.add_btn.configure(state="disabled", text="Browser Launching...")
+        self._set_loading(True)
 
-        t = threading.Thread(target=self._run_login_flow, args=(username,))
+        t = threading.Thread(target=self._run_login_flow, args=(username, platform))
         t.start()
 
-    def _run_login_flow(self, username):
+    def _run_login_flow(self, username, platform):
         """
         Launches browser for login.
         """
+        # Create fresh repo for this thread
+        thread_repo = Repository()
+
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=False)
                 context = browser.new_context()
                 page = context.new_page()
-                page.goto("https://www.instagram.com/")
+
+                url = "https://www.instagram.com/" if platform == "instagram" else "https://twitter.com/login"
+                page.goto(url)
 
                 # Wait for user to log in.
-                # We can check for a specific element or just wait for window close.
-                # Here we'll use a simple "Click OK in terminal" approach or just wait
-                # effectively until the user closes the browser?
-                # Better: Check for cookie periodically.
-
-                # But since we are in a GUI, we can't ask in terminal.
-                # We'll just wait for a while or wait for a specific element that indicates login.
-
                 # Hacky but effective for desktop tool:
                 # Wait for navigation to home feed
                 try:
-                    page.wait_for_selector('a[href="/"]', timeout=300000) # 5 mins to login
+                    # Selectors for home feed/login success
+                    if platform == "instagram":
+                        selector = 'a[href="/"]'
+                    else:
+                        selector = '[data-testid="SideNav_NewTweet_Button"]'
+
+                    page.wait_for_selector(selector, timeout=300000) # 5 mins to login
                 except:
                     print("Timeout waiting for login")
                     browser.close()
-                    self.after(0, self._reset_btn)
+                    self.after(0, lambda: self._set_loading(False))
                     return
 
                 cookies = context.cookies()
@@ -94,12 +100,12 @@ class AccountsPage(BasePage):
                 # Save to DB
                 acc = Account(
                     id=str(uuid.uuid4()),
-                    platform="instagram",
+                    platform=platform,
                     username=username,
                     session_data=session_data,
                     is_active=True
                 )
-                self.repo.create_account(acc)
+                thread_repo.create_account(acc)
 
                 browser.close()
 
@@ -108,7 +114,12 @@ class AccountsPage(BasePage):
         except Exception as e:
             print(f"Login error: {e}")
         finally:
-            self.after(0, self._reset_btn)
+            self.after(0, lambda: self._set_loading(False))
 
-    def _reset_btn(self):
-        self.add_btn.configure(state="normal", text="+ Add Instagram")
+    def _set_loading(self, loading):
+        if loading:
+            self.add_btn.configure(state="disabled")
+            self.add_tw_btn.configure(state="disabled")
+        else:
+            self.add_btn.configure(state="normal")
+            self.add_tw_btn.configure(state="normal")

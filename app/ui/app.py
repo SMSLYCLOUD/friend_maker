@@ -2,7 +2,7 @@ import customtkinter as ctk
 import asyncio
 import threading
 from app.ui.components.sidebar import Sidebar
-from app.ui.pages import DashboardPage, AccountsPage, CampaignsPage, SettingsPage
+from app.ui.pages import DashboardPage, AccountsPage, CampaignsPage, SettingsPage, CampaignBuilderPage, AnalyticsPage
 from app.ui.theme import Colors
 from app.automation.scheduler import Scheduler
 
@@ -53,10 +53,18 @@ class App(ctk.CTk):
 
     def init_pages(self):
         # We can pass self (App) as context to pages
+        self.repo = self.scheduler.main_repo # Share repo instance
+
         self.pages["Dashboard"] = DashboardPage(self.main_area, self)
         self.pages["Accounts"] = AccountsPage(self.main_area, self)
         self.pages["Campaigns"] = CampaignsPage(self.main_area, self)
+        self.pages["Analytics"] = AnalyticsPage(self.main_area, self)
         self.pages["Settings"] = SettingsPage(self.main_area, self)
+
+        # Builder needs a callback to go back
+        self.pages["CampaignBuilder"] = CampaignBuilderPage(
+            self.main_area, self, on_close=lambda: self.show_page("Campaigns")
+        )
 
     def show_page(self, name):
         if self.current_page:

@@ -53,27 +53,7 @@ class CampaignsPage(BasePage):
                           command=lambda id=camp.id: self.stop_campaign(id)).pack(side="left", padx=2)
 
     def show_create_dialog(self):
-        # Simple prompt flow for prototype
-        dialog = ctk.CTkInputDialog(text="Campaign Name:", title="New Campaign")
-        name = dialog.get_input()
-        if not name: return
-
-        # We need an account ID. For now just pick the first one.
-        accounts = self.repo.list_accounts()
-        if not accounts:
-            print("No accounts available")
-            return
-        account_id = accounts[0].id
-
-        camp = Campaign(
-            id=str(uuid.uuid4()),
-            account_id=account_id,
-            name=name,
-            campaign_type="growth", # Default
-            targeting_json='{"tags": ["tech", "python"]}'
-        )
-        self.repo.create_campaign(camp)
-        self.refresh()
+        self.app.show_page("CampaignBuilder")
 
     def run_campaign(self, campaign_id):
         # Call Scheduler via App context

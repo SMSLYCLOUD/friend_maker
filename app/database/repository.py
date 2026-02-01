@@ -123,5 +123,26 @@ class Repository:
         ))
         self.conn.commit()
 
+    def get_analytics_summary(self):
+        """Returns dictionary with summary stats."""
+        # Total Actions
+        cursor = self.conn.execute("SELECT COUNT(*) FROM action_logs")
+        total_actions = cursor.fetchone()[0]
+
+        # Actions Today
+        cursor = self.conn.execute("SELECT COUNT(*) FROM action_logs WHERE created_at > (strftime('%s', 'now') - 86400)")
+        today_actions = cursor.fetchone()[0]
+
+        # Success Rate
+        cursor = self.conn.execute("SELECT AVG(success) FROM action_logs")
+        res = cursor.fetchone()[0]
+        success_rate = round(res * 100, 1) if res is not None else 0.0
+
+        return {
+            "total_actions": total_actions,
+            "today_actions": today_actions,
+            "success_rate": success_rate
+        }
+
     def close(self):
         self.conn.close()

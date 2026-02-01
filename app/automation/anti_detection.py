@@ -28,5 +28,11 @@ class AntiDetection:
         await asyncio.sleep(mins * 60)
         self.actions_this_session = 0
 
+    async def trigger_cooldown(self):
+        """Trigger an emergency cool down due to errors."""
+        wait_time = 300 # 5 minutes
+        self.logger.warning(f"Triggering cooldown for {wait_time}s due to errors...")
+        await asyncio.sleep(wait_time)
+
     def record_action(self):
         self.actions_this_session += 1

@@ -13,6 +13,7 @@ class Sidebar(ctk.CTkFrame):
         self.create_nav_button("Dashboard")
         self.create_nav_button("Accounts")
         self.create_nav_button("Campaigns")
+        self.create_nav_button("Analytics")
         self.create_nav_button("Settings")
 
     def create_nav_button(self, text):

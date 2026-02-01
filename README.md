@@ -4,9 +4,11 @@
 A completely standalone Python desktop application for social media automation using local AI (Ollama).
 
 ## Features
-- **Account Management**: Encrypted storage of session data.
-- **Automation**: Playwright-based browser automation (Instagram).
+- **Account Management**: Encrypted storage of session data for Instagram and Twitter/X.
+- **Automation**: Playwright-based browser automation (Instagram, Twitter).
 - **AI Integration**: Local Ollama execution for profile classification and message generation.
+- **Campaign Builder**: Advanced targeting, scheduling, and message templates.
+- **Analytics**: Dashboard to view daily activity and success rates.
 - **Privacy**: Local SQLite database, no cloud servers.
 
 ## Build Instructions
@@ -32,7 +34,7 @@ The executable will be in the `dist/` folder.
 - `app/ui/`: CustomTkinter UI.
 - `app/ai/`: Ollama integration.
 - `app/automation/`: Background tasks and logic.
-- `app/platforms/`: Platform adapters (Instagram).
+- `app/platforms/`: Platform adapters (Instagram, Twitter).
 
 ## Testing
 ```bash

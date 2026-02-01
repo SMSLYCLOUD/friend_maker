@@ -57,12 +57,27 @@ class CampaignExecutor:
                     break
 
             target = pending[0]
-            await self._process_target(target, campaign)
+            try:
+                await self._process_target(target, campaign)
+                # Check limits
+                # (In a real app, check daily limits here)
+                await self.anti_detect.random_delay()
+            except Exception as e:
+                self.logger.error(f"Error processing target {target.username}: {e}")
+                # Log failure
+                self.repo.log_action(ActionLog(
+                    id=f"log_fail_{target.id}_{int(asyncio.get_event_loop().time())}",
+                    account_id=campaign.account_id,
+                    campaign_id=campaign.id,
+                    action_type="unknown",
+                    target_user=target.username,
+                    success=False,
+                    error=str(e)
+                ))
+                self.repo.update_target_status(target.id, "failed")
 
-            # Check limits
-            # (In a real app, check daily limits here)
-
-            await self.anti_detect.random_delay()
+                # Trigger cooldown
+                await self.anti_detect.trigger_cooldown()
 
         self.logger.info("Campaign execution stopped.")
 
