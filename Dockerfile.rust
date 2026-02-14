@@ -1,0 +1,18 @@
+FROM rust:1.75-slim as builder
+
+WORKDIR /usr/src/app
+
+COPY rust-service/Cargo.toml ./
+# Create dummy src/main.rs to cache dependencies if needed, but for simplicity:
+COPY rust-service/src ./src
+
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+COPY --from=builder /usr/src/app/target/release/social-growth-rust-service .
+
+EXPOSE 8081
+
+CMD ["./social-growth-rust-service"]
