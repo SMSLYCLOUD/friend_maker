@@ -1,0 +1,3 @@
+2026-03-14 15:16:07,804 - root - INFO - Starting SocialGrowthAI...
+2026-03-14 15:16:07,831 - root - INFO - Database initialized successfully.
+2026-03-14 15:16:07,894 - root - CRITICAL - Application crashed: no display name and no $DISPLAY environment variable

@@ -8,25 +8,21 @@ export default function AccountsPage() {
   const [formData, setFormData] = useState({ platform: "instagram", username: "" });
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/accounts")
-      .then((res) => res.json())
-      .then((data) => setAccounts(data))
-      .catch((err) => console.error(err));
+    import("@/lib/api").then(({ fetchAccounts }) => {
+      fetchAccounts()
+        .then((data) => setAccounts(data))
+        .catch((err) => console.error(err));
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:8000/api/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-      if (res.ok) {
-        const newAccount = await res.json();
-        setAccounts([...accounts, newAccount]);
-        setShowModal(false);
-      }
+      const { createAccount } = await import("@/lib/api");
+      const newAccount = await createAccount(formData);
+      setAccounts([...accounts, newAccount] as any);
+      setShowModal(false);
+      setFormData({ platform: "instagram", username: "" });
     } catch (err) {
       console.error(err);
     }
