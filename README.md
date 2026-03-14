@@ -1,43 +1,38 @@
-# SocialGrowthAI Desktop Application
+# SocialGrowthAI
 
-## Overview
-A completely standalone Python desktop application for social media automation using local AI (Ollama).
+A hybrid monorepo consisting of:
 
-## Features
-- **Account Management**: Encrypted storage of session data for Instagram and Twitter/X.
-- **Automation**: Playwright-based browser automation (Instagram, Twitter).
-- **AI Integration**: Local Ollama execution for profile classification and message generation.
-- **Campaign Builder**: Advanced targeting, scheduling, and message templates.
-- **Analytics**: Dashboard to view daily activity and success rates.
-- **Privacy**: Local SQLite database, no cloud servers.
+1. **Web**: A web-hosted application built with a Next.js frontend, Python (FastAPI) backend, and Rust auxiliary service. Features campaign building, analytics, robust social automation, and more.
+2. **Desktop**: A desktop application built with Tauri (Rust) and React, designed for native execution.
 
-## Build Instructions
+## Monorepo Structure
 
-### Prerequisites
-- Python 3.12+
-- `pip install -r requirements.txt`
-- `playwright install chromium`
+*   `/web/`: The web application project. Includes backend logic, the web interface, and related auxiliary services. Uses Docker and Docker Compose.
+*   `/desktop/`: The desktop application project, powered by Tauri.
 
-### Running Source
+## Running the Web Application
+
+The easiest way to run the web application is using Docker Compose. Make sure you are inside the `web` directory:
+
 ```bash
-python main.py
+cd web
+docker-compose up --build
 ```
 
-### Building Executable
-```bash
-pyinstaller build.spec
-```
-The executable will be in the `dist/` folder.
+This will start:
+- The FastAPI backend on port 8000
+- The Next.js frontend on port 3000
+- The Rust auxiliary service on port 8081
 
-## Architecture
-- `app/`: Core application logic.
-- `app/ui/`: CustomTkinter UI.
-- `app/ai/`: Ollama integration.
-- `app/automation/`: Background tasks and logic.
-- `app/platforms/`: Platform adapters (Instagram, Twitter).
+For development details, refer to the files in the `/web` directory.
 
-## Testing
+## Running the Desktop Application
+
+The desktop application is a Tauri project. Please refer to the documentation inside the `/desktop` folder for instructions on installing Rust, Tauri dependencies, and node modules to build and run it.
+
 ```bash
-pytest
+cd desktop
+# Follow standard Tauri run instructions, e.g.:
+npm install
+npm run tauri dev
 ```
-Note: Tests use mocks for Playwright and AI to run in headless/CI environments.
