@@ -5,6 +5,25 @@ A hybrid monorepo consisting of:
 1. **Web**: A web-hosted application built with a Next.js frontend, Python (FastAPI) backend, and Rust auxiliary service. Features campaign building, analytics, robust social automation, and more.
 2. **Desktop**: A desktop application built with Tauri (Rust) and React, designed for native execution.
 
+## Road Map
+
+**Phase 3: Web App Refinement & True Platform Integrations**
+- [ ] Connect the Next.js frontend directly to the Python FastAPI backend via authenticated API calls.
+- [ ] Complete robust error handling and proxy support for the Playwright automation in `app/automation/executor.py`.
+- [ ] Update platform adapters (Instagram, Twitter, LinkedIn, Facebook) to use resilient scraping logic (e.g. computer vision fallbacks, fuzzy matching) rather than brittle, hardcoded HTML selectors.
+- [ ] Finalize the Rust Microservice logic for true optimization logic (currently mocked).
+
+**Phase 4: Desktop Architecture & Core MVP**
+- [ ] Initialize the React frontend for the Tauri desktop application.
+- [ ] Translate core database logic and anti-detection mechanisms into the Rust Tauri backend.
+- [ ] Build a robust IPC (Inter-Process Communication) layer between the React UI and the Rust backend.
+- [ ] Package the desktop application for multi-OS deployment (macOS, Windows, Linux).
+
+**Phase 5: Production Hardening & Global AI**
+- [ ] Container orchestration (Kubernetes) and load-balancing strategy for the web stack.
+- [ ] Integrate local AI models (via Ollama or similar) directly into the desktop client for fully local, privacy-first data processing.
+- [ ] Implement robust user authentication (JWT/OAuth) in the Web version.
+
 ## Monorepo Structure
 
 *   `/web/`: The web application project. Includes backend logic, the web interface, and related auxiliary services. Uses Docker and Docker Compose.
