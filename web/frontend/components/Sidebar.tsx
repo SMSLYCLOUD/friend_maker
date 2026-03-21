@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, BarChart3, Settings } from "lucide-react";
+import { Home, Users, BarChart3, Settings, Rocket } from "lucide-react";
 import clsx from "clsx";
 
 const links = [
-  { name: "Dashboard", href: "/", icon: Home },
+  { name: "Home", href: "/", icon: Home },
+  { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
   { name: "Accounts", href: "/accounts", icon: Users },
-  { name: "Campaigns", href: "/campaigns", icon: BarChart3 },
+  { name: "Campaigns", href: "/campaigns", icon: Rocket },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

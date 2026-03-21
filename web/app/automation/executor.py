@@ -43,7 +43,9 @@ class CampaignExecutor:
 
         while self.running:
             if self.anti_detect.needs_break():
-                await self.anti_detect.take_break()
+                await self.anti_detect.take_break(lambda: self.running)
+
+            if not self.running: break
 
             # 2. Get pending targets or fetch new ones
             pending = self.repo.get_pending_targets(campaign_id, limit=1)
@@ -61,7 +63,7 @@ class CampaignExecutor:
                 await self._process_target(target, campaign)
                 # Check limits
                 # (In a real app, check daily limits here)
-                await self.anti_detect.random_delay()
+                await self.anti_detect.random_delay(lambda: self.running)
             except Exception as e:
                 self.logger.error(f"Error processing target {target.username}: {e}")
                 # Log failure
@@ -77,7 +79,7 @@ class CampaignExecutor:
                 self.repo.update_target_status(target.id, "failed")
 
                 # Trigger cooldown
-                await self.anti_detect.trigger_cooldown()
+                await self.anti_detect.trigger_cooldown(lambda: self.running)
 
         self.logger.info("Campaign execution stopped.")
 

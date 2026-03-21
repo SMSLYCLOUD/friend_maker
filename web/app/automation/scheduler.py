@@ -65,15 +65,41 @@ class Scheduler:
         task_repo = Repository()
 
         try:
+            # Determine platform from Campaign -> Account
+            campaign = task_repo.get_campaign(campaign_id)
+            if not campaign:
+                self.logger.error(f"Campaign {campaign_id} not found.")
+                return
+
+            account = task_repo.get_account(campaign.account_id)
+            if not account:
+                self.logger.error(f"Account for Campaign {campaign_id} not found.")
+                return
+
             playwright = await async_playwright().start()
             browser = await playwright.chromium.launch(headless=True)
             context = await browser.new_context()
             page = await context.new_page()
 
-            # TODO: Determine platform from Campaign -> Account
-            # For now assuming Instagram
-            adapter = InstagramAdapter(page)
+            if account.platform.lower() == "instagram":
+                adapter = InstagramAdapter(page)
+            elif account.platform.lower() == "twitter":
+                from app.platforms.twitter import TwitterAdapter
+                adapter = TwitterAdapter(page)
+            elif account.platform.lower() == "facebook":
+                from app.platforms.facebook import FacebookAdapter
+                adapter = FacebookAdapter(page)
+            elif account.platform.lower() == "linkedin":
+                from app.platforms.linkedin import LinkedInAdapter
+                adapter = LinkedInAdapter(page)
+            else:
+                self.logger.error(f"Platform {account.platform} is not supported.")
+                return
+
             executor = CampaignExecutor(task_repo, adapter, self.classifier, self.generator)
+
+            # Store the executor reference on the task dictionary if we need to call .stop()
+            # But task.cancel() handles the exit via CancelledError gracefully enough in this architecture.
 
             await executor.run_campaign(campaign_id)
 

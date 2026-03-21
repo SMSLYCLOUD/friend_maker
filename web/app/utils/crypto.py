@@ -3,28 +3,27 @@ from cryptography.fernet import Fernet
 from pathlib import Path
 
 class CryptoManager:
-    def __init__(self):
-        self.key = self._load_key()
+    def __init__(self, key_path: str = "data/secret.key"):
+        self.key_path = Path(key_path)
+        self.key = self._load_or_generate_key()
         self.fernet = Fernet(self.key)
 
-    def _load_key(self) -> bytes:
+    def _load_or_generate_key(self) -> bytes:
         # 1. Environment variable
         if "SECRET_KEY" in os.environ:
             return os.environ["SECRET_KEY"].encode()
 
         # 2. File in data directory (persistent in Docker)
-        key_path = Path("data/secret.key")
-
-        if key_path.exists():
-            return key_path.read_bytes()
+        if self.key_path.exists():
+            return self.key_path.read_bytes()
 
         # 3. Generate new
         key = Fernet.generate_key()
 
         try:
-            if not key_path.parent.exists():
-                key_path.parent.mkdir(parents=True, exist_ok=True)
-            key_path.write_bytes(key)
+            if not self.key_path.parent.exists():
+                self.key_path.parent.mkdir(parents=True, exist_ok=True)
+            self.key_path.write_bytes(key)
         except Exception:
             # Fallback if filesystem is read-only
             pass

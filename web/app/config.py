@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class Config(BaseModel):
     APP_NAME: str = "SocialGrowthAI"
@@ -14,8 +14,7 @@ class Config(BaseModel):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "mistral:7b-instruct"
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 settings = Config()
 
