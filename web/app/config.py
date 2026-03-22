@@ -11,8 +11,9 @@ class Config(BaseModel):
     HEADLESS: bool = False  # For Playwright
 
     # AI Settings
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "mistral:7b-instruct"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "openai/gpt-3.5-turbo"
+    OPENROUTER_API_KEY: str = ""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

@@ -4,7 +4,7 @@ from typing import Dict
 from app.database.repository import Repository
 from app.automation.executor import CampaignExecutor
 from app.platforms.instagram import InstagramAdapter
-from app.ai.ollama_manager import OllamaManager
+from app.ai.openrouter_manager import OpenRouterManager
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
 from playwright.async_api import async_playwright
@@ -17,9 +17,9 @@ class Scheduler:
 
         # self.repo = Repository()  <-- Don't hold a shared connection
         # Instead, we just hold config/managers that are thread-safe or stateless
-        self.ollama = OllamaManager()
-        self.classifier = ProfileClassifier(self.ollama)
-        self.generator = MessageGenerator(self.ollama)
+        self.ai_manager = OpenRouterManager()
+        self.classifier = ProfileClassifier(self.ai_manager)
+        self.generator = MessageGenerator(self.ai_manager)
 
         # Main thread repo for simple UI access if needed,
         # but better to let UI instantiate its own.
