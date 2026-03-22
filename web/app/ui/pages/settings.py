@@ -11,9 +11,9 @@ class SettingsPage(BasePage):
         self.form = ctk.CTkFrame(self)
         self.form.pack(fill="both", expand=True, padx=20, pady=10)
 
-        ctk.CTkLabel(self.form, text="Ollama URL").pack(anchor="w", pady=(10,0))
-        self.ollama_entry = ctk.CTkEntry(self.form, placeholder_text="http://localhost:11434")
-        self.ollama_entry.pack(fill="x", pady=(5, 10))
+        ctk.CTkLabel(self.form, text="OpenRouter API Key").pack(anchor="w", pady=(10,0))
+        self.api_key_entry = ctk.CTkEntry(self.form, placeholder_text="sk-or-v1-...", show="*")
+        self.api_key_entry.pack(fill="x", pady=(5, 10))
 
         ctk.CTkButton(self.form, text="Save", command=self.save).pack(pady=20)
 

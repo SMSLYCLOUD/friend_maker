@@ -1,12 +1,12 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.ai.ollama_manager import OllamaManager
+from app.ai.openrouter_manager import OpenRouterManager
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
 
 @pytest.fixture
 def mock_manager():
-    manager = OllamaManager()
+    manager = OpenRouterManager()
     manager.generate = AsyncMock()
     return manager
 

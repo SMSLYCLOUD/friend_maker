@@ -2,10 +2,10 @@ import json
 import logging
 import re
 from typing import Dict, Any
-from app.ai.ollama_manager import OllamaManager
+from app.ai.openrouter_manager import OpenRouterManager
 
 class ProfileClassifier:
-    def __init__(self, manager: OllamaManager):
+    def __init__(self, manager: OpenRouterManager):
         self.manager = manager
         self.logger = logging.getLogger("ProfileClassifier")
 

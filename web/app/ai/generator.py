@@ -1,9 +1,9 @@
 import logging
 from typing import Dict, Any
-from app.ai.ollama_manager import OllamaManager
+from app.ai.openrouter_manager import OpenRouterManager
 
 class MessageGenerator:
-    def __init__(self, manager: OllamaManager):
+    def __init__(self, manager: OpenRouterManager):
         self.manager = manager
         self.logger = logging.getLogger("MessageGenerator")
 
