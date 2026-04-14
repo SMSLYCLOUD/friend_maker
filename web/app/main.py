@@ -2,6 +2,7 @@ import logging
 import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from uuid import uuid4
@@ -73,6 +74,8 @@ class CampaignResponse(BaseModel):
 
 @app.get("/")
 async def root():
+    if settings.REDIRECT_ROOT_TO_FRONTEND:
+        return RedirectResponse(url=settings.FRONTEND_URL)
     return {"status": "running", "service": "SocialGrowthAI Backend"}
 
 @app.get("/health/live")

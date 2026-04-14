@@ -20,15 +20,28 @@ class CryptoManager:
             self.key = new_key
             return Fernet(new_key)
 
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
     def _load_or_generate_key(self) -> bytes:
         # 1. Environment variable
         env_key = os.getenv("SECRET_KEY", "").strip()
         if env_key:
-            return env_key.encode()
+            key = env_key.encode()
+            if self._is_valid_key(key):
+                return key
+            self.logger.warning("SECRET_KEY is invalid; falling back to file/generated key.")
 
         # 2. File in data directory (persistent in Docker)
         if self.key_path.exists():
-            return self.key_path.read_bytes()
+            key = self.key_path.read_bytes()
+            if self._is_valid_key(key):
+                return key
+            self.logger.warning("Persisted key is invalid; generating a new Fernet key.")
 
         # 3. Generate new
         key = Fernet.generate_key()
