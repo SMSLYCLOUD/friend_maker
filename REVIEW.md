@@ -1,36 +1,83 @@
-# Monorepo Review
+# Production Readiness Review (April 14, 2026)
 
-## Architecture Overview
-The codebase currently contains two main architectural paths:
-1. `web/`: The fully-featured web hybrid application.
-2. `desktop/`: The scaffolding for a Rust/Tauri native desktop application.
+## Executive Summary
+- The app has a solid MVP skeleton (FastAPI backend, Next.js frontend, Rust service, Docker Compose orchestration).
+- It is **not yet production-ready** without additional security, reliability, and operational hardening.
+- I implemented a small hardening pass in this review cycle:
+  - env-driven config loading,
+  - safer CORS defaults,
+  - readiness/liveness endpoints,
+  - SQLite path normalization + WAL/timeout pragmas,
+  - timeout + proper 503 propagation for Rust service failures.
 
-## Observations
-- **Docker/Web Deployment**: The dockerization in `web/` is solid. I've updated the `docker-compose.yml` to modern standards (removing the obsolete `version` field).
-- **Desktop Application Scaffolding**: The initial commit for the desktop application primarily introduced platform traits (`base.rs` and `mod.rs`) for the Rust backend. The `instagram.rs` file referenced in `mod.rs` was missing from the commit history, so I commented it out to ensure the Rust module structure parses without errors.
-- **Merge Conflicts**: `app/utils/crypto.py` had a merge conflict between generating a key in the `data/` folder (production feature) versus an un-nested `secret.key` (from `origin/Master`). I resolved it to use the `data/` folder layout since it works better with Docker volumes.
-- **Git Ignore**: I've created a comprehensive `.gitignore` at the root that covers both the Python/Next.js stack of the web application and the Rust/Node stack of the desktop application.
-- **Readiness**: The `web/` application is ready to run via Docker Compose, and the `/desktop` folder is primed for further Tauri development.
+## What Was Improved in This Pass
 
-## Deep Critical Review of the Web Application
+### 1) Configuration hygiene
+- `web/app/config.py` now reads key settings from environment variables instead of fixed constants.
+- Added support for:
+  - `CORS_ALLOWED_ORIGINS`
+  - `DATABASE_URL`
+  - `RUST_SERVICE_URL`
+  - `RUST_SERVICE_TIMEOUT_SECONDS`
 
-### Architecture & Scalability
-*   **Database Concurrency**: The application correctly scopes `Repository` instances to individual tasks (e.g. inside `_run_wrapper` in the `Scheduler`), avoiding `sqlite3` thread-sharing errors. However, concurrent writes might still encounter SQLite locks under heavy load.
-*   **Rust Service Dependency**: The `optimize_campaign` endpoint calls the Rust service. Currently, if the Rust service goes down, the endpoint fails gracefully, but it lacks retry logic.
+### 2) Database resilience
+- `web/app/database/connection.py` now resolves SQLite DB path from `DATABASE_URL` (`sqlite:///...`) with fallback to `data/social_growth.db`.
+- Added:
+  - `timeout=30` for lock contention,
+  - `PRAGMA journal_mode=WAL`,
+  - `PRAGMA synchronous=NORMAL`,
+  - `PRAGMA foreign_keys=ON`.
 
-### Security & Vulnerabilities
-*   **Database Injection (SQLi)**: The `Repository` class uses parameterized queries (e.g., `?`) consistently across all CRUD operations. This protects against classic SQL injection.
-*   **Pydantic Warnings**: The backend uses an outdated `BaseModel` configuration in `config.py` (`class Config:`) that throws a Pydantic V2 deprecation warning.
-*   **Cookie Storage**: The session data is correctly encrypted via the `crypto` manager (Fernet) before being saved to the SQLite database.
+### 3) API hardening
+- `web/app/main.py` CORS moved from permissive wildcard to env-driven allowlist.
+- Added health probes:
+  - `GET /health/live`
+  - `GET /health/ready` (DB check)
+- `POST /api/optimize` now:
+  - uses timeout for Rust-service calls,
+  - raises `503` when upstream is unavailable instead of returning a success-like JSON envelope.
 
-### Code Quality & Maintainability
-*   **Hardcoded Platform in Scheduler**: In `app/automation/scheduler.py`, the platform adapter is hardcoded to `InstagramAdapter(page)`. It completely ignores the `Campaign` or `Account` platform type.
-*   **Hardcoded Port for Rust Service**: Uses `8081` in Docker compose.
+## Remaining Production Gaps (High Priority)
 
-### Performance & Anti-Detection
-*   **Anti-Detection Deadlocks**: `AntiDetection` has hardcoded long sleep timers (`await asyncio.sleep(mins * 60)`) in `take_break()` and `trigger_cooldown()`. If a campaign is stopped via the UI during these long sleeps, the background task will remain hung waiting for the sleep to finish before it realizes the `running` flag has changed.
+1. **Authentication & Authorization**
+   - No API auth for account/campaign endpoints.
+   - No tenant isolation / RBAC.
 
-## Actionable TODOs Completed (per user request)
-- **Fixed `ConfigDict`**: Updated Pydantic v2 `Config` class syntax to remove deprecation warnings.
-- **Dynamic Platform Adapters**: Updated `Scheduler` to map the `Account.platform` string to the correct platform adapter (e.g., Instagram, Twitter) dynamically instead of hardcoding Instagram.
-- **Cancellable Sleep**: Implemented cancellable sleeps in the `AntiDetection` module to ensure UI campaign stops propagate immediately rather than hanging on long timeouts.
+2. **Secrets Management**
+   - Encryption key and API keys are not clearly managed via secret manager/KMS.
+   - Need rotation strategy + startup validation for required secrets.
+
+3. **Observability**
+   - No structured logging (JSON), request IDs, or centralized log shipping.
+   - No metrics/tracing (Prometheus/OpenTelemetry).
+
+4. **Background Work Reliability**
+   - In-memory scheduler task registry is not resilient to process restarts.
+   - Consider durable job queue (RQ/Celery/Arq/Temporal/etc.) + idempotency keys.
+
+5. **API Contract & Validation**
+   - Platform/campaign enums should be constrained via typed models.
+   - Add explicit error models and consistent response schema.
+
+6. **Data Layer Limits**
+   - SQLite is acceptable for local/small deployments but not ideal for multi-instance scale.
+   - Plan migration path to PostgreSQL for production workloads.
+
+7. **Security Baselines**
+   - Add rate limiting and abuse controls.
+   - Add stricter CORS deployment defaults per environment.
+   - Add dependency/SAST/container scanning in CI.
+
+8. **Deployment & Ops**
+   - Compose is fine for development; production needs orchestration, probes, and rollout strategy.
+   - Add runbooks, SLOs, and backup/restore drills.
+
+## Suggested Next Sprint (Practical)
+1. Implement JWT auth and tenant scoping for all `/api/*` routes.
+2. Add structured logging and request correlation IDs.
+3. Add CI pipeline gates:
+   - unit tests,
+   - lint/type checks,
+   - dependency vulnerability scan.
+4. Introduce PostgreSQL compatibility layer and migration plan.
+5. Move scheduler execution to a durable worker queue.

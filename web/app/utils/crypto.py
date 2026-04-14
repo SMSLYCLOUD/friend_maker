@@ -1,25 +1,44 @@
 import os
+import logging
 from cryptography.fernet import Fernet
 from pathlib import Path
 
 class CryptoManager:
     def __init__(self, key_path: str = "data/secret.key"):
+        self.logger = logging.getLogger("CryptoManager")
         self.key_path = Path(key_path)
         self.key = self._load_or_generate_key()
         self.fernet = Fernet(self.key)
 
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
     def _load_or_generate_key(self) -> bytes:
         # 1. Environment variable
-        if "SECRET_KEY" in os.environ:
-            return os.environ["SECRET_KEY"].encode()
+        env_key = os.getenv("SECRET_KEY", "").strip()
+        if env_key:
+            key = env_key.encode()
+            if self._is_valid_key(key):
+                return key
+            self.logger.warning("SECRET_KEY is invalid; falling back to file/generated key.")
 
         # 2. File in data directory (persistent in Docker)
         if self.key_path.exists():
-            return self.key_path.read_bytes()
+            key = self.key_path.read_bytes()
+            if self._is_valid_key(key):
+                return key
+            self.logger.warning("Persisted key is invalid; generating a new Fernet key.")
 
         # 3. Generate new
         key = Fernet.generate_key()
+        self._persist_key(key)
+        return key
 
+    def _persist_key(self, key: bytes):
         try:
             if not self.key_path.parent.exists():
                 self.key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -27,8 +46,6 @@ class CryptoManager:
         except Exception:
             # Fallback if filesystem is read-only
             pass
-
-        return key
 
     def encrypt(self, data: str) -> str:
         if not data:

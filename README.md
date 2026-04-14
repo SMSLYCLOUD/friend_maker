@@ -39,9 +39,8 @@ docker-compose up --build
 ```
 
 This will start:
-- The FastAPI backend on port 8000
+- The Python FastAPI backend on port 8000
 - The Next.js frontend on port 3000
-- The Rust auxiliary service on port 8081
 
 For development details, refer to the files in the `/web` directory.
 
