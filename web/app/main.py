@@ -79,6 +79,10 @@ async def root():
 async def health_live():
     return {"status": "ok"}
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.get("/health/ready")
 async def health_ready():
     repo = Repository()
