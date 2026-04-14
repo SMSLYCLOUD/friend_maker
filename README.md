@@ -40,6 +40,7 @@ docker-compose up --build
 
 This will start:
 - The Python FastAPI backend on port 8000
+- The Next.js frontend on port 3000
 
 For development details, refer to the files in the `/web` directory.
 

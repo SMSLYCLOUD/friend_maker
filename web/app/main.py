@@ -74,7 +74,7 @@ class CampaignResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    if settings.REDIRECT_ROOT_TO_FRONTEND:
+    if settings.REDIRECT_ROOT_TO_FRONTEND and settings.FRONTEND_URL:
         return RedirectResponse(url=settings.FRONTEND_URL)
     return {"status": "running", "service": "SocialGrowthAI Backend"}
 
