@@ -1,12 +1,23 @@
 import sqlite3
 import logging
 from pathlib import Path
+from app.config import settings
 
-DB_PATH = Path("social_growth.db")
+def _resolve_db_path() -> Path:
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("sqlite:///"):
+        return Path(db_url.removeprefix("sqlite:///"))
+    return settings.DATA_DIR / settings.DB_NAME
+
+DB_PATH = _resolve_db_path()
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 
 def init_db():
