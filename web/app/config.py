@@ -2,6 +2,31 @@ import os
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
+def _getenv_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+def _getenv_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+def _getenv_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip()
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
 class Config(BaseModel):
     APP_NAME: str = "SocialGrowthAI"
     VERSION: str = "0.1.0"
@@ -22,19 +47,19 @@ class Config(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 settings = Config(
-    APP_NAME=os.getenv("APP_NAME", "SocialGrowthAI"),
-    VERSION=os.getenv("VERSION", "0.1.0"),
-    DATA_DIR=Path(os.getenv("DATA_DIR", "data")),
-    DB_NAME=os.getenv("DB_NAME", "social_growth.db"),
-    LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
-    HEADLESS=os.getenv("HEADLESS", "false").lower() == "true",
-    OPENROUTER_BASE_URL=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-    OPENROUTER_MODEL=os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo"),
-    OPENROUTER_API_KEY=os.getenv("OPENROUTER_API_KEY", ""),
-    CORS_ALLOWED_ORIGINS=os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000"),
-    RUST_SERVICE_URL=os.getenv("RUST_SERVICE_URL", "http://localhost:8081"),
-    RUST_SERVICE_TIMEOUT_SECONDS=float(os.getenv("RUST_SERVICE_TIMEOUT_SECONDS", "5")),
-    DATABASE_URL=os.getenv("DATABASE_URL", "sqlite:///data/social_growth.db"),
+    APP_NAME=_getenv_str("APP_NAME", "SocialGrowthAI"),
+    VERSION=_getenv_str("VERSION", "0.1.0"),
+    DATA_DIR=Path(_getenv_str("DATA_DIR", "data")),
+    DB_NAME=_getenv_str("DB_NAME", "social_growth.db"),
+    LOG_LEVEL=_getenv_str("LOG_LEVEL", "INFO"),
+    HEADLESS=_getenv_bool("HEADLESS", False),
+    OPENROUTER_BASE_URL=_getenv_str("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+    OPENROUTER_MODEL=_getenv_str("OPENROUTER_MODEL", "openai/gpt-3.5-turbo"),
+    OPENROUTER_API_KEY=_getenv_str("OPENROUTER_API_KEY", ""),
+    CORS_ALLOWED_ORIGINS=_getenv_str("CORS_ALLOWED_ORIGINS", "http://localhost:3000"),
+    RUST_SERVICE_URL=_getenv_str("RUST_SERVICE_URL", "http://localhost:8081"),
+    RUST_SERVICE_TIMEOUT_SECONDS=_getenv_float("RUST_SERVICE_TIMEOUT_SECONDS", 5.0),
+    DATABASE_URL=_getenv_str("DATABASE_URL", "sqlite:///data/social_growth.db"),
 )
 
 # Ensure data directory exists
