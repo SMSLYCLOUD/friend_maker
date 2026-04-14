@@ -14,16 +14,16 @@ export default function Home() {
         </p>
         <div className="flex space-x-4">
           <Link
-            href="/dashboard"
+            href="/register"
             className="flex items-center px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all"
           >
-            Go to Dashboard <ArrowRight className="ml-2 w-5 h-5" />
+            Create Account <ArrowRight className="ml-2 w-5 h-5" />
           </Link>
           <Link
-            href="/accounts"
+            href="/login"
             className="flex items-center px-8 py-4 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-lg border border-gray-700 transition-all"
           >
-            Connect Accounts
+            Login
           </Link>
         </div>
       </main>
@@ -70,12 +70,20 @@ export default function Home() {
       {/* CTA Section */}
       <section className="py-20 bg-gradient-to-t from-gray-900 to-black text-center">
         <h2 className="text-3xl font-bold text-white mb-6">Ready to scale your audience?</h2>
-        <Link
-          href="/accounts"
-          className="inline-flex items-center px-10 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all"
-        >
-          Get Started Now
-        </Link>
+        <div className="flex justify-center gap-3">
+          <Link
+            href="/about"
+            className="inline-flex items-center px-8 py-4 border border-gray-700 hover:bg-gray-800 text-white font-bold rounded-lg transition-all"
+          >
+            About
+          </Link>
+          <Link
+            href="/register"
+            className="inline-flex items-center px-10 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-all"
+          >
+            Get Started Now
+          </Link>
+        </div>
       </section>
 
       <footer className="bg-gray-950 py-8 text-center text-gray-500 text-sm">
