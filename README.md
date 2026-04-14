@@ -44,6 +44,13 @@ This will start:
 
 For development details, refer to the files in the `/web` directory.
 
+To run only the frontend in a separate container:
+
+```bash
+cd web/frontend
+docker-compose up --build
+```
+
 ## Running the Desktop Application
 
 The desktop application is a Tauri project. Please refer to the documentation inside the `/desktop` folder for instructions on installing Rust, Tauri dependencies, and node modules to build and run it.
