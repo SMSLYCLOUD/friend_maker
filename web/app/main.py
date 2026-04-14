@@ -1,16 +1,18 @@
 import logging
 import json
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from uuid import uuid4
 from datetime import datetime
+import requests
 
 from app.automation.scheduler import Scheduler
 from app.database.connection import init_db
 from app.database.repository import Repository
 from app.database.models import Account as DBAccount, Campaign as DBCampaign
+from app.config import settings
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -18,11 +20,12 @@ logger = logging.getLogger("API")
 
 app = FastAPI(title="SocialGrowthAI API")
 
-# Allow CORS for Next.js frontend (usually on port 3000)
+cors_allowed_origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify the domain
-    allow_credentials=True,
+    allow_origins=cors_allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,6 +74,21 @@ class CampaignResponse(BaseModel):
 @app.get("/")
 async def root():
     return {"status": "running", "service": "SocialGrowthAI Backend"}
+
+@app.get("/health/live")
+async def health_live():
+    return {"status": "ok"}
+
+@app.get("/health/ready")
+async def health_ready():
+    repo = Repository()
+    try:
+        repo.get_analytics_summary()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
+    finally:
+        repo.close()
+    return {"status": "ready"}
 
 @app.get("/api/accounts", response_model=List[AccountResponse])
 async def list_accounts():
@@ -157,15 +175,14 @@ async def get_analytics():
 # Rust Integration Endpoint
 @app.post("/api/optimize")
 async def optimize_campaign(campaign_id: str):
-    # This endpoint will call the Rust service
-    import requests
-    import os
     try:
-        # Use env var or default to localhost for dev
-        service_url = os.getenv("RUST_SERVICE_URL", "http://localhost:8081")
-        response = requests.post(f"{service_url}/optimize", json={"campaign_id": campaign_id})
+        response = requests.post(
+            f"{settings.RUST_SERVICE_URL}/optimize",
+            json={"campaign_id": campaign_id},
+            timeout=settings.RUST_SERVICE_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
         return response.json()
     except Exception as e:
         logger.error(f"Failed to call Rust service: {e}")
-        # Fallback or error
-        return {"status": "error", "message": "Optimization service unavailable"}
+        raise HTTPException(status_code=503, detail="Optimization service unavailable")
