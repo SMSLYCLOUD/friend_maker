@@ -43,6 +43,8 @@ class Config(BaseModel):
     RUST_SERVICE_URL: str = "http://localhost:8081"
     RUST_SERVICE_TIMEOUT_SECONDS: float = 5.0
     DATABASE_URL: str = "sqlite:///data/social_growth.db"
+    FRONTEND_URL: str = "http://localhost:3000"
+    REDIRECT_ROOT_TO_FRONTEND: bool = True
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -60,6 +62,8 @@ settings = Config(
     RUST_SERVICE_URL=_getenv_str("RUST_SERVICE_URL", "http://localhost:8081"),
     RUST_SERVICE_TIMEOUT_SECONDS=_getenv_float("RUST_SERVICE_TIMEOUT_SECONDS", 5.0),
     DATABASE_URL=_getenv_str("DATABASE_URL", "sqlite:///data/social_growth.db"),
+    FRONTEND_URL=_getenv_str("FRONTEND_URL", "http://localhost:3000"),
+    REDIRECT_ROOT_TO_FRONTEND=_getenv_bool("REDIRECT_ROOT_TO_FRONTEND", True),
 )
 
 # Ensure data directory exists
