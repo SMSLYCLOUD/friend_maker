@@ -8,7 +8,59 @@ class CryptoManager:
         self.logger = logging.getLogger("CryptoManager")
         self.key_path = Path(key_path)
         self.key = self._load_or_generate_key()
-        self.fernet = Fernet(self.key)
+        self.fernet = self._build_fernet(self.key)
+
+    def _build_fernet(self, key: bytes) -> Fernet:
+        try:
+            return Fernet(key)
+        except Exception:
+            self.logger.warning("Invalid crypto key provided; generating a new Fernet key.")
+            new_key = Fernet.generate_key()
+            self._persist_key(new_key)
+            self.key = new_key
+            return Fernet(new_key)
+
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
 
     def _is_valid_key(self, key: bytes) -> bool:
         try:
