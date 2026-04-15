@@ -6,12 +6,16 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ platform: "instagram", username: "" });
+  const [error, setError] = useState("");
 
   useEffect(() => {
     import("@/lib/api").then(({ fetchAccounts }) => {
       fetchAccounts()
-        .then((data) => setAccounts(data))
-        .catch((err) => console.error(err));
+        .then((data) => {
+          setAccounts(data);
+          setError("");
+        })
+        .catch(() => setError("Unable to reach backend API. Check NEXT_PUBLIC_API_URL or BACKEND_API_URL."));
     });
   }, []);
 
@@ -24,7 +28,7 @@ export default function AccountsPage() {
       setShowModal(false);
       setFormData({ platform: "instagram", username: "" });
     } catch (err) {
-      console.error(err);
+      setError("Unable to create account right now. Backend may be unavailable.");
     }
   };
 
@@ -49,6 +53,12 @@ export default function AccountsPage() {
           <Plus className="w-4 h-4" /> Add Account
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-900/40 bg-red-900/20 p-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {accounts.map((acc: any) => (
