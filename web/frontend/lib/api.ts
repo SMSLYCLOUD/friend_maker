@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "";
 
 export async function fetchAnalyticsSummary() {
   const res = await fetch(`${API_URL}/api/analytics/summary`, {

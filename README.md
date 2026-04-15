@@ -59,6 +59,8 @@ The frontend calls the backend using `NEXT_PUBLIC_API_URL`.
   - `NEXT_PUBLIC_API_URL=http://localhost:8000`
 - Frontend-only compose (`/web/frontend/docker-compose.yml`) also expects backend on `http://localhost:8000`.
 - In production, set `NEXT_PUBLIC_API_URL` to your deployed backend URL (for example `https://api.your-domain.com`).
+- You can also set `BACKEND_API_URL` for server-side proxy routes under `web/frontend/app/api/*`.
+  - If `NEXT_PUBLIC_API_URL` is empty, frontend calls same-origin `/api/*` routes, which proxy to `BACKEND_API_URL`.
 
 Also ensure backend CORS allows your frontend origin via `CORS_ALLOWED_ORIGINS`.
 
