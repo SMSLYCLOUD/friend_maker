@@ -39,11 +39,28 @@ docker-compose up --build
 ```
 
 This will start:
-- The FastAPI backend on port 8000
+- The Python FastAPI backend on port 8000
 - The Next.js frontend on port 3000
-- The Rust auxiliary service on port 8081
 
 For development details, refer to the files in the `/web` directory.
+
+To run only the frontend in a separate container:
+
+```bash
+cd web/frontend
+docker-compose up --build
+```
+
+### Frontend ↔ Backend Connection
+
+The frontend calls the backend using `NEXT_PUBLIC_API_URL`.
+
+- Local Docker compose (`/web/docker-compose.yml`) sets:
+  - `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- Frontend-only compose (`/web/frontend/docker-compose.yml`) also expects backend on `http://localhost:8000`.
+- In production, set `NEXT_PUBLIC_API_URL` to your deployed backend URL (for example `https://api.your-domain.com`).
+
+Also ensure backend CORS allows your frontend origin via `CORS_ALLOWED_ORIGINS`.
 
 ## Running the Desktop Application
 
