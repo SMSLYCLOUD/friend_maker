@@ -48,6 +48,13 @@ class CryptoManager:
         except Exception:
             return False
 
+    def _is_valid_key(self, key: bytes) -> bool:
+        try:
+            Fernet(key)
+            return True
+        except Exception:
+            return False
+
     def _load_or_generate_key(self) -> bytes:
         # 1. Environment variable
         env_key = os.getenv("SECRET_KEY", "").strip()

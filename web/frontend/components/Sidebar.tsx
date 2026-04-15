@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Users, BarChart3, Settings, Rocket, Info, LogIn, UserPlus } from "lucide-react";
 import clsx from "clsx";
+import { useEffect, useState } from "react";
+import { clearAuthSession, isAuthenticated } from "@/lib/auth";
 
-const links = [
+const publicLinks = [
   { name: "Home", href: "/", icon: Home },
   { name: "About", href: "/about", icon: Info },
-  { name: "Register", href: "/register", icon: UserPlus },
-  { name: "Login", href: "/login", icon: LogIn },
+];
+
+const protectedLinks = [
   { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
   { name: "Accounts", href: "/accounts", icon: Users },
   { name: "Campaigns", href: "/campaigns", icon: Rocket },
@@ -18,6 +21,15 @@ const links = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [authenticated, setAuthenticated] = useState(false);
+
+  useEffect(() => {
+    setAuthenticated(isAuthenticated());
+  }, [pathname]);
+
+  const links = authenticated
+    ? [...publicLinks, ...protectedLinks]
+    : [...publicLinks, { name: "Register", href: "/register", icon: UserPlus }, { name: "Login", href: "/login", icon: LogIn }];
 
   return (
     <div className="flex h-full w-64 flex-col border-r border-gray-800 bg-gray-950 p-4">
@@ -46,6 +58,17 @@ export function Sidebar() {
           );
         })}
       </nav>
+      {authenticated && (
+        <button
+          onClick={() => {
+            clearAuthSession();
+            window.location.href = "/login";
+          }}
+          className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
+        >
+          Sign out
+        </button>
+      )}
     </div>
   );
 }

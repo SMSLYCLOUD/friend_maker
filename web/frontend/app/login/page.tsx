@@ -2,13 +2,29 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { setAuthSession } from "@/lib/auth";
 
 export default function LoginPage() {
-  const [submitted, setSubmitted] = useState(false);
+  const router = useRouter();
+  const [error, setError] = useState("");
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitted(true);
+    const form = new FormData(event.currentTarget);
+    const username = String(form.get("username") || "").trim();
+    const password = String(form.get("password") || "");
+
+    if (!username || !password) {
+      setError("Username and password are required.");
+      return;
+    }
+
+    setAuthSession(username);
+    const nextPath = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("next") || "/dashboard"
+      : "/dashboard";
+    router.push(nextPath);
   };
 
   return (
@@ -21,7 +37,12 @@ export default function LoginPage() {
           <label className="mb-1 block text-sm text-gray-300" htmlFor="username">
             Username
           </label>
-          <input id="username" required className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-white" />
+          <input
+            id="username"
+            name="username"
+            required
+            className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-white"
+          />
         </div>
         <div>
           <label className="mb-1 block text-sm text-gray-300" htmlFor="password">
@@ -29,6 +50,7 @@ export default function LoginPage() {
           </label>
           <input
             id="password"
+            name="password"
             type="password"
             required
             className="w-full rounded-md border border-gray-700 bg-gray-950 px-3 py-2 text-white"
@@ -39,7 +61,7 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {submitted && <p className="mt-4 text-sm text-emerald-400">Login submitted.</p>}
+      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 
       <p className="mt-6 text-sm text-gray-400">
         No account?{" "}
