@@ -194,7 +194,7 @@ def get_analytics(repo: Repository = Depends(get_repository), api_key: str = Dep
 
 # Rust Integration Endpoint
 @app.post("/api/optimize")
-async def optimize_campaign(campaign_id: str, api_key: str = Depends(get_api_key)):
+def optimize_campaign(campaign_id: str, api_key: str = Depends(get_api_key)):
     try:
         response = requests.post(
             f"{settings.RUST_SERVICE_URL}/optimize",
