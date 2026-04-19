@@ -45,6 +45,7 @@ class Config(BaseModel):
     DATABASE_URL: str = "sqlite:///data/social_growth.db"
     FRONTEND_URL: str = ""
     REDIRECT_ROOT_TO_FRONTEND: bool = False
+    API_KEY: str = "super-secret-api-key"
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -64,6 +65,7 @@ settings = Config(
     DATABASE_URL=_getenv_str("DATABASE_URL", "sqlite:///data/social_growth.db"),
     FRONTEND_URL=_getenv_str("FRONTEND_URL", ""),
     REDIRECT_ROOT_TO_FRONTEND=_getenv_bool("REDIRECT_ROOT_TO_FRONTEND", False),
+    API_KEY=_getenv_str("API_KEY", "super-secret-api-key"),
 )
 
 # Ensure data directory exists

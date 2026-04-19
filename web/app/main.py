@@ -1,6 +1,7 @@
 import logging
 import json
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -11,7 +12,7 @@ import requests
 
 from app.automation.scheduler import Scheduler
 from app.database.connection import init_db
-from app.database.repository import Repository
+from app.database.repository import Repository, get_repository
 from app.database.models import Account as DBAccount, Campaign as DBCampaign
 from app.config import settings
 
@@ -31,6 +32,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if not api_key_header or api_key_header != settings.API_KEY:
+        raise HTTPException(
+            status_code=403, detail="Could not validate API KEY"
+        )
+    return api_key_header
+
 scheduler = Scheduler()
 
 @app.on_event("startup")
@@ -45,25 +55,47 @@ async def shutdown_event():
     await scheduler.stop()
 
 # --- Pydantic Models ---
+from enum import Enum
+
+class PlatformType(str, Enum):
+    instagram = "instagram"
+    twitter = "twitter"
+    facebook = "facebook"
+    linkedin = "linkedin"
+
+class CampaignType(str, Enum):
+    growth = "growth"
+    outreach = "outreach"
 
 class AccountCreate(BaseModel):
-    platform: str
+    platform: PlatformType
     username: str
     session_data: Optional[str] = None # JSON string of cookies
 
 class AccountResponse(BaseModel):
     id: str
-    platform: str
+    platform: PlatformType
     username: str
     is_active: bool
+
+class TargetingSchema(BaseModel):
+    tags: List[str]
+    keywords: Optional[List[str]] = []
+
+class ScheduleSchema(BaseModel):
+    days: List[str]
+    start_time: str
+    end_time: str
+    timezone: str
 
 class CampaignCreate(BaseModel):
     account_id: str
     name: str
-    campaign_type: str
-    targeting: Dict[str, Any]
+    campaign_type: CampaignType
+    targeting: TargetingSchema
     message_template: str
-    schedule: Dict[str, Any]
+    schedule: ScheduleSchema
+    daily_limit: Optional[int] = 50
 
 class CampaignResponse(BaseModel):
     id: str
@@ -87,101 +119,82 @@ async def health():
     return {"status": "ok"}
 
 @app.get("/health/ready")
-async def health_ready():
-    repo = Repository()
+def health_ready(repo: Repository = Depends(get_repository)):
     try:
         repo.get_analytics_summary()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
-    finally:
-        repo.close()
     return {"status": "ready"}
 
 @app.get("/api/accounts", response_model=List[AccountResponse])
-async def list_accounts():
-    repo = Repository()
-    try:
-        accounts = repo.list_accounts()
-        return [
-            AccountResponse(
-                id=a.id,
-                platform=a.platform,
-                username=a.username,
-                is_active=a.is_active
-            ) for a in accounts
-        ]
-    finally:
-        repo.close()
+def list_accounts(repo: Repository = Depends(get_repository), api_key: str = Depends(get_api_key)):
+    accounts = repo.list_accounts()
+    return [
+        AccountResponse(
+            id=a.id,
+            platform=a.platform,
+            username=a.username,
+            is_active=a.is_active
+        ) for a in accounts
+    ]
 
 @app.post("/api/accounts", response_model=AccountResponse)
-async def create_account(account: AccountCreate):
-    repo = Repository()
-    try:
-        new_account = DBAccount(
-            id=str(uuid4()),
-            platform=account.platform,
-            username=account.username,
-            display_name=account.username,
-            session_data=account.session_data,
-            is_active=True,
-            created_at=int(datetime.now().timestamp())
-        )
-        repo.create_account(new_account)
-        return AccountResponse(
-            id=new_account.id,
-            platform=new_account.platform,
-            username=new_account.username,
-            is_active=new_account.is_active
-        )
-    finally:
-        repo.close()
+def create_account(account: AccountCreate, repo: Repository = Depends(get_repository), api_key: str = Depends(get_api_key)):
+    new_account = DBAccount(
+        id=str(uuid4()),
+        platform=account.platform.value,
+        username=account.username,
+        display_name=account.username,
+        session_data=account.session_data,
+        is_active=True,
+        created_at=int(datetime.now().timestamp())
+    )
+    repo.create_account(new_account)
+    return AccountResponse(
+        id=new_account.id,
+        platform=new_account.platform,
+        username=new_account.username,
+        is_active=new_account.is_active
+    )
 
 @app.post("/api/campaigns", response_model=CampaignResponse)
-async def create_campaign(campaign: CampaignCreate):
-    repo = Repository()
-    try:
-        new_campaign = DBCampaign(
-            id=str(uuid4()),
-            account_id=campaign.account_id,
-            name=campaign.name,
-            campaign_type=campaign.campaign_type,
-            status="draft",
-            targeting_json=json.dumps(campaign.targeting),
-            message_template=campaign.message_template,
-            schedule_json=json.dumps(campaign.schedule),
-            daily_limit=50,
-            created_at=int(datetime.now().timestamp())
-        )
-        repo.create_campaign(new_campaign)
-        return CampaignResponse(
-            id=new_campaign.id,
-            name=new_campaign.name,
-            status=new_campaign.status
-        )
-    finally:
-        repo.close()
+def create_campaign(campaign: CampaignCreate, repo: Repository = Depends(get_repository), api_key: str = Depends(get_api_key)):
+    new_campaign = DBCampaign(
+        id=str(uuid4()),
+        account_id=campaign.account_id,
+        name=campaign.name,
+        campaign_type=campaign.campaign_type.value,
+        status="draft",
+        targeting_json=json.dumps(campaign.targeting.model_dump()),
+        message_template=campaign.message_template,
+        schedule_json=json.dumps(campaign.schedule.model_dump()),
+        daily_limit=campaign.daily_limit or 50,
+        created_at=int(datetime.now().timestamp())
+    )
+    repo.create_campaign(new_campaign)
+    return CampaignResponse(
+        id=new_campaign.id,
+        name=new_campaign.name,
+        status=new_campaign.status
+    )
 
 @app.post("/api/campaigns/{campaign_id}/start")
-async def start_campaign(campaign_id: str):
+async def start_campaign(campaign_id: str, api_key: str = Depends(get_api_key)):
     await scheduler.start_campaign(campaign_id)
     return {"status": "started", "campaign_id": campaign_id}
 
 @app.post("/api/campaigns/{campaign_id}/stop")
-async def stop_campaign(campaign_id: str):
+async def stop_campaign(campaign_id: str, api_key: str = Depends(get_api_key)):
     await scheduler.stop_campaign(campaign_id)
     return {"status": "stopped", "campaign_id": campaign_id}
 
 @app.get("/api/analytics/summary")
-async def get_analytics():
-    repo = Repository()
-    try:
-        return repo.get_analytics_summary()
-    finally:
-        repo.close()
+def get_analytics(repo: Repository = Depends(get_repository), api_key: str = Depends(get_api_key)):
+    return repo.get_analytics_summary()
 
 # Rust Integration Endpoint
 @app.post("/api/optimize")
-async def optimize_campaign(campaign_id: str):
+async def optimize_campaign(campaign_id: str, api_key: str = Depends(get_api_key)):
     try:
         response = requests.post(
             f"{settings.RUST_SERVICE_URL}/optimize",
