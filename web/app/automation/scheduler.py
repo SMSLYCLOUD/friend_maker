@@ -15,30 +15,28 @@ class Scheduler:
         self.running = False
         self.tasks: Dict[str, asyncio.Task] = {}
 
-        # self.repo = Repository()  <-- Don't hold a shared connection
-        # Instead, we just hold config/managers that are thread-safe or stateless
+        self.playwright = None
+        self.browser = None
+
         self.ai_manager = OpenRouterManager()
         self.classifier = ProfileClassifier(self.ai_manager)
         self.generator = MessageGenerator(self.ai_manager)
 
-        # Main thread repo for simple UI access if needed,
-        # but better to let UI instantiate its own.
-        # However, for 'start_campaign' check, we might need one?
-        # Let's keep one for the main thread operations if strictly needed,
-        # but avoid passing it to tasks.
-        self.main_repo = Repository()
-
     async def start(self):
         self.running = True
-        self.logger.info("Scheduler started.")
-        # In a real app, this might poll DB for scheduled campaigns.
-        # For now, it manages manually started tasks.
+        self.logger.info("Scheduler started. Launching Playwright browser instance...")
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(headless=True)
 
     async def stop(self):
         self.running = False
         for task in self.tasks.values():
             task.cancel()
         self.tasks.clear()
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
         self.logger.info("Scheduler stopped.")
 
     async def start_campaign(self, campaign_id: str):
@@ -47,9 +45,6 @@ class Scheduler:
             return
 
         self.logger.info(f"Starting campaign {campaign_id}")
-
-        # We need to spawn a Playwright instance for this campaign
-        # This is heavy. Ideally we reuse or limit concurrent ones.
         task = asyncio.create_task(self._run_wrapper(campaign_id))
         self.tasks[campaign_id] = task
 
@@ -60,12 +55,9 @@ class Scheduler:
             self.logger.info(f"Stopped campaign {campaign_id}")
 
     async def _run_wrapper(self, campaign_id: str, attempt=1):
-        # Create a fresh Repository instance for this task/thread
-        # This ensures a unique SQLite connection.
         task_repo = Repository()
 
         try:
-            # Determine platform from Campaign -> Account
             campaign = task_repo.get_campaign(campaign_id)
             if not campaign:
                 self.logger.error(f"Campaign {campaign_id} not found.")
@@ -76,9 +68,12 @@ class Scheduler:
                 self.logger.error(f"Account for Campaign {campaign_id} not found.")
                 return
 
-            playwright = await async_playwright().start()
-            browser = await playwright.chromium.launch(headless=True)
-            context = await browser.new_context()
+            if not self.browser:
+                self.logger.error("Browser is not initialized.")
+                return
+
+            # Create a new context instead of a new browser
+            context = await self.browser.new_context()
             page = await context.new_page()
 
             if account.platform.lower() == "instagram":
@@ -97,27 +92,22 @@ class Scheduler:
                 return
 
             executor = CampaignExecutor(task_repo, adapter, self.classifier, self.generator)
-
-            # Store the executor reference on the task dictionary if we need to call .stop()
-            # But task.cancel() handles the exit via CancelledError gracefully enough in this architecture.
-
             await executor.run_campaign(campaign_id)
 
         except asyncio.CancelledError:
             self.logger.info(f"Campaign {campaign_id} task cancelled.")
         except Exception as e:
             self.logger.error(f"Campaign {campaign_id} failed (Attempt {attempt}): {e}")
-            if attempt < 3:
+            if attempt < 3 and self.running:
                 self.logger.info(f"Retrying campaign {campaign_id} in 60s...")
                 await asyncio.sleep(60)
-                # Restart
-                # We can't recursive await easily without proper task management or it blocks.
-                # But since this is inside a task, we can just loop or recurse if stack depth isn't issue.
-                # Simplest is just to restart the wrapper logic?
-                # Better: The caller should handle restart, or we use a loop.
-                # I'll rely on the task ending.
+                # Ensure the previous task is cleaned up before launching a retry task
+                if campaign_id in self.tasks:
+                    del self.tasks[campaign_id]
+                self.tasks[campaign_id] = asyncio.create_task(self._run_wrapper(campaign_id, attempt=attempt+1))
+                return # Don't delete the key in finally since we just set it
         finally:
-            if 'browser' in locals(): await browser.close()
-            if 'playwright' in locals(): await playwright.stop()
-            if campaign_id in self.tasks:
+            if 'context' in locals(): await context.close()
+            task_repo.close()
+            if campaign_id in self.tasks and self.tasks[campaign_id] == asyncio.current_task():
                 del self.tasks[campaign_id]

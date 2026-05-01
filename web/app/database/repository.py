@@ -146,3 +146,10 @@ class Repository:
 
     def close(self):
         self.conn.close()
+
+def get_repository():
+    repo = Repository()
+    try:
+        yield repo
+    finally:
+        repo.close()

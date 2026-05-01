@@ -41,7 +41,16 @@ class CampaignExecutor:
             self.logger.error("Authentication failed. Aborting.")
             return
 
+        actions_today = 0
+        limit = campaign.daily_limit or 50
+
         while self.running:
+            if actions_today >= limit:
+                self.logger.info(f"Daily limit of {limit} reached. Pausing until tomorrow.")
+                # Basic implementation: stop execution. A real task queue would reschedule for tomorrow.
+                self.running = False
+                break
+
             if self.anti_detect.needs_break():
                 await self.anti_detect.take_break(lambda: self.running)
 
@@ -61,9 +70,11 @@ class CampaignExecutor:
             target = pending[0]
             try:
                 await self._process_target(target, campaign)
-                # Check limits
-                # (In a real app, check daily limits here)
+                actions_today += 1
                 await self.anti_detect.random_delay(lambda: self.running)
+            except asyncio.CancelledError:
+                self.logger.info("Task cancelled during target processing.")
+                raise
             except Exception as e:
                 self.logger.error(f"Error processing target {target.username}: {e}")
                 # Log failure
