@@ -29,9 +29,30 @@ A hybrid monorepo consisting of:
 *   `/web/`: The web application project. Includes backend logic, the web interface, and related auxiliary services. Uses Docker and Docker Compose.
 *   `/desktop/`: The desktop application project, powered by Tauri.
 
-## Running the Web Application
+## Deploying to a VPS
 
-The easiest way to run the web application is using Docker Compose. Make sure you are inside the `web` directory:
+If you are deploying the Web Application to a fresh Ubuntu VPS (e.g., Ubuntu 22.04), you can use the provided automated deployment script.
+
+1. Clone the repository to your VPS.
+2. Navigate to the root directory of the repository.
+3. Run the deployment script with root privileges:
+
+```bash
+sudo ./deploy.sh
+```
+
+The script will automatically:
+- Install Docker, Docker Compose, and Nginx.
+- Auto-detect your server's public IP address.
+- Configure environment variables to use your public IP.
+- Build and start the Docker containers.
+- Configure Nginx as a reverse proxy to route traffic from port 80 to your frontend and backend.
+
+Once finished, it will display the URL (your IP address) where the application is accessible.
+
+## Running the Web Application Locally
+
+The easiest way to run the web application locally is using Docker Compose. Make sure you are inside the `web` directory:
 
 ```bash
 cd web
