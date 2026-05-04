@@ -46,5 +46,28 @@ class AntiDetection:
         self.logger.warning(f"Triggering cooldown for {wait_time}s due to errors...")
         await self._cancellable_sleep(wait_time, is_running)
 
+    async def simulate_human_interaction(self, page, is_running: Callable[[], bool] = lambda: True):
+        """Simulate random human interactions like scrolling and mouse movements."""
+        if not is_running():
+            return
+
+        self.logger.debug("Simulating human interaction (scroll and mouse movement)...")
+
+        # Random scrolling
+        for _ in range(random.randint(1, 3)):
+            if not is_running():
+                return
+            scroll_amount = random.randint(100, 500)
+            direction = 1 if random.random() > 0.3 else -1 # mostly scroll down
+            await page.mouse.wheel(0, scroll_amount * direction)
+            await self._cancellable_sleep(random.uniform(0.5, 1.5), is_running)
+
+        # Random mouse movement
+        if is_running():
+            x = random.randint(100, 800)
+            y = random.randint(100, 600)
+            await page.mouse.move(x, y, steps=random.randint(5, 15))
+            await self._cancellable_sleep(random.uniform(0.5, 1.0), is_running)
+
     def record_action(self):
         self.actions_this_session += 1
