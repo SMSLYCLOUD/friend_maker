@@ -19,7 +19,7 @@ class LoginDialog(ctk.CTkToplevel):
         self.on_cancel = on_cancel
         
         self.title(f"Login to {platform.title()}")
-        self.geometry("400x350")
+        self.geometry("400x380")
         self.resizable(False, False)
         
         # Center the dialog
@@ -28,6 +28,9 @@ class LoginDialog(ctk.CTkToplevel):
         # Make dialog modal
         self.transient(parent)
         self.grab_set()
+        
+        # Handle window close button
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         
         # Step tracking
         self.username_value = ""
@@ -117,6 +120,19 @@ class LoginDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=14)
         )
         self.submit_btn.pack(fill="x")
+        
+        # Cancel button
+        cancel_btn = ctk.CTkButton(
+            self.content_frame,
+            text="Cancel",
+            command=self._on_cancel,
+            fg_color="transparent",
+            text_color="#e74c3c",
+            border_width=1,
+            height=35,
+            font=ctk.CTkFont(size=12)
+        )
+        cancel_btn.pack(fill="x", pady=(10, 0))
     
     def _on_username_submit(self):
         username = self.username_entry.get().strip()
@@ -179,6 +195,19 @@ class LoginDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=12)
         )
         back_btn.pack(fill="x", pady=(10, 0))
+        
+        # Cancel button
+        cancel_btn = ctk.CTkButton(
+            self.content_frame,
+            text="Cancel",
+            command=self._on_cancel,
+            fg_color="transparent",
+            text_color="#e74c3c",
+            border_width=1,
+            height=35,
+            font=ctk.CTkFont(size=12)
+        )
+        cancel_btn.pack(fill="x", pady=(5, 0))
     
     def _on_password_submit(self):
         password = self.password_entry.get()
@@ -190,6 +219,11 @@ class LoginDialog(ctk.CTkToplevel):
         self._submit_credentials()
     
     def _show_error(self, message):
+        # Clear any existing error messages first
+        for widget in self.content_frame.winfo_children():
+            if isinstance(widget, ctk.CTkLabel) and widget.cget("text_color") == "#e74c3c":
+                widget.destroy()
+        
         error_label = ctk.CTkLabel(
             self.content_frame,
             text=message,
@@ -197,7 +231,7 @@ class LoginDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=12)
         )
         error_label.pack(pady=(5, 0))
-        self.after(2000, lambda: error_label.destroy())
+        self.after(3000, lambda: error_label.destroy())
     
     def _submit_credentials(self):
         # Close dialog and call callback with credentials
@@ -343,7 +377,7 @@ class AccountsPage(BasePage):
             # Fill username/email
             username_field = page.locator('input[name="username"]')
             username_field.fill(username)
-            page.wait_for_timeout(500)  # Small delay for UX
+            page.wait_for_timeout(800)  # Small delay for UX
             
             # Click next button
             next_btn = page.locator('button[type="submit"]').first
@@ -356,7 +390,7 @@ class AccountsPage(BasePage):
             # Fill password
             password_field = page.locator('input[name="password"]')
             password_field.fill(password)
-            page.wait_for_timeout(500)  # Small delay for UX
+            page.wait_for_timeout(800)  # Small delay for UX
             
             # Click login button
             login_btn = page.locator('button[type="submit"]').last
@@ -375,10 +409,10 @@ class AccountsPage(BasePage):
             # Wait for login page to load
             page.wait_for_selector('input[autocomplete="username"]', timeout=15000)
             
-            # Fill username/email
+            # Fill username/email/phone
             username_field = page.locator('input[autocomplete="username"]')
             username_field.fill(username)
-            page.wait_for_timeout(500)  # Small delay for UX
+            page.wait_for_timeout(800)  # Small delay for UX
             
             # Click next button if it exists (some flows require explicit next click)
             next_btn = page.locator('[role="button"][data-testid="openSigninNextButton"]')
@@ -390,7 +424,7 @@ class AccountsPage(BasePage):
             # Fill password
             password_field = page.locator('input[type="password"]').first
             password_field.fill(password)
-            page.wait_for_timeout(500)  # Small delay for UX
+            page.wait_for_timeout(800)  # Small delay for UX
             
             # Click login button - try multiple selectors
             login_clicked = False
