@@ -16,8 +16,13 @@ class Repository:
 
     # --- User Operations ---
     def create_user(self, username: str, password_hash: str):
-        query = text("INSERT INTO users (id, username, hashed_password) VALUES (:id, :username, :password)")
-        self.session.execute(query, {"id": str(uuid.uuid4()), "username": username, "password": password_hash})
+        query = text("INSERT INTO users (id, username, hashed_password, created_at) VALUES (:id, :username, :password, :created_at)")
+        self.session.execute(query, {
+            "id": str(uuid.uuid4()), 
+            "username": username, 
+            "password": password_hash,
+            "created_at": int(time.time())
+        })
         self.session.commit()
 
     def get_user(self, username: str):

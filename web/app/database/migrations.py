@@ -3,12 +3,12 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     hashed_password TEXT NOT NULL,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT,
-    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+    updated_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     is_active INTEGER DEFAULT 1,
     last_action_at INTEGER,
     daily_actions INTEGER DEFAULT 0,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     schedule_json TEXT,
     daily_limit INTEGER DEFAULT 50,
     total_actions INTEGER DEFAULT 0,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS targets (
     id TEXT PRIMARY KEY,
@@ -53,6 +53,6 @@ CREATE TABLE IF NOT EXISTS action_logs (
     target_user TEXT,
     success INTEGER,
     error TEXT,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER
 );
 """
