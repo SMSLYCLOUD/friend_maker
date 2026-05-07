@@ -9,7 +9,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState("");
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const username = String(form.get("username") || "").trim();
@@ -20,11 +20,18 @@ export default function LoginPage() {
       return;
     }
 
-    setAuthSession(username);
-    const nextPath = typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("next") || "/dashboard"
-      : "/dashboard";
-    router.push(nextPath);
+    try {
+      const { login } = await import("@/lib/api");
+      await login({ username, password });
+      
+      setAuthSession(username);
+      const nextPath = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("next") || "/dashboard"
+        : "/dashboard";
+      router.push(nextPath);
+    } catch (err: any) {
+      setError(err.message || "Invalid username or password.");
+    }
   };
 
   return (

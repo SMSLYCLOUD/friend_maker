@@ -9,7 +9,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState("");
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const username = String(form.get("username") || "").trim();
@@ -26,8 +26,15 @@ export default function RegisterPage() {
       return;
     }
 
-    setAuthSession(username);
-    router.push("/dashboard");
+    try {
+      const { register } = await import("@/lib/api");
+      await register({ username, password });
+      
+      setAuthSession(username);
+      router.push("/dashboard");
+    } catch (err: any) {
+      setError(err.message || "Registration failed. Username may already be taken.");
+    }
   };
 
   return (

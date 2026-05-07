@@ -1,55 +1,66 @@
 import json
-import sqlite3
+import uuid
+import time
 from typing import List, Optional
-from app.database.connection import get_connection
+from sqlalchemy import text
+from app.database.connection import SessionLocal
 from app.database.models import Account, Campaign, Target, ActionLog
 from app.utils.crypto import crypto
 
 class Repository:
     def __init__(self):
-        self.conn = get_connection()
+        self.session = SessionLocal()
 
     def _row_to_dict(self, row) -> dict:
-        return dict(row)
+        return row._asdict() if hasattr(row, '_asdict') else dict(row)
+
+    # --- User Operations ---
+    def create_user(self, username: str, password_hash: str):
+        query = text("INSERT INTO users (id, username, hashed_password) VALUES (:id, :username, :password)")
+        self.session.execute(query, {"id": str(uuid.uuid4()), "username": username, "password": password_hash})
+        self.session.commit()
+
+    def get_user(self, username: str):
+        query = text("SELECT * FROM users WHERE username = :username")
+        result = self.session.execute(query, {"username": username})
+        return result.fetchone()
 
     # --- Account Operations ---
     def create_account(self, account: Account) -> Account:
-        query = """
+        query = text("""
         INSERT INTO accounts (id, platform, username, display_name, session_data, proxy_config, is_active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """
+        VALUES (:id, :platform, :username, :display_name, :session_data, :proxy_config, :is_active, :created_at)
+        """)
         encrypted_session = crypto.encrypt(account.session_data) if account.session_data else None
 
-        self.conn.execute(query, (
-            account.id, account.platform, account.username, account.display_name,
-            encrypted_session, account.proxy_config, 1 if account.is_active else 0,
-            account.created_at
-        ))
-        self.conn.commit()
+        self.session.execute(query, {
+            "id": account.id, "platform": account.platform, "username": account.username, 
+            "display_name": account.display_name, "session_data": encrypted_session, 
+            "proxy_config": account.proxy_config, "is_active": 1 if account.is_active else 0,
+            "created_at": account.created_at
+        })
+        self.session.commit()
         return account
 
     def get_account(self, account_id: str) -> Optional[Account]:
-        query = "SELECT * FROM accounts WHERE id = ?"
-        cursor = self.conn.execute(query, (account_id,))
-        row = cursor.fetchone()
+        query = text("SELECT * FROM accounts WHERE id = :id")
+        result = self.session.execute(query, {"id": account_id})
+        row = result.fetchone()
         if not row:
             return None
 
         data = self._row_to_dict(row)
-        # Decrypt session data
         if data['session_data']:
             data['session_data'] = crypto.decrypt(data['session_data'])
-
-        # SQLite stores booleans as integers
         data['is_active'] = bool(data['is_active'])
 
         return Account(**data)
 
     def list_accounts(self) -> List[Account]:
-        query = "SELECT * FROM accounts"
-        cursor = self.conn.execute(query)
+        query = text("SELECT * FROM accounts")
+        result = self.session.execute(query)
         accounts = []
-        for row in cursor.fetchall():
+        for row in result.fetchall():
             data = self._row_to_dict(row)
             if data['session_data']:
                 data['session_data'] = crypto.decrypt(data['session_data'])
@@ -58,84 +69,92 @@ class Repository:
         return accounts
 
     def update_account_session(self, account_id: str, session_data: str):
-        query = "UPDATE accounts SET session_data = ? WHERE id = ?"
+        query = text("UPDATE accounts SET session_data = :data WHERE id = :id")
         encrypted = crypto.encrypt(session_data)
-        self.conn.execute(query, (encrypted, account_id))
-        self.conn.commit()
+        self.session.execute(query, {"data": encrypted, "id": account_id})
+        self.session.commit()
 
     # --- Campaign Operations ---
     def create_campaign(self, campaign: Campaign) -> Campaign:
-        query = """
+        query = text("""
         INSERT INTO campaigns (id, account_id, name, campaign_type, status, targeting_json, message_template, schedule_json, daily_limit, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        self.conn.execute(query, (
-            campaign.id, campaign.account_id, campaign.name, campaign.campaign_type,
-            campaign.status, campaign.targeting_json, campaign.message_template,
-            campaign.schedule_json, campaign.daily_limit, campaign.created_at
-        ))
-        self.conn.commit()
+        VALUES (:id, :account_id, :name, :campaign_type, :status, :targeting_json, :message_template, :schedule_json, :daily_limit, :created_at)
+        """)
+        self.session.execute(query, {
+            "id": campaign.id, "account_id": campaign.account_id, "name": campaign.name, 
+            "campaign_type": campaign.campaign_type, "status": campaign.status, 
+            "targeting_json": campaign.targeting_json, "message_template": campaign.message_template,
+            "schedule_json": campaign.schedule_json, "daily_limit": campaign.daily_limit, 
+            "created_at": campaign.created_at
+        })
+        self.session.commit()
         return campaign
 
     def get_campaign(self, campaign_id: str) -> Optional[Campaign]:
-        query = "SELECT * FROM campaigns WHERE id = ?"
-        cursor = self.conn.execute(query, (campaign_id,))
-        row = cursor.fetchone()
+        query = text("SELECT * FROM campaigns WHERE id = :id")
+        result = self.session.execute(query, {"id": campaign_id})
+        row = result.fetchone()
         if not row:
             return None
         return Campaign(**self._row_to_dict(row))
 
     # --- Target Operations ---
     def add_target(self, target: Target):
-        query = """
-        INSERT OR IGNORE INTO targets (id, campaign_id, platform_user_id, username, profile_json, status)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """
-        self.conn.execute(query, (
-            target.id, target.campaign_id, target.platform_user_id,
-            target.username, target.profile_json, target.status
-        ))
-        self.conn.commit()
+        # Postgres doesn't have INSERT OR IGNORE, but SQLAlchemy core can handle it or we use raw SQL with ON CONFLICT
+        # To stay cross-compatible, we'll check existence first or use ON CONFLICT for Postgres
+        query = text("""
+        INSERT INTO targets (id, campaign_id, platform_user_id, username, profile_json, status)
+        VALUES (:id, :campaign_id, :platform_user_id, :username, :profile_json, :status)
+        ON CONFLICT DO NOTHING
+        """)
+        # Note: SQLite supports ON CONFLICT since 3.24.0. For older sqlite, we'd need a different approach.
+        # But Grid/Modern OS should be fine.
+        self.session.execute(query, {
+            "id": target.id, "campaign_id": target.campaign_id, "platform_user_id": target.platform_user_id,
+            "username": target.username, "profile_json": target.profile_json, "status": target.status
+        })
+        self.session.commit()
 
     def get_pending_targets(self, campaign_id: str, limit: int = 10) -> List[Target]:
-        query = "SELECT * FROM targets WHERE campaign_id = ? AND status = 'pending' LIMIT ?"
-        cursor = self.conn.execute(query, (campaign_id, limit))
-        return [Target(**self._row_to_dict(row)) for row in cursor.fetchall()]
+        query = text("SELECT * FROM targets WHERE campaign_id = :id AND status = 'pending' LIMIT :limit")
+        result = self.session.execute(query, {"id": campaign_id, "limit": limit})
+        return [Target(**self._row_to_dict(row)) for row in result.fetchall()]
 
     def update_target_status(self, target_id: str, status: str, ai_score: float = None):
         if ai_score is not None:
-            query = "UPDATE targets SET status = ?, ai_score = ? WHERE id = ?"
-            self.conn.execute(query, (status, ai_score, target_id))
+            query = text("UPDATE targets SET status = :status, ai_score = :score WHERE id = :id")
+            self.session.execute(query, {"status": status, "score": ai_score, "id": target_id})
         else:
-            query = "UPDATE targets SET status = ? WHERE id = ?"
-            self.conn.execute(query, (status, target_id))
-        self.conn.commit()
+            query = text("UPDATE targets SET status = :status WHERE id = :id")
+            self.session.execute(query, {"status": status, "id": target_id})
+        self.session.commit()
 
     # --- Action Logs ---
     def log_action(self, log: ActionLog):
-        query = """
+        query = text("""
         INSERT INTO action_logs (id, account_id, campaign_id, action_type, target_user, success, error, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        self.conn.execute(query, (
-            log.id, log.account_id, log.campaign_id, log.action_type,
-            log.target_user, 1 if log.success else 0, log.error, log.created_at
-        ))
-        self.conn.commit()
+        VALUES (:id, :account_id, :campaign_id, :action_type, :target_user, :success, :error, :created_at)
+        """)
+        self.session.execute(query, {
+            "id": log.id, "account_id": log.account_id, "campaign_id": log.campaign_id, 
+            "action_type": log.action_type, "target_user": log.target_user, 
+            "success": 1 if log.success else 0, "error": log.error, "created_at": log.created_at
+        })
+        self.session.commit()
 
     def get_analytics_summary(self):
         """Returns dictionary with summary stats."""
         # Total Actions
-        cursor = self.conn.execute("SELECT COUNT(*) FROM action_logs")
-        total_actions = cursor.fetchone()[0]
+        total_actions = self.session.execute(text("SELECT COUNT(*) FROM action_logs")).scalar() or 0
 
         # Actions Today
-        cursor = self.conn.execute("SELECT COUNT(*) FROM action_logs WHERE created_at > (strftime('%s', 'now') - 86400)")
-        today_actions = cursor.fetchone()[0]
+        # Postgres and SQLite have different date functions. We'll use epoch time which is common.
+        now = int(time.time())
+        day_ago = now - 86400
+        today_actions = self.session.execute(text("SELECT COUNT(*) FROM action_logs WHERE created_at > :start"), {"start": day_ago}).scalar() or 0
 
         # Success Rate
-        cursor = self.conn.execute("SELECT AVG(success) FROM action_logs")
-        res = cursor.fetchone()[0]
+        res = self.session.execute(text("SELECT AVG(CAST(success AS FLOAT)) FROM action_logs")).scalar()
         success_rate = round(res * 100, 1) if res is not None else 0.0
 
         return {
@@ -145,7 +164,7 @@ class Repository:
         }
 
     def close(self):
-        self.conn.close()
+        self.session.close()
 
 def get_repository():
     repo = Repository()

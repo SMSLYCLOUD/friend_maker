@@ -1,4 +1,10 @@
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    hashed_password TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT,
@@ -9,7 +15,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     platform TEXT NOT NULL,
     username TEXT NOT NULL,
     display_name TEXT,
-    session_data TEXT,  -- Encrypted
+    session_data TEXT,
     proxy_config TEXT,
     is_active INTEGER DEFAULT 1,
     last_action_at INTEGER,
@@ -18,7 +24,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
-    account_id TEXT REFERENCES accounts(id),
+    account_id TEXT,
     name TEXT NOT NULL,
     campaign_type TEXT NOT NULL,
     status TEXT DEFAULT 'draft',
@@ -31,14 +37,13 @@ CREATE TABLE IF NOT EXISTS campaigns (
 );
 CREATE TABLE IF NOT EXISTS targets (
     id TEXT PRIMARY KEY,
-    campaign_id TEXT REFERENCES campaigns(id),
+    campaign_id TEXT,
     platform_user_id TEXT NOT NULL,
     username TEXT,
     profile_json TEXT,
     ai_score REAL,
     status TEXT DEFAULT 'pending',
-    processed_at INTEGER,
-    UNIQUE(campaign_id, platform_user_id)
+    processed_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS action_logs (
     id TEXT PRIMARY KEY,

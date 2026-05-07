@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Any
 from uuid import uuid4
 from datetime import datetime
 import requests
+import bcrypt
 
 from app.automation.scheduler import Scheduler
 from app.database.connection import init_db
@@ -101,6 +102,14 @@ class CampaignResponse(BaseModel):
     id: str
     name: str
     status: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    username: str
+    token: str # Simple token for now
 
 # --- Endpoints ---
 
@@ -206,3 +215,27 @@ def optimize_campaign(campaign_id: str, api_key: str = Depends(get_api_key)):
     except Exception as e:
         logger.error(f"Failed to call Rust service: {e}")
         raise HTTPException(status_code=503, detail="Optimization service unavailable")
+
+@app.post("/api/login", response_model=LoginResponse)
+def login(request: LoginRequest, repo: Repository = Depends(get_repository)):
+    user = repo.get_user(request.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    # Check password
+    stored_hash = user['hashed_password']
+    if not bcrypt.checkpw(request.password.encode('utf-8'), stored_hash.encode('utf-8')):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    return LoginResponse(username=request.username, token="mock-session-token")
+
+@app.post("/api/register", response_model=LoginResponse)
+def register(request: LoginRequest, repo: Repository = Depends(get_repository)):
+    if repo.get_user(request.username):
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Hash password
+    hashed = bcrypt.hashpw(request.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    repo.create_user(request.username, hashed)
+    return LoginResponse(username=request.username, token="mock-session-token")

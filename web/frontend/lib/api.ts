@@ -46,3 +46,33 @@ export async function createAccount(data: { platform: string; username: string; 
 
   return res.json();
 }
+
+export async function login(credentials: { username: string, password: string }) {
+  const res = await fetch(`${API_URL}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Login failed: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+export async function register(credentials: { username: string, password: string }) {
+  const res = await fetch(`${API_URL}/api/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Registration failed: ${res.statusText}`);
+  }
+
+  return res.json();
+}

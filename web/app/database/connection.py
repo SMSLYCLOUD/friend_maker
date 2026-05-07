@@ -1,38 +1,44 @@
-import sqlite3
 import logging
-from pathlib import Path
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
-def _resolve_db_path() -> Path:
-    db_url = settings.DATABASE_URL
-    if db_url.startswith("sqlite:///"):
-        return Path(db_url.removeprefix("sqlite:///"))
-    return settings.DATA_DIR / settings.DB_NAME
+# Determine the database URL
+db_url = settings.DATABASE_URL
+if db_url.startswith("sqlite:///"):
+    # Ensure directory exists for sqlite
+    from pathlib import Path
+    db_path = Path(db_url.removeprefix("sqlite:///"))
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    # SQLite specific args
+    engine = create_engine(db_url, connect_args={"check_same_thread": False})
+else:
+    # Postgres or other
+    engine = create_engine(db_url, pool_pre_ping=True)
 
-DB_PATH = _resolve_db_path()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-def get_connection():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 def init_db():
     """Initialize the database and run migrations."""
     from .migrations import SCHEMA
-
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.executescript(SCHEMA)
-        conn.commit()
-        logging.info("Database initialized successfully.")
-    except Exception as e:
-        logging.error(f"Database initialization failed: {e}")
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    
+    with engine.connect() as conn:
+        try:
+            # We use raw SQL for migrations to keep it simple for now
+            # Note: Postgres doesn't support 'executescript' like sqlite3, so we split by semicolon
+            for statement in SCHEMA.split(';'):
+                if statement.strip():
+                    conn.execute(text(statement))
+            conn.commit()
+            logging.info("Database initialized successfully.")
+        except Exception as e:
+            logging.error(f"Database initialization failed: {e}")
+            raise
