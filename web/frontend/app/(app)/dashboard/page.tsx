@@ -1,5 +1,7 @@
 import { fetchAnalyticsSummary, fetchAccounts } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function Dashboard() {
   let stats = { total_actions: 0, today_actions: 0, success_rate: 0 };
   let accounts = [];

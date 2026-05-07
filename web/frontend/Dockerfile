@@ -11,4 +11,5 @@ RUN npm run build
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Start with a fallback for PORT, although Grid will provide it.
+CMD ["sh", "-c", "npm start -- -p ${PORT:-3000}"]
