@@ -26,3 +26,18 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - python-backend
+
+  android-emulator:
+    image: budtmo/docker-android:emulator_13.0
+    container_name: socialgrowthai-android
+    privileged: true
+    ports:
+      - "6080:6080"
+      - "5554:5554"
+      - "5555:5555"
+      - "4723:4723"
+    environment:
+      - DEVICE=Samsung Galaxy S10
+      - APPIUM=true
+    volumes:
+      - ./data/android:/root

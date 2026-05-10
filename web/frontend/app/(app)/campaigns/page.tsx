@@ -67,6 +67,7 @@ export default function CampaignsPage() {
               <option value="twitter">Twitter / X</option>
               <option value="linkedin">LinkedIn</option>
               <option value="facebook">Facebook</option>
+              <option value="android">Android App</option>
             </select>
           </div>
 

@@ -11,3 +11,4 @@ customtkinter
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 bcrypt>=4.1.0
+Appium-Python-Client>=3.0.0

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Plus, Facebook, Instagram, Twitter, Linkedin } from "lucide-react";
+import { Plus, Facebook, Instagram, Twitter, Linkedin, Smartphone } from "lucide-react";
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
@@ -38,6 +38,7 @@ export default function AccountsPage() {
       case "instagram": return <Instagram className="w-5 h-5 text-pink-600" />;
       case "twitter": return <Twitter className="w-5 h-5 text-blue-400" />;
       case "linkedin": return <Linkedin className="w-5 h-5 text-blue-700" />;
+      case "android": return <Smartphone className="w-5 h-5 text-green-500" />;
       default: return null;
     }
   };
@@ -91,6 +92,7 @@ export default function AccountsPage() {
                   <option value="twitter">Twitter / X</option>
                   <option value="facebook">Facebook</option>
                   <option value="linkedin">LinkedIn</option>
+                  <option value="android">Android App</option>
                 </select>
               </div>
               <div>
