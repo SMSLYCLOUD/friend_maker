@@ -70,7 +70,7 @@ EOF
 echo -e "${GREEN}[5/6] Starting application with Docker Compose...${NC}"
 # We must force the Public IP into the build argument to prevent CORS/localhost errors
 PUBLIC_IP=$(curl -s ifconfig.me)
-docker compose build --build-arg NEXT_PUBLIC_API_URL="http://$PUBLIC_IP" frontend
+docker compose build --build-arg NEXT_PUBLIC_API_URL="http://$PUBLIC_IP"
 docker compose up -d
 
 echo -e "${YELLOW}Waiting for Backend to initialize (this may take 30s)...${NC}"
