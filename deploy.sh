@@ -58,7 +58,7 @@ cd "$(dirname "$0")/web" || exit 1
 
 # Configure environment variables
 cat > .env <<EOF
-NEXT_PUBLIC_API_URL=http://$PUBLIC_IP/api
+NEXT_PUBLIC_API_URL=http://$PUBLIC_IP
 FRONTEND_URL=http://$PUBLIC_IP
 CORS_ALLOWED_ORIGINS=http://$PUBLIC_IP,http://localhost:3000
 DATABASE_URL=sqlite:///data/social_growth.db
@@ -70,7 +70,7 @@ EOF
 echo -e "${GREEN}[5/6] Starting application with Docker Compose...${NC}"
 # We must force the Public IP into the build argument to prevent CORS/localhost errors
 PUBLIC_IP=$(curl -s ifconfig.me)
-docker compose build --build-arg NEXT_PUBLIC_API_URL="http://$PUBLIC_IP/api" frontend
+docker compose build --build-arg NEXT_PUBLIC_API_URL="http://$PUBLIC_IP" frontend
 docker compose up -d
 
 echo -e "${GREEN}[6/6] Configuring Nginx reverse proxy...${NC}"
