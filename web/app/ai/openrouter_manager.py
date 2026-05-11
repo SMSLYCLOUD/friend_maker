@@ -1,6 +1,7 @@
 import httpx
 import logging
 import asyncio
+from typing import Optional
 from app.config import settings
 
 class OpenRouterManager:

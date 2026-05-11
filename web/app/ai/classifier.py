@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from app.ai.openrouter_manager import OpenRouterManager
 
 class ProfileClassifier:

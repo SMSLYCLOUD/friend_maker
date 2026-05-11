@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List
+from typing import List, Optional
 from playwright.async_api import Page
 from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 
