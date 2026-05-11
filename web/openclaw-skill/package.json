@@ -19,8 +19,7 @@
     "prepublishOnly": "openclaw plugins build"
   },
   "dependencies": {
-    "openclaw": "latest",
-    "openclaw-plugin-sdk": "latest"
+    "openclaw": "latest"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
