@@ -73,6 +73,20 @@ PUBLIC_IP=$(curl -s ifconfig.me)
 docker compose build --build-arg NEXT_PUBLIC_API_URL="http://$PUBLIC_IP" frontend
 docker compose up -d
 
+echo -e "${YELLOW}Waiting for Backend to initialize (this may take 30s)...${NC}"
+MAX_RETRIES=30
+COUNT=0
+while ! curl -s http://localhost:8010/ > /dev/null; do
+    sleep 1
+    COUNT=$((COUNT+1))
+    if [ $COUNT -ge $MAX_RETRIES ]; then
+        echo -e "${RED}❌ Backend failed to start. Checking logs...${NC}"
+        docker compose logs python-backend
+        exit 1
+    fi
+done
+echo -e "${GREEN}✅ Backend is online!${NC}"
+
 echo -e "${GREEN}[6/6] Configuring Nginx reverse proxy...${NC}"
 NGINX_CONF_PATH="/etc/nginx/sites-available/socialgrowthai"
 cat > $NGINX_CONF_PATH <<EOF
