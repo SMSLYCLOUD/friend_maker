@@ -30,29 +30,36 @@ class InstagramAdapter(PlatformAdapter):
 
             if username and password:
                 await self.page.goto("https://www.instagram.com/accounts/login/", timeout=30000)
-                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                await self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+                await self.page.wait_for_timeout(3000)
 
-                # Wait for login form to appear (IG is SPA, form loads dynamically)
+                url = self.page.url
+                title = await self.page.title()
+                self.logger.info(f"IG login page URL: {url}, title: {title}")
+
+                # Save debug screenshot
                 try:
-                    await self.page.wait_for_selector('form[action*="login"]', timeout=10000)
-                except Exception:
-                    self.logger.warning("Form not found, trying alternate wait...")
+                    await self.page.screenshot(path="/tmp/ig_login_debug.png", full_page=False)
+                    self.logger.info("Debug screenshot saved to /tmp/ig_login_debug.png")
+                except Exception as ss_err:
+                    self.logger.warning(f"Screenshot failed: {ss_err}")
 
                 username_selectors = [
                     'input[name="username"]',
                     'input[data-testid="cookie-user-credential-yellow-foreground-input"]',
+                    '#email',
+                    '#username',
                 ]
                 for sel in username_selectors:
                     if await self.page.locator(sel).count() > 0:
+                        self.logger.info(f"Found username field with selector: {sel}")
                         await self.page.locator(sel).first.fill(username)
                         break
                 else:
-                    # Fallback: try XPath
-                    try:
-                        await self.page.locator('xpath=//input[@name="username"]').fill(username)
-                    except Exception:
-                        self.logger.error("Could not find username field.")
-                        return False
+                    # Log page HTML snippet for debugging
+                    html = await self.page.content()
+                    self.logger.error(f"Page HTML snippet: {html[:500]}")
+                    return False
 
                 await self.page.wait_for_timeout(500)
 
