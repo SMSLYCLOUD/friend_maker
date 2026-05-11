@@ -1,0 +1,8 @@
+[phases.setup]
+nixpkgs = ["python312", "gcc", "stdenv.cc.cc.lib", "glib", "nss", "nspr", "atk", "cups", "dbus", "pango", "cairo", "libX11", "libXcomposite", "libXdamage", "libXext", "libXfixes", "libXrandr", "libxcb", "libxkbcommon", "alsa-lib", "mesa", "tk", "tcl"]
+
+[phases.install]
+cmds = ["python -m venv --copies /opt/venv", ". /opt/venv/bin/activate && pip install --no-cache-dir -r requirements.txt", ". /opt/venv/bin/activate && playwright install chromium", ". /opt/venv/bin/activate && playwright install-deps chromium"]
+
+[start]
+cmd = "cd web && /opt/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"

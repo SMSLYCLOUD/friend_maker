@@ -1,0 +1,17 @@
+node_modules
+.next
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.env
+.env.local
+data/*.db
+rust-service/target
+app.log
+dist
+build
+*.spec
+ui_screenshot.png

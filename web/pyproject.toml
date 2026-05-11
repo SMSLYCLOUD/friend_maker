@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "social-growth-ai"
+version = "0.1.0"
+description = "SocialGrowthAI Desktop Application"
+authors = [
+    {name = "Jules", email = "jules@example.com"},
+]
+dependencies = [
+    "customtkinter",
+    "playwright",
+    "httpx",
+    "aiohttp",
+    "pydantic",
+    "cryptography",
+    "pyinstaller",
+]
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]

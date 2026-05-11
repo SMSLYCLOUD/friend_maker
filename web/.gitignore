@@ -1,0 +1,10 @@
+node_modules/
+.next/
+target/
+dist/
+build/
+scratch/
+*.log
+.env
+.venv/
+__pycache__/

@@ -1,0 +1,59 @@
+services:
+  python-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: socialgrowthai-python-backend
+    ports:
+      - "${PORT:-8010}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./app:/app/app # For hot-reloading on VPS if needed
+      - ./scratch:/app/scratch
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:///data/social_growth.db
+      - USE_ANDROID_EMULATOR=True
+      - ANDROID_EMULATOR_URL=http://android-emulator:4723/wd/hub
+    networks:
+      - social-network
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8010}
+    container_name: socialgrowthai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8010}
+    depends_on:
+      - python-backend
+    networks:
+      - social-network
+    restart: always
+
+  android-emulator:
+    image: budtmo/docker-android:emulator_13.0
+    container_name: socialgrowthai-android
+    privileged: true
+    ports:
+      - "6080:6080" # VNC Web Access
+      - "4723:4723" # Appium
+    environment:
+      - DEVICE=Samsung Galaxy S10
+      - APPIUM=true
+      - EMULATOR_ARGS=-no-window -no-audio -no-snapshot-save # Performance for VPS
+    volumes:
+      - ./data/android:/root
+    networks:
+      - social-network
+    restart: always
+
+networks:
+  social-network:
+    driver: bridge

@@ -1,0 +1,35 @@
+# Common
+.idea/
+.vscode/
+node_modules/
+.env
+
+# Python (Web Backend)
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.venv/
+dist/
+build/
+*.spec
+.pytest_cache/
+
+# Data & Keys
+*.sqlite
+*.db
+*.key
+data/
+
+# Next.js (Web Frontend)
+.next/
+web/frontend/node_modules/
+web/frontend/.next/
+
+# Rust (Web Aux Service)
+web/rust-service/target/
+
+# Desktop (Tauri)
+desktop/src-tauri/target/
+desktop/node_modules/

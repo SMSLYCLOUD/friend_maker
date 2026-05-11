@@ -1,0 +1,12 @@
+**/node_modules/
+**/.next/
+**/target/
+**/dist/
+**/build/
+**/scratch/
+**/*.log
+**/.git/
+**/.venv/
+**/__pycache__/
+**/.antigravity/
+**/.gemini/
