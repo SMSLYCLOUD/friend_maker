@@ -29,12 +29,54 @@ class InstagramAdapter(PlatformAdapter):
                     self.logger.warning("Session cookies expired. Trying credentials...")
 
             if username and password:
-                await self.page.goto("https://www.instagram.com/accounts/login/")
-                await self.page.get_by_label("Phone number, username, or email").fill(username)
-                await self.page.get_by_label("Password").fill(password)
-                await self.page.get_by_role("button", name="Log in", exact=True).click()
-                
-                # Wait for navigation or verification
+                await self.page.goto("https://www.instagram.com/accounts/login/", timeout=30000)
+
+                # Try current IG login form selectors
+                selectors = [
+                    'input[name="username"]',
+                    'input[autocomplete="username"]',
+                    'input[aria-label="Phone number, username, or email"]',
+                ]
+                input_field = None
+                for sel in selectors:
+                    if await self.page.locator(sel).count() > 0:
+                        input_field = self.page.locator(sel).first
+                        break
+
+                if not input_field:
+                    self.logger.error("Login form fields not found. Instagram page may have changed.")
+                    return False
+
+                await input_field.fill(username)
+                await self.page.wait_for_timeout(500)
+
+                # Handle "Next" button if present, then password
+                next_btn = self.page.get_by_role("button", name="Next")
+                if await next_btn.count() > 0:
+                    await next_btn.click()
+                    await self.page.wait_for_timeout(1000)
+
+                password_selectors = [
+                    'input[name="password"]',
+                    'input[autocomplete="current-password"]',
+                    'input[aria-label="Password"]',
+                ]
+                pw_field = None
+                for sel in password_selectors:
+                    if await self.page.locator(sel).count() > 0:
+                        pw_field = self.page.locator(sel).first
+                        break
+
+                if not pw_field:
+                    self.logger.error("Password field not found.")
+                    return False
+
+                await pw_field.fill(password)
+                await self.page.wait_for_timeout(500)
+
+                login_btn = self.page.get_by_role("button", name="Log in")
+                await login_btn.click()
+
                 try:
                     await self.page.wait_for_selector('svg[aria-label="New post"]', timeout=15000)
                     return True
