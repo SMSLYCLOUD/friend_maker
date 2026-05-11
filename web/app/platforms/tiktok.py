@@ -97,3 +97,21 @@ class TiktokAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="dm", error="DM button not found")
         except Exception as e:
             return ActionResult(success=False, action_type="dm", error=str(e))
+
+    async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
+        self.logger.info(f"Combing TikTok (mining followers of {group_id})")
+        return await self.get_followers(group_id, limit=limit)
+
+    async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
+        self.logger.info(f"Combing TikTok commenters: {post_url}")
+        # Placeholder
+        return []
+
+    async def capture_screenshot(self) -> Optional[str]:
+        try:
+            screenshot_bytes = await self.page.screenshot(type="jpeg", quality=80)
+            import base64
+            return base64.b64encode(screenshot_bytes).decode('utf-8')
+        except Exception as e:
+            self.logger.error(f"Failed to capture screenshot: {e}")
+            return None

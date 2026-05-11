@@ -129,3 +129,22 @@ class TwitterAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="dm", error="DM closed")
         except Exception as e:
             return ActionResult(success=False, action_type="dm", error=str(e))
+
+    async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
+        """Scrape members from a Twitter Community"""
+        self.logger.info(f"Combing Twitter Community: {group_id}")
+        # Placeholder: Navigate to community members page and scrape
+        return []
+
+    async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
+        """Scrape users who replied to a tweet"""
+        self.logger.info(f"Combing Tweet replies: {post_url}")
+        # Placeholder: Navigate to tweet and scrape user cells from replies
+        return []
+
+    async def capture_screenshot(self) -> Optional[str]:
+        try:
+            return await self.page.screenshot(type="jpeg", quality=50, full_page=False, encoding="base64")
+        except Exception as e:
+            self.logger.error(f"Failed to capture screenshot: {e}")
+            return None

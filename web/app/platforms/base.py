@@ -54,6 +54,16 @@ class PlatformAdapter(ABC):
         pass
 
     @abstractmethod
+    async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
+        """Scrape members from a group, community, or channel"""
+        pass
+
+    @abstractmethod
+    async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
+        """Scrape users who commented on a specific post or video"""
+        pass
+
+    @abstractmethod
     async def capture_screenshot(self) -> Optional[str]:
         """Capture a screenshot of the current page as a base64 string"""
         pass

@@ -6,6 +6,7 @@ from app.database.models import Campaign, Target, ActionLog
 from app.platforms.base import PlatformAdapter
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
+from app.ai.planner import CampaignPlanner
 from app.automation.anti_detection import AntiDetection
 
 class CampaignExecutor:
@@ -13,11 +14,13 @@ class CampaignExecutor:
                  repository: Repository,
                  adapter: PlatformAdapter,
                  classifier: Optional[ProfileClassifier] = None,
-                 generator: Optional[MessageGenerator] = None):
+                 generator: Optional[MessageGenerator] = None,
+                 planner: Optional[CampaignPlanner] = None):
         self.repo = repository
         self.adapter = adapter
         self.classifier = classifier
         self.generator = generator
+        self.planner = planner
         self.anti_detect = AntiDetection()
         self.logger = logging.getLogger(f"Executor-{adapter.platform_name}")
         self.running = False
@@ -95,24 +98,72 @@ class CampaignExecutor:
         self.logger.info("Campaign execution stopped.")
 
     async def _fetch_new_targets(self, campaign: Campaign):
-        """Search for users based on campaign targeting settings."""
+        """Search for or discover users based on campaign targeting settings."""
         targeting = campaign.targeting
-        # Example: targeting={"tags": ["python", "ai"]}
-        tags = targeting.get("tags", ["general"])
+        
+        # 1. Check if we need AI Strategic Planning
+        if not targeting.get("sources") and self.planner and campaign.ai_instructions:
+            self.logger.info("No sources defined. Triggering AI Strategic Planning...")
+            plan = await self.planner.generate_discovery_plan(
+                campaign.ai_instructions, 
+                self.adapter.platform_name
+            )
+            
+            # Enrich targeting with AI-generated plan
+            # We map target_accounts to 'follower_mining' sources and keywords to 'search'
+            sources = plan.get("keywords", []) + plan.get("target_accounts", [])
+            strategy = "follower_mining" if plan.get("target_accounts") else "search"
+            
+            # Update campaign targeting for persistence
+            targeting["sources"] = sources
+            targeting["strategy"] = strategy
+            import json
+            campaign.targeting_json = json.dumps(targeting)
+            self.repo.update_campaign(campaign)
+            
+            self.logger.info(f"AI Plan Generated: {len(sources)} strategic sources identified.")
 
-        for tag in tags:
-            self.logger.info(f"Searching for tag: {tag}")
-            users = await self.adapter.search_users(tag, limit=10)
-            for u in users:
-                # Add to DB
-                t = Target(
-                    id=f"{campaign.id}_{u.platform_id}", # Simple unique ID logic
-                    campaign_id=campaign.id,
-                    platform_user_id=u.platform_id,
-                    username=u.username,
-                    status="pending"
-                )
-                self.repo.add_target(t)
+        strategy = targeting.get("strategy", "search")
+        sources = targeting.get("sources", [])
+        
+        if not sources and "tags" in targeting:
+            sources = targeting.get("tags", [])
+
+        self.logger.info(f"Executing discovery strategy: {strategy} across {len(sources)} sources")
+
+        users = []
+        for source in sources:
+            if not self.running: break
+            
+            self.logger.info(f"Combing source: {source}")
+            
+            try:
+                if strategy == "search":
+                    new_users = await self.adapter.search_users(source, limit=10)
+                elif strategy == "group_combing":
+                    new_users = await self.adapter.get_group_members(source, limit=20)
+                elif strategy == "post_auditing":
+                    new_users = await self.adapter.get_post_commenters(source, limit=20)
+                elif strategy == "follower_mining":
+                    new_users = await self.adapter.get_followers(source, limit=20)
+                else:
+                    self.logger.warning(f"Unknown discovery strategy: {strategy}")
+                    new_users = []
+                
+                users.extend(new_users)
+            except Exception as e:
+                self.logger.error(f"Failed to comb {source}: {e}")
+
+        for u in users:
+            # Add to DB
+            t = Target(
+                id=f"{campaign.id}_{u.platform_id}",
+                campaign_id=campaign.id,
+                platform_user_id=u.platform_id,
+                username=u.username,
+                status="pending"
+            )
+            self.repo.add_target(t)
 
     async def _process_target(self, target: Target, campaign: Campaign):
         self.logger.info(f"Processing target: {target.username}")

@@ -179,6 +179,17 @@ class InstagramAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="dm", error=str(e))
 
+    async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
+        """On Instagram, we map group combing to mining followers of a target account"""
+        self.logger.info(f"Combing Instagram (mining followers of {group_id})")
+        return await self.get_followers(group_id, limit=limit)
+
+    async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
+        """Scrape users who commented on an Instagram post"""
+        self.logger.info(f"Combing Instagram commenters: {post_url}")
+        # Placeholder: Navigate to post and scrape commenters
+        return []
+
     async def capture_screenshot(self) -> Optional[str]:
         try:
             screenshot_bytes = await self.page.screenshot(type="jpeg", quality=80)

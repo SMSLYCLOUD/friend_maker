@@ -115,6 +115,22 @@ class Repository:
             return None
         return Campaign(**self._row_to_dict(row))
 
+    def update_campaign(self, campaign: Campaign):
+        query = text("""
+        UPDATE campaigns 
+        SET status = :status, targeting_json = :targeting, message_template = :template, 
+            ai_instructions = :ai, schedule_json = :schedule, daily_limit = :limit,
+            total_actions = :total
+        WHERE id = :id
+        """)
+        self.session.execute(query, {
+            "status": campaign.status, "targeting": campaign.targeting_json, 
+            "template": campaign.message_template, "ai": campaign.ai_instructions,
+            "schedule": campaign.schedule_json, "limit": campaign.daily_limit,
+            "total": campaign.total_actions, "id": campaign.id
+        })
+        self.session.commit()
+
     def list_campaigns(self) -> List[Campaign]:
         query = text("SELECT * FROM campaigns ORDER BY created_at DESC")
         result = self.session.execute(query)
