@@ -1,8 +1,10 @@
 const IS_SERVER = typeof window === "undefined";
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL || "http://python-backend:8000";
-const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:8000";
+const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "";
+// Ensure we don't have a trailing slash or /api suffix
+const CLEAN_API_URL = PUBLIC_API_URL.replace(/\/api\/?$/, "").replace(/\/$/, "");
 
-const API_URL = IS_SERVER ? INTERNAL_API_URL : PUBLIC_API_URL;
+const API_URL = IS_SERVER ? INTERNAL_API_URL : (CLEAN_API_URL || "http://localhost:8010");
 
 // Fallback key matches backend config. In production this should be managed via env.
 const API_KEY = process.env.API_KEY || "super-secret-api-key";
