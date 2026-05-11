@@ -30,58 +30,76 @@ class InstagramAdapter(PlatformAdapter):
 
             if username and password:
                 await self.page.goto("https://www.instagram.com/accounts/login/", timeout=30000)
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
 
-                # Try current IG login form selectors
-                selectors = [
+                # Wait for login form to appear (IG is SPA, form loads dynamically)
+                try:
+                    await self.page.wait_for_selector('form[action*="login"]', timeout=10000)
+                except Exception:
+                    self.logger.warning("Form not found, trying alternate wait...")
+
+                username_selectors = [
                     'input[name="username"]',
-                    'input[autocomplete="username"]',
-                    'input[aria-label="Phone number, username, or email"]',
+                    'input[data-testid="cookie-user-credential-yellow-foreground-input"]',
                 ]
-                input_field = None
-                for sel in selectors:
+                for sel in username_selectors:
                     if await self.page.locator(sel).count() > 0:
-                        input_field = self.page.locator(sel).first
+                        await self.page.locator(sel).first.fill(username)
                         break
+                else:
+                    # Fallback: try XPath
+                    try:
+                        await self.page.locator('xpath=//input[@name="username"]').fill(username)
+                    except Exception:
+                        self.logger.error("Could not find username field.")
+                        return False
 
-                if not input_field:
-                    self.logger.error("Login form fields not found. Instagram page may have changed.")
-                    return False
-
-                await input_field.fill(username)
                 await self.page.wait_for_timeout(500)
 
-                # Handle "Next" button if present, then password
-                next_btn = self.page.get_by_role("button", name="Next")
-                if await next_btn.count() > 0:
-                    await next_btn.click()
-                    await self.page.wait_for_timeout(1000)
+                # Look for Next or Continue button, then password
+                for btn_sel in ['button:has-text("Next")', 'button:has-text("Continue")']:
+                    if await self.page.locator(btn_sel).count() > 0:
+                        await self.page.locator(btn_sel).first.click()
+                        await self.page.wait_for_timeout(1000)
+                        break
 
                 password_selectors = [
                     'input[name="password"]',
-                    'input[autocomplete="current-password"]',
-                    'input[aria-label="Password"]',
                 ]
-                pw_field = None
                 for sel in password_selectors:
                     if await self.page.locator(sel).count() > 0:
-                        pw_field = self.page.locator(sel).first
+                        await self.page.locator(sel).first.fill(password)
                         break
+                else:
+                    try:
+                        await self.page.locator('xpath=//input[@name="password"]').fill(password)
+                    except Exception:
+                        self.logger.error("Could not find password field.")
+                        return False
 
-                if not pw_field:
-                    self.logger.error("Password field not found.")
-                    return False
-
-                await pw_field.fill(password)
                 await self.page.wait_for_timeout(500)
 
-                login_btn = self.page.get_by_role("button", name="Log in")
-                await login_btn.click()
+                login_btns = [
+                    'button[type="submit"]:has-text("Log in")',
+                    'button[type="submit"]:has-text("Log in ")',
+                    'button:has-text("Log in")',
+                ]
+                for sel in login_btns:
+                    if await self.page.locator(sel).count() > 0:
+                        await self.page.locator(sel).first.click()
+                        break
 
                 try:
                     await self.page.wait_for_selector('svg[aria-label="New post"]', timeout=15000)
                     return True
                 except:
-                    self.logger.error("Login failed with provided credentials.")
+                    # Save screenshot for debugging
+                    try:
+                        await self.page.screenshot(path="/tmp/ig_login_debug.png")
+                        self.logger.error("Debug screenshot saved to /tmp/ig_login_debug.png")
+                    except:
+                        pass
+                    self.logger.error("Login failed — Instagram may require verification or credentials changed.")
                     return False
 
             return False
