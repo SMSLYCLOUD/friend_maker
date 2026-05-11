@@ -1,7 +1,7 @@
 import json
 import uuid
 import time
-from typing import List, Optional
+from typing import List, Optional, Dict
 from sqlalchemy import text
 from app.database.connection import SessionLocal
 from app.database.models import Account, Campaign, Target, ActionLog
