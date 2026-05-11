@@ -42,7 +42,7 @@ class AndroidAppAdapter(PlatformAdapter):
             if self.app_package: options.app_package = self.app_package
             
             # Since the backend is local, we connect to localhost:4723 (Docker mapping)
-            self.driver = webdriver.Remote('http://localhost:4723/wd/hub', options=options)
+            self.driver = webdriver.Remote('http://socialgrowthai-android:4723/wd/hub', options=options)
 
             self.logger.info("Successfully connected to Android emulator.")
             return True
