@@ -1,0 +1,67 @@
+services:
+  vnc-social:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.backend
+    container_name: socialgrowthai-vnc-social
+    command: ["node", "vnc_social.mjs"]
+    ports:
+      - "6100:6100"
+      - "6082:6082"
+    volumes:
+      - cookies:/app/cookies
+    environment:
+      - VNC_PORT=5901
+      - NOVNC_PORT=6082
+    networks:
+      - social-network
+    restart: always
+
+  python-backend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.backend
+    container_name: socialgrowthai-python-backend
+    ports:
+      - "${PORT:-8010}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - data:/app/data
+      - cookies:/app/cookies
+      - scratch:/app/scratch
+      - uploads:/app/uploads
+    env_file:
+      - ./web/.env
+    environment:
+      - DATABASE_URL=sqlite:///data/social_growth.db
+    networks:
+      - social-network
+    restart: always
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.frontend
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8010}
+    container_name: socialgrowthai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8010}
+    depends_on:
+      - python-backend
+    networks:
+      - social-network
+    restart: always
+
+networks:
+  social-network:
+    driver: bridge
+
+volumes:
+  data:
+  cookies:
+  scratch:
+  uploads:
