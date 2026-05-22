@@ -12,14 +12,14 @@ RUN apt-get update && apt-get install -y \
     curl x11vnc xvfb git \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js 20.x
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+
 # Install noVNC
 RUN git clone https://github.com/novnc/noVNC /root/noVNC
 RUN cd /root/noVNC && npm install
 RUN cd /root/noVNC/utils && npm install
-
-# Install Node.js 20.x
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
