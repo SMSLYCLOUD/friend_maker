@@ -8,6 +8,7 @@ const VNC_PORT = 5901;
 const NOVNC_PORT = 6082;
 const DISPLAY = ":99";
 const API_PORT = 6100;
+const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 const PLATFORMS = {
   instagram: {
@@ -50,6 +51,7 @@ const PLATFORMS = {
 let platform = process.argv.includes("--platform") ? process.argv[process.argv.indexOf("--platform") + 1] : "gmail";
 const email = process.argv.includes("--email") ? process.argv[process.argv.indexOf("--email") + 1] : null;
 let accountId = process.argv.includes("--account-id") ? process.argv[process.argv.indexOf("--account-id") + 1] : null;
+const isMobile = process.argv.includes("--mobile");
 
 let cfg = PLATFORMS[platform] || PLATFORMS.gmail;
 
@@ -263,6 +265,7 @@ startApi();
 console.log(`\n========================================`);
 console.log(`VNC SOCIAL LOGIN HELPER`);
 console.log(`Platform: ${platform}`);
+console.log(`Viewport: ${isMobile ? `Mobile (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height})` : "Desktop"}`);
 console.log(`VNC:  http://153.75.247.117:${NOVNC_PORT}/vnc.html`);
 console.log(`API:  http://localhost:${API_PORT}`);
 if (accountId) console.log(`Account: ${accountId}`);
@@ -296,8 +299,9 @@ try {
 }
 
 try {
+  const ctxOpts = isMobile ? { viewport: MOBILE_VIEWPORT, isMobile: true } : {};
   ctx = await withErrorHandling(
-    () => browser.newContext(), 
+    () => browser.newContext(ctxOpts), 
     "Creating browser context"
   );
   

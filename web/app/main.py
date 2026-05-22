@@ -260,6 +260,13 @@ VNC_API_HOST = "vnc-social"
 def _vnc_api_url(path: str) -> str:
     return f"http://{VNC_API_HOST}:6100{path}"
 
+async def _navigate_vnc(platform: str, account_id: str, nav_url: str):
+    try:
+        url = f"{_vnc_api_url('/navigate')}?url={url_quote(nav_url)}&platform={platform}&account_id={account_id}"
+        await asyncio.to_thread(requests.get, url, timeout=15)
+    except Exception as e:
+        logger.warning(f"VNC navigate failed (background): {e}")
+
 @app.post("/api/accounts/{account_id}/vnc-login")
 async def vnc_social_login(
     account_id: str,
@@ -270,10 +277,8 @@ async def vnc_social_login(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     nav_url = PLATFORM_LOGIN_URLS.get(account.platform, lambda u: f"https://{account.platform}.com/login")(account.username)
-    try:
-        requests.get(f"{_vnc_api_url('/navigate')}?url={url_quote(nav_url)}&platform={account.platform}&account_id={account_id}", timeout=5)
-    except:
-        pass
+    # Navigate VNC browser to the correct platform login page in background
+    asyncio.create_task(_navigate_vnc(account.platform, account_id, nav_url))
     return {
         "vnc_url": "http://153.75.247.117:6082/vnc.html",
         "platform": account.platform,
