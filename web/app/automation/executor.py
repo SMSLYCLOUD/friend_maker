@@ -1,6 +1,9 @@
 import asyncio
 import logging
-from typing import Optional
+import json
+import os
+import base64
+from typing import Optional, List
 from app.database.repository import Repository
 from app.database.models import Campaign, Target, ActionLog
 from app.platforms.base import PlatformAdapter
@@ -24,6 +27,29 @@ class CampaignExecutor:
         self.anti_detect = AntiDetection()
         self.logger = logging.getLogger(f"Executor-{adapter.platform_name}")
         self.running = False
+        self.bot_instructions = ""
+
+    def load_bot_instructions(self):
+        self.bot_instructions = self.repo.get_global_setting("BOT_INSTRUCTIONS", "")
+        if self.bot_instructions:
+            self.logger.info(f"Loaded bot instructions ({len(self.bot_instructions)} chars)")
+
+    def load_reference_images(self) -> List[str]:
+        raw = self.repo.get_global_setting("BOT_INSTRUCTION_IMAGES", "[]")
+        try:
+            filenames = json.loads(raw)
+        except:
+            return []
+        images = []
+        for f in filenames:
+            path = os.path.join("uploads/bot_images", f)
+            if os.path.exists(path):
+                with open(path, "rb") as img:
+                    b64 = base64.b64encode(img.read()).decode()
+                    images.append(b64)
+        if images:
+            self.logger.info(f"Loaded {len(images)} reference images")
+        return images
 
     async def run_campaign(self, campaign_id: str):
         self.running = True
@@ -33,6 +59,9 @@ class CampaignExecutor:
             return
 
         self.logger.info(f"Starting campaign: {campaign.name}")
+
+        self.load_bot_instructions()
+        ref_images = self.load_reference_images()
 
         # 1. Authenticate
         account = self.repo.get_account(campaign.account_id)
@@ -105,8 +134,10 @@ class CampaignExecutor:
         if not targeting.get("sources") and self.planner and campaign.ai_instructions:
             self.logger.info("No sources defined. Triggering AI Strategic Planning...")
             plan = await self.planner.generate_discovery_plan(
-                campaign.ai_instructions, 
-                self.adapter.platform_name
+                campaign.ai_instructions,
+                self.adapter.platform_name,
+                bot_instructions=self.bot_instructions,
+                ref_images=ref_images
             )
             
             # Enrich targeting with AI-generated plan
@@ -174,10 +205,17 @@ class CampaignExecutor:
         # 1. Analyze (AI)
         if self.classifier:
             profile_data = {"username": target.username, "bio": "Fetched bio..."}
-            analysis = await self.classifier.classify(profile_data, image_base64=image_base64)
+            analysis = await self.classifier.classify(profile_data, image_base64=image_base64, bot_instructions=self.bot_instructions, ref_images=ref_images)
             score = analysis.get("match_score", 0.0)
+            should_skip = analysis.get("should_skip", False)
+            skip_reason = analysis.get("skip_reason", "")
 
-            if score < 0.5: # Threshold
+            if should_skip:
+                self.logger.info(f"Skipping {target.username}: {skip_reason}")
+                self.repo.update_target_status(target.id, f"skipped_{skip_reason[:20]}" if skip_reason else "skipped_rules", ai_score=score)
+                return
+
+            if score < 0.5:
                 self.repo.update_target_status(target.id, "skipped_low_score", ai_score=score)
                 return
 
@@ -197,10 +235,12 @@ class CampaignExecutor:
             msg = "Hello!"
             if self.generator:
                 msg = await self.generator.generate_dm(
-                    {"username": target.username}, 
-                    campaign.message_template, 
+                    {"username": target.username},
+                    campaign.message_template,
                     campaign.ai_instructions,
-                    image_base64=image_base64
+                    image_base64=image_base64,
+                    bot_instructions=self.bot_instructions,
+                    ref_images=ref_images
                 )
             res = await self.adapter.send_dm(target.platform_user_id, msg)
             success = res.success

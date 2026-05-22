@@ -27,10 +27,10 @@ export default function RegisterPage() {
     }
 
     try {
-      const { register } = await import("@/lib/api");
-      await register({ username, password });
+      const { register: apiRegister } = await import("@/lib/api");
+      const result = await apiRegister({ username, password });
       
-      setAuthSession(username);
+      setAuthSession(result.username || username, result.token);
       router.push("/dashboard");
     } catch (err: any) {
       setError(err.message || "Registration failed. Username may already be taken.");

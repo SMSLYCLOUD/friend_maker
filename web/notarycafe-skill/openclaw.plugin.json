@@ -1,0 +1,15 @@
+{
+  "id": "notarycafe-agent",
+  "name": "NotaryCafe Agent",
+  "description": "Automates NotaryCafe.com: login, search notaries, scrape profiles, send messages.",
+  "version": "1.0.0",
+  "author": "FriendMaker",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {},
+  "skills": ["./skills"],
+  "openclaw": {
+    "extensions": ["./index.js"]
+  }
+}

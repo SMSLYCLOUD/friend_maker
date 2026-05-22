@@ -1,4 +1,22 @@
 services:
+  vnc-social:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: socialgrowthai-vnc-social
+    command: ["node", "vnc_social.mjs"]
+    ports:
+      - "6100:6100"
+      - "6082:6082"
+    volumes:
+      - ./cookies:/app/cookies
+    environment:
+      - VNC_PORT=5901
+      - NOVNC_PORT=6082
+    networks:
+      - social-network
+    restart: always
+
   python-backend:
     build:
       context: .
@@ -6,16 +24,25 @@ services:
     container_name: socialgrowthai-python-backend
     ports:
       - "${PORT:-8010}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
       - ./app:/app/app # For hot-reloading on VPS if needed
       - ./scratch:/app/scratch
+      - ./cookies:/app/cookies
+      - ./run_campaign.mjs:/app/run_campaign.mjs
+      - ./ig.mjs:/app/ig.mjs
+      - ./tiktok.mjs:/app/tiktok.mjs
+      - ./substack.mjs:/app/substack.mjs
+      - ./nc.mjs:/app/nc.mjs
+      - ./notary_sites.mjs:/app/notary_sites.mjs
+      - ./rotary.mjs:/app/rotary.mjs
+      - ./uploads:/app/uploads
     env_file:
       - .env
     environment:
       - DATABASE_URL=sqlite:///data/social_growth.db
-      - USE_ANDROID_EMULATOR=True
-      - ANDROID_EMULATOR_URL=http://android-emulator:4723/wd/hub
     networks:
       - social-network
     restart: always
@@ -37,22 +64,6 @@ services:
       - social-network
     restart: always
 
-  android-emulator:
-    image: budtmo/docker-android:emulator_13.0
-    container_name: socialgrowthai-android
-    privileged: true
-    ports:
-      - "6080:6080" # VNC Web Access
-      - "4723:4723" # Appium
-    environment:
-      - DEVICE=Samsung Galaxy S10
-      - APPIUM=true
-      - EMULATOR_ARGS=-no-window -no-audio -no-snapshot-save # Performance for VPS
-    volumes:
-      - ./data/android:/root
-    networks:
-      - social-network
-    restart: always
 
 networks:
   social-network:

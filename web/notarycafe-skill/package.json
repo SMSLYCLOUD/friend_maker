@@ -1,0 +1,13 @@
+{
+  "name": "@friendmaker/openclaw-notarycafe-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "NotaryCafe.com automation: login, search, scrape profiles, send messages",
+  "openclaw": {
+    "extensions": ["./index.js"]
+  },
+  "dependencies": {
+    "openclaw": "latest",
+    "playwright-core": "latest"
+  }
+}

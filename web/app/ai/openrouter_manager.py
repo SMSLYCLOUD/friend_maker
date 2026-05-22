@@ -1,7 +1,7 @@
 import httpx
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, List
 from app.config import settings
 
 class OpenRouterManager:
@@ -45,7 +45,7 @@ class OpenRouterManager:
             self.logger.warning("OpenRouter connection failed or key is invalid.")
             if progress_callback: progress_callback("OpenRouter connection failed.")
 
-    async def generate(self, prompt: str, image_base64: Optional[str] = None) -> str:
+    async def generate(self, prompt: str, image_base64: Optional[str] = None, ref_images: Optional[List[str]] = None) -> str:
         if not self.api_key:
             self.logger.error("Generation failed: OPENROUTER_API_KEY is not set.")
             return ""
@@ -60,6 +60,15 @@ class OpenRouterManager:
                     "url": f"data:image/jpeg;base64,{image_base64}"
                 }
             })
+
+        if ref_images:
+            for b64 in ref_images:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{b64}"
+                    }
+                })
 
         payload = {
             "model": self.model,

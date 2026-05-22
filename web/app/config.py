@@ -23,9 +23,10 @@ class Config(BaseModel):
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://127.0.0.1:3000")
     REDIRECT_ROOT_TO_FRONTEND: bool = os.getenv("REDIRECT_ROOT_TO_FRONTEND", "False").lower() in ("1", "true", "yes")
     API_KEY: str = os.getenv("API_KEY", "super-secret-api-key")
-    
-    USE_ANDROID_EMULATOR: bool = os.getenv("USE_ANDROID_EMULATOR", "True").lower() in ("1", "true", "yes")
-    ANDROID_EMULATOR_URL: str = os.getenv("ANDROID_EMULATOR_URL", "http://127.0.0.1:4723/wd/hub")
+
+    # Telegram Bot
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_ALLOWED_USER_IDS: str = os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

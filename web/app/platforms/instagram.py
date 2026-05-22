@@ -29,84 +29,17 @@ class InstagramAdapter(PlatformAdapter):
                     self.logger.warning("Session cookies expired. Trying credentials...")
 
             if username and password:
-                await self.page.goto("https://www.instagram.com/accounts/login/", timeout=30000)
-                await self.page.wait_for_load_state("domcontentloaded", timeout=15000)
-                await self.page.wait_for_timeout(3000)
-
-                url = self.page.url
-                title = await self.page.title()
-                self.logger.info(f"IG login page URL: {url}, title: {title}")
-
-                # Save debug screenshot
-                try:
-                    await self.page.screenshot(path="/tmp/ig_login_debug.png", full_page=False)
-                    self.logger.info("Debug screenshot saved to /tmp/ig_login_debug.png")
-                except Exception as ss_err:
-                    self.logger.warning(f"Screenshot failed: {ss_err}")
-
-                username_selectors = [
-                    'input[name="username"]',
-                    'input[data-testid="cookie-user-credential-yellow-foreground-input"]',
-                    '#email',
-                    '#username',
-                ]
-                for sel in username_selectors:
-                    if await self.page.locator(sel).count() > 0:
-                        self.logger.info(f"Found username field with selector: {sel}")
-                        await self.page.locator(sel).first.fill(username)
-                        break
-                else:
-                    # Log page HTML snippet for debugging
-                    html = await self.page.content()
-                    self.logger.error(f"Page HTML snippet: {html[:500]}")
-                    return False
-
-                await self.page.wait_for_timeout(500)
-
-                # Look for Next or Continue button, then password
-                for btn_sel in ['button:has-text("Next")', 'button:has-text("Continue")']:
-                    if await self.page.locator(btn_sel).count() > 0:
-                        await self.page.locator(btn_sel).first.click()
-                        await self.page.wait_for_timeout(1000)
-                        break
-
-                password_selectors = [
-                    'input[name="password"]',
-                ]
-                for sel in password_selectors:
-                    if await self.page.locator(sel).count() > 0:
-                        await self.page.locator(sel).first.fill(password)
-                        break
-                else:
-                    try:
-                        await self.page.locator('xpath=//input[@name="password"]').fill(password)
-                    except Exception:
-                        self.logger.error("Could not find password field.")
-                        return False
-
-                await self.page.wait_for_timeout(500)
-
-                login_btns = [
-                    'button[type="submit"]:has-text("Log in")',
-                    'button[type="submit"]:has-text("Log in ")',
-                    'button:has-text("Log in")',
-                ]
-                for sel in login_btns:
-                    if await self.page.locator(sel).count() > 0:
-                        await self.page.locator(sel).first.click()
-                        break
-
+                await self.page.goto("https://www.instagram.com/accounts/login/")
+                await self.page.get_by_label("Phone number, username, or email").fill(username)
+                await self.page.get_by_label("Password").fill(password)
+                await self.page.get_by_role("button", name="Log in", exact=True).click()
+                
+                # Wait for navigation or verification
                 try:
                     await self.page.wait_for_selector('svg[aria-label="New post"]', timeout=15000)
                     return True
                 except:
-                    # Save screenshot for debugging
-                    try:
-                        await self.page.screenshot(path="/tmp/ig_login_debug.png")
-                        self.logger.error("Debug screenshot saved to /tmp/ig_login_debug.png")
-                    except:
-                        pass
-                    self.logger.error("Login failed — Instagram may require verification or credentials changed.")
+                    self.logger.error("Login failed with provided credentials.")
                     return False
 
             return False

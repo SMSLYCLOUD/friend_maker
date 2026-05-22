@@ -5,11 +5,12 @@ import json
 
 class Account(BaseModel):
     id: str
+    user_id: str
     platform: str
     username: str
-    password: Optional[str] = None # Encrypted string
+    password: Optional[str] = None
     display_name: Optional[str] = None
-    session_data: Optional[str] = None  # Encrypted string
+    session_data: Optional[str] = None
     proxy_config: Optional[str] = None
     is_active: bool = True
     last_action_at: Optional[int] = None
@@ -18,6 +19,7 @@ class Account(BaseModel):
 
 class Campaign(BaseModel):
     id: str
+    user_id: str
     account_id: str
     name: str
     campaign_type: str
@@ -40,6 +42,7 @@ class Campaign(BaseModel):
 
 class Target(BaseModel):
     id: str
+    user_id: str
     campaign_id: str
     platform_user_id: str
     username: Optional[str] = None
@@ -50,6 +53,7 @@ class Target(BaseModel):
 
 class ActionLog(BaseModel):
     id: str
+    user_id: str
     account_id: Optional[str] = None
     campaign_id: Optional[str] = None
     action_type: str

@@ -10,8 +10,17 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT,
     updated_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS user_settings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    updated_at INTEGER,
+    UNIQUE(user_id, key)
+);
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     platform TEXT NOT NULL,
     username TEXT NOT NULL,
     password TEXT,
@@ -25,6 +34,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     account_id TEXT,
     name TEXT NOT NULL,
     campaign_type TEXT NOT NULL,
@@ -39,6 +49,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
 );
 CREATE TABLE IF NOT EXISTS targets (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     campaign_id TEXT,
     platform_user_id TEXT NOT NULL,
     username TEXT,
@@ -49,6 +60,7 @@ CREATE TABLE IF NOT EXISTS targets (
 );
 CREATE TABLE IF NOT EXISTS action_logs (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     account_id TEXT,
     campaign_id TEXT,
     action_type TEXT,

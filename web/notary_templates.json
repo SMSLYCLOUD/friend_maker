@@ -1,0 +1,204 @@
+{
+  "notarycafe": {
+    "site_type": "notary_directory",
+    "description": "NotaryCafe.com - notary listing and networking platform",
+    "message_templates": [
+      {
+        "subject": "Notary services inquiry",
+        "body": "Hello,\n\nI came across your profile on Notary Cafe. I'm a notary public looking to connect with other notaries in the area for potential referrals and collaboration.\n\nWould you be open to connecting? I'd love to discuss how we can support each other's notary business.\n\nBest regards,\nJeffery"
+      },
+      {
+        "subject": "Collaboration opportunity",
+        "body": "Hi there,\n\nI saw your listing on Notary Cafe and wanted to reach out. I'm looking to expand my network of notaries for client referrals.\n\nIf you're interested in collaborating or know someone who might be, I'd love to hear from you.\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "notaryjane": {
+    "site_type": "notary_directory",
+    "description": "NotaryJane.com - notary directory and marketing platform",
+    "message_templates": [
+      {
+        "subject": "Notary networking",
+        "body": "Hello,\n\nI found your profile on Notary Jane. I'm a fellow notary looking to build a referral network in the area.\n\nWould you be interested in connecting? I handle mobile notary services and am looking for colleagues to exchange referrals with.\n\nBest regards,\nJeffery"
+      }
+    ]
+  },
+  "mobilenotarynet": {
+    "site_type": "notary_directory",
+    "description": "MobileNotaryNet.com - mobile notary directory",
+    "message_templates": [
+      {
+        "subject": "Referral partnership",
+        "body": "Hello,\n\nI saw your profile on MobileNotaryNet and wanted to reach out. I'm looking to partner with other mobile notaries for overflow work and referrals.\n\nIf you're open to networking, I'd appreciate the opportunity to connect.\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "gotary": {
+    "site_type": "notary_directory",
+    "description": "GOTARY.com - notary marketplace",
+    "message_templates": [
+      {
+        "subject": "Notary collaboration",
+        "body": "Hello,\n\nI'm reaching out through GOTARY. I'm a notary public looking to expand my professional network.\n\nIf you're interested in a referral partnership or just want to connect with another local notary, please let me know.\n\nBest,\nJeffery"
+      }
+    ]
+  },
+  "notarylocate": {
+    "site_type": "notary_directory",
+    "description": "NotaryLocate.com - find a notary directory",
+    "message_templates": [
+      {
+        "subject": "Notary outreach",
+        "body": "Hello,\n\nI found your listing on Notary Locate and wanted to introduce myself. I'm a notary looking to connect with other professionals in the area.\n\nWould you be open to a brief chat about potential collaboration?\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "notarywide": {
+    "site_type": "notary_directory",
+    "description": "NotaryWide.com - notary directory",
+    "message_templates": [
+      {
+        "subject": "Networking inquiry",
+        "body": "Hello,\n\nI came across your profile on NotaryWide. I'm building a network of trusted notaries for client referrals and would love to connect.\n\nLet me know if you're interested!\n\nBest regards,\nJeffery"
+      }
+    ]
+  },
+  "onlinenotarydirectory": {
+    "site_type": "notary_directory",
+    "description": "OnlineNotaryDirectory.com - notary listing service",
+    "message_templates": [
+      {
+        "subject": "Notary connection",
+        "body": "Hello,\n\nI found you through the Online Notary Directory. I'm a notary public interested in connecting with other professionals for mutual referrals.\n\nWould you be open to networking?\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "notaryrotary": {
+    "site_type": "notary_directory",
+    "description": "NotaryRotary.com - notary community directory",
+    "message_templates": [
+      {
+        "subject": "Notary to notary",
+        "body": "Hello,\n\nI saw your profile on Notary Rotary. I'm a fellow notary looking to expand my referral network.\n\nIf you're interested in collaborating or sharing referrals, I'd love to connect.\n\nBest,\nJeffery"
+      }
+    ]
+  },
+  "123notary": {
+    "site_type": "notary_directory",
+    "description": "123notary.com - notary directory and resources",
+    "message_templates": [
+      {
+        "subject": "Referral opportunity",
+        "body": "Hello,\n\nI'm reaching out via 123notary. I'm a notary looking to connect with other notaries in our area for potential referral exchanges.\n\nWould you be interested in networking?\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "snapdocs": {
+    "site_type": "closing_platform",
+    "description": "Snapdocs - digital closing and notary platform",
+    "message_templates": [
+      {
+        "subject": "Closing notary collaboration",
+        "body": "Hello,\n\nI found your profile on Snapdocs. I'm a notary signing agent looking to connect with other agents for referral sharing and coverage assistance.\n\nWould you be open to connecting?\n\nBest regards,\nJeffery"
+      }
+    ]
+  },
+  "findanotary": {
+    "site_type": "notary_directory",
+    "description": "FindANotary.com - notary locator directory",
+    "message_templates": [
+      {
+        "subject": "Notary networking",
+        "body": "Hello,\n\nI saw your name on Find a Notary and wanted to reach out. I'm a mobile notary looking to connect with colleagues for overflow work and referrals.\n\nLet me know if you're interested!\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "notarydepot": {
+    "site_type": "notary_directory",
+    "description": "NotaryDepot.com - notary supplies and directory",
+    "message_templates": [
+      {
+        "subject": "Professional connection",
+        "body": "Hello,\n\nI found your profile on Notary Depot. I'm a notary public interested in building a local referral network.\n\nWould you be open to connecting?\n\nBest,\nJeffery"
+      }
+    ]
+  },
+  "usnotaries": {
+    "site_type": "notary_association",
+    "description": "USNotaries.com - American Association of Notaries",
+    "message_templates": [
+      {
+        "subject": "Fellow notary connection",
+        "body": "Hello,\n\nI'm reaching out through the American Association of Notaries. I'm a member looking to connect with fellow notaries for referrals and professional networking.\n\nWould you be interested in connecting?\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "notariescom": {
+    "site_type": "notary_directory",
+    "description": "Notaries.com - notary directory and services",
+    "message_templates": [
+      {
+        "subject": "Notary partnership",
+        "body": "Hello,\n\nI found your profile on Notaries.com. I'm looking to expand my notary network and would love to connect.\n\nIf you're open to referral exchanges or collaboration, please let me know.\n\nBest regards,\nJeffery"
+      }
+    ]
+  },
+  "notarize": {
+    "site_type": "online_notarization",
+    "description": "Notarize.com - online notarization platform",
+    "message_templates": [
+      {
+        "subject": "Online notary collaboration",
+        "body": "Hello,\n\nI'm reaching out via Notarize. I'm an online notary looking to connect with other notaries on the platform for potential collaboration.\n\nWould you be open to networking?\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "onenotary": {
+    "site_type": "online_notarization",
+    "description": "OneNotary.us - remote online notarization",
+    "message_templates": [
+      {
+        "subject": "Remote notary connection",
+        "body": "Hello,\n\nI found you on OneNotary. I'm a remote notary looking to connect with colleagues in the online notary space.\n\nIf you're interested in networking, I'd love to connect.\n\nBest,\nJeffery"
+      }
+    ]
+  },
+  "bluenotary": {
+    "site_type": "online_notarization",
+    "description": "BlueNotary.us - online notary platform",
+    "message_templates": [
+      {
+        "subject": "Online notary networking",
+        "body": "Hello,\n\nI'm reaching out through BlueNotary. I'm an online notary looking to build connections with other notaries on the platform.\n\nWould you be open to a brief introduction?\n\nThanks,\nJeffery"
+      }
+    ]
+  },
+  "chelleonwheels": {
+    "site_type": "individual_notary",
+    "description": "ChelleOnWheels.com - individual notary service site",
+    "message_templates": [
+      {
+        "subject": "Referral partnership",
+        "body": "Hello,\n\nI came across your site and wanted to reach out. I'm a fellow notary looking to connect for referral exchanges.\n\nWould you be open to discussing how we might support each other's business?\n\nBest regards,\nJeffery"
+      }
+    ]
+  },
+  "rotary": {
+    "site_type": "rotary_club",
+    "description": "Rotary club email outreach via contacts scraped from OSM/club directories",
+    "message_templates": [
+      {
+        "subject": "Quick question about notary services",
+        "body": "Hi {name},\n\nI hope you're having a good week. I'm looking for a notary public to help with some tax-related documents I need to finalize.\n\nCould you let me know if your club offers notary services or if you can point me in the right direction? I'd appreciate any details on availability and fees.\n\nThanks for your time.\n\nBest regards,\nJeffery Wong Chen.\nwongchenjeffery@gmail.com\n+1 218-433-6343"
+      },
+      {
+        "subject": "Notary help needed",
+        "body": "Dear {name},\n\nI hope this message finds you well. I'm reaching out because I need a notary public to notarize some documents for my tax filing.\n\nDo you know if any members in your club provide notary services? I'd love to hear about availability and what the process looks like.\n\nThank you and looking forward to your reply.\n\nKind regards,\nJeffery Wong Chen.\nwongchenjeffery@gmail.com\n+1 218-433-6343"
+      },
+      {
+        "subject": "Inquiry about notary services",
+        "body": "Hello {name},\n\nI hope you're doing well. I'm writing to ask about notary services — I have some paperwork that needs to be notarized for my taxes.\n\nWould you be able to help or refer me to someone who can? Please let me know about your availability and any applicable charges.\n\nThank you very much.\n\nWarm regards,\nJeffery Wong Chen.\nwongchenjeffery@gmail.com\n+1 218-433-6343"
+      }
+    ]
+  }
+}

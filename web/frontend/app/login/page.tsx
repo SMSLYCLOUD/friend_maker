@@ -21,10 +21,10 @@ export default function LoginPage() {
     }
 
     try {
-      const { login } = await import("@/lib/api");
-      await login({ username, password });
+      const { login: apiLogin } = await import("@/lib/api");
+      const result = await apiLogin({ username, password });
       
-      setAuthSession(username);
+      setAuthSession(result.username || username, result.token);
       const nextPath = typeof window !== "undefined"
         ? new URLSearchParams(window.location.search).get("next") || "/dashboard"
         : "/dashboard";

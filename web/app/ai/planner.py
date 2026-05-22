@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.ai.openrouter_manager import OpenRouterManager
 
 class CampaignPlanner:
@@ -7,15 +7,18 @@ class CampaignPlanner:
         self.ai = ai_manager
         self.logger = logging.getLogger("CampaignPlanner")
 
-    async def generate_discovery_plan(self, persona_instructions: str, platform: str) -> Dict[str, Any]:
+    async def generate_discovery_plan(self, persona_instructions: str, platform: str, bot_instructions: str = "", ref_images: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Brainstorms the best groups, channels, and keywords to find a specific target audience.
         """
+        constraints = ""
+        if bot_instructions:
+            constraints = f"\n\nCONSTRAINTS (must follow):\n{bot_instructions}\n\nOnly suggest sources that comply with these constraints."
         prompt = f"""
         ACT AS A SOCIAL MEDIA STRATEGIST AND LEAD GENERATION EXPERT.
         
         YOUR GOAL: Create a strategic "Discovery Map" to find this specific audience on {platform.upper()}:
-        "{persona_instructions}"
+        "{persona_instructions}"{constraints}
         
         TASKS:
         1. Identify 5-10 specific keywords this audience would use or follow.
