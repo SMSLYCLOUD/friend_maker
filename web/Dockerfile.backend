@@ -23,7 +23,6 @@ RUN cd /root/noVNC/utils && npm install
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install chromium
 RUN playwright install-deps chromium
 
 # Create non-root user for security
@@ -31,6 +30,9 @@ RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/data /app/cookies /app/scratch /app/uploads && \
     chown -R appuser:appuser /app
 USER appuser
+
+# Install Playwright browsers for appuser
+RUN playwright install chromium
 
 # Install Node.js dependencies with proper permissions
 RUN npm init -y && npm install playwright-extra puppeteer-extra-plugin-stealth cloakbrowser playwright-core
