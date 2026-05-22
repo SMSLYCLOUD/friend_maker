@@ -27,7 +27,7 @@ RUN playwright install chromium
 RUN playwright install-deps chromium
 
 # Create non-root user for security
-RUN useradd -m -u 1000 appuser
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Install Node.js dependencies with proper permissions
