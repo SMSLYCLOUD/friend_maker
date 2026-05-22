@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional, Dict
 from sqlalchemy import text
 from app.database.connection import SessionLocal
-from app.database.models import Account, Campaign, Target, ActionLog
+from app.database.models import Account, Campaign, Target, ActionLog, ConversationMemory, RelationshipTracker, ScheduledAction
 from app.utils.crypto import crypto
 
 class Repository:
