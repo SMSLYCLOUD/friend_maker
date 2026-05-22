@@ -106,7 +106,7 @@ export default function AccountsPage() {
       case "twitter": return <Twitter className="w-5 h-5 text-blue-400" />;
       case "linkedin": return <Linkedin className="w-5 h-5 text-blue-600" />;
       case "gmail": return <Mail className="w-5 h-5 text-red-400" />;
-      case "android": return <Smartphone className="w-5 h-5 text-emerald-500" />;
+
       default: return null;
     }
   };
@@ -324,7 +324,7 @@ export default function AccountsPage() {
                     <option value="linkedin" className="bg-gray-950">LinkedIn</option>
                     <option value="gmail" className="bg-gray-950">Gmail</option>
                     <option value="tiktok" className="bg-gray-950">TikTok</option>
-                    <option value="android" className="bg-gray-950">Android App</option>
+
                   </select>
                 </div>
 

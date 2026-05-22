@@ -8,7 +8,7 @@
 
 2. **Generalized VNC login for all social platforms** — Created `vnc_social.mjs` supporting Instagram, Twitter/X, Facebook, LinkedIn, TikTok, Substack, and Gmail with platform-specific login URLs + auth cookie detection. Runs as a persistent service on VPS (port 6100, VNC port 6082).
 
-3. **API platform endpoints** — All platforms in `PlatformType` enum (instagram, twitter, facebook, linkedin, tiktok, substack, gmail, android). Backend endpoints:
+3. **API platform endpoints** — All platforms in `PlatformType` enum (instagram, twitter, facebook, linkedin, tiktok, substack, gmail). Backend endpoints:
    - `POST /api/accounts/{id}/vnc-login` — launches VNC browser for the account's platform
    - `GET /api/accounts/{id}/vnc-session-status` — checks if VNC detected a login
    - `POST /api/accounts/{id}/capture-cookies` — captures cookies from VNC session
@@ -28,6 +28,6 @@
 - Testing VNC login flow end-to-end across platforms (user is testing today)
 
 ### Known issues / next
-- Android platform has no script yet
+
 - Substack platform VNC may need refinement
 - VNC service starts with gmail by default, switches platform dynamically on each `/navigate` call

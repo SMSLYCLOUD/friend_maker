@@ -30,12 +30,9 @@ class Scheduler:
 
     async def start(self):
         self.running = True
-        if not settings.USE_ANDROID_EMULATOR:
-            self.logger.info("Scheduler started. Launching Playwright browser instance...")
-            self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=True)
-        else:
-            self.logger.info("Scheduler started. Playwright skipped (Using Android Emulator).")
+        self.logger.info("Scheduler started. Launching Playwright browser instance...")
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(headless=True)
         
         # Start scheduled action processor
         self.scheduled_task = asyncio.create_task(self._process_scheduled_actions())
@@ -112,36 +109,30 @@ class Scheduler:
 
         context = None
         try:
-            from app.platforms.android_app import AndroidAppAdapter
-            
-            if settings.USE_ANDROID_EMULATOR:
-                self.logger.info(f"Swarm Agent [{account.username}] using Android Emulator.")
-                adapter = AndroidAppAdapter(account.platform)
+            if not self.browser:
+                self.logger.error("Browser is not initialized.")
+                return
+
+            context = await self.browser.new_context()
+            page = await context.new_page()
+
+            if account.platform.lower() == "instagram":
+                adapter = InstagramAdapter(page)
+            elif account.platform.lower() == "twitter":
+                from app.platforms.twitter import TwitterAdapter
+                adapter = TwitterAdapter(page)
+            elif account.platform.lower() == "facebook":
+                from app.platforms.facebook import FacebookAdapter
+                adapter = FacebookAdapter(page)
+            elif account.platform.lower() == "linkedin":
+                from app.platforms.linkedin import LinkedInAdapter
+                adapter = LinkedInAdapter(page)
+            elif account.platform.lower() == "tiktok":
+                from app.platforms.tiktok import TiktokAdapter
+                adapter = TiktokAdapter(page)
             else:
-                if not self.browser:
-                    self.logger.error("Browser is not initialized.")
-                    return
-
-                context = await self.browser.new_context()
-                page = await context.new_page()
-
-                if account.platform.lower() == "instagram":
-                    adapter = InstagramAdapter(page)
-                elif account.platform.lower() == "twitter":
-                    from app.platforms.twitter import TwitterAdapter
-                    adapter = TwitterAdapter(page)
-                elif account.platform.lower() == "facebook":
-                    from app.platforms.facebook import FacebookAdapter
-                    adapter = FacebookAdapter(page)
-                elif account.platform.lower() == "linkedin":
-                    from app.platforms.linkedin import LinkedInAdapter
-                    adapter = LinkedInAdapter(page)
-                elif account.platform.lower() == "tiktok":
-                    from app.platforms.tiktok import TiktokAdapter
-                    adapter = TiktokAdapter(page)
-                else:
-                    self.logger.error(f"Platform {account.platform} not supported for swarm agent.")
-                    return
+                self.logger.error(f"Platform {account.platform} not supported for swarm agent.")
+                return
 
             executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
             await executor.run_campaign(campaign_id)

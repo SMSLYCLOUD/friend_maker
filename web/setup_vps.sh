@@ -32,7 +32,7 @@ fi
 
 # 4. Create Project Structure
 echo "📁 Preparing folder architecture..."
-mkdir -p data/android data/db scratch logs
+mkdir -p data/db scratch logs
 chmod -R 777 data scratch logs
 
 # 5. Handle Environment Variables & IP Binding
@@ -56,8 +56,7 @@ echo "🎉 INSTALLATION COMPLETE!"
 echo "-------------------------------------------------------"
 echo "📍 Dashboard:    http://$PUBLIC_IP:3000"
 echo "📍 API Backend: http://$PUBLIC_IP:8010"
-echo "📱 Android VNC:  http://$PUBLIC_IP:6080"
 echo "-------------------------------------------------------"
-echo "🔐 SECURITY NOTE: Ensure ports 3000, 8010, and 6080 are open on your VPS firewall."
+echo "🔐 SECURITY NOTE: Ensure ports 3000 and 8010 are open on your VPS firewall."
 echo "👉 Next Step: Run 'nano .env' to add your real OpenRouter API Key."
 echo "-------------------------------------------------------"

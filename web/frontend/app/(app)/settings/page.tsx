@@ -6,7 +6,6 @@ import Link from "next/link";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({
-    USE_ANDROID_EMULATOR: "true",
     WORKSPACE_NAME: "SocialGrowthAI Team",
     TIMEZONE: "UTC",
     AUTO_PAUSE: "true"
@@ -109,30 +108,7 @@ export default function SettingsPage() {
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Android Emulator Section */}
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6 backdrop-blur-sm">
-          <div className="flex items-center gap-2 mb-6">
-            <Smartphone className="w-5 h-5 text-purple-500" />
-            <h2 className="text-xl font-bold text-white">Device Orchestration</h2>
-          </div>
-          
-          <div className="flex items-center justify-between p-4 rounded-xl bg-black/40 border border-gray-800">
-            <div>
-              <p className="font-bold text-white">Android Emulator (Docker)</p>
-              <p className="text-xs text-gray-500">Route all social media interactions through the dedicated Android Docker container.</p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="sr-only peer"
-                checked={settings.USE_ANDROID_EMULATOR === "true"}
-                onChange={(e) => setSettings({ ...settings, USE_ANDROID_EMULATOR: e.target.checked ? "true" : "false" })}
-              />
-              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-          <p className="mt-3 text-[10px] text-amber-500/80 italic">Note: Requires 'android-emulator' service to be running in docker-compose.</p>
-        </div>
+
 
         {/* Workspace Section */}
         <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6 backdrop-blur-sm">
