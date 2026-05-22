@@ -70,6 +70,8 @@ EOF
 echo -e "${GREEN}[5/6] Starting application with Docker Compose...${NC}"
 # We must force the Public IP into the build argument to prevent CORS/localhost errors
 PUBLIC_IP=$(curl -s ifconfig.me)
+# Clean up previous volumes so they inherit correct permissions from the container
+docker compose down -v --remove-orphans || true
 docker compose build --build-arg NEXT_PUBLIC_API_URL="http://$PUBLIC_IP"
 docker compose up -d
 
