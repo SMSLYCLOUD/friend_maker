@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import json
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from playwright.async_api import Page, TimeoutError
 from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 
@@ -189,6 +189,51 @@ class InstagramAdapter(PlatformAdapter):
         self.logger.info(f"Combing Instagram commenters: {post_url}")
         # Placeholder: Navigate to post and scrape commenters
         return []
+
+    async def get_post_comments(self, post_url: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get comments from an Instagram post"""
+        self.logger.info(f"Fetching comments from Instagram post: {post_url}")
+        # Placeholder implementation
+        comments = []
+        # TODO: Implement actual comment scraping
+        return comments
+
+    async def reply_to_comment(self, comment_id: str, message: str) -> ActionResult:
+        """Reply to a specific comment on Instagram"""
+        self.logger.info(f"Replying to Instagram comment {comment_id}")
+        # Placeholder implementation
+        # TODO: Implement actual comment reply
+        return ActionResult(success=False, action_type="reply_comment", error="Not implemented")
+
+    async def get_user_recent_posts(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get recent posts from an Instagram user"""
+        self.logger.info(f"Fetching recent posts from Instagram user: {user_id}")
+        # Placeholder implementation
+        posts = []
+        # TODO: Implement actual post fetching
+        return posts
+
+    async def comment_on_post(self, post_url: str, message: str) -> ActionResult:
+        """Comment on a specific Instagram post"""
+        self.logger.info(f"Commenting on Instagram post: {post_url}")
+        # Placeholder implementation
+        # TODO: Implement actual comment posting
+        return ActionResult(success=False, action_type="comment", error="Not implemented")
+
+    async def comment_on_recent_post(self, user_id: str, message: str) -> ActionResult:
+        """Comment on an Instagram user's most recent post"""
+        self.logger.info(f"Commenting on recent post of Instagram user: {user_id}")
+        # Get user's recent posts
+        posts = await self.get_user_recent_posts(user_id, limit=1)
+        if not posts:
+            return ActionResult(success=False, action_type="comment", error="No posts found")
+        
+        # Comment on the most recent post
+        post_url = posts[0].get("url") if posts else None
+        if not post_url:
+            return ActionResult(success=False, action_type="comment", error="Could not determine post URL")
+        
+        return await self.comment_on_post(post_url, message)
 
     async def capture_screenshot(self) -> Optional[str]:
         try:

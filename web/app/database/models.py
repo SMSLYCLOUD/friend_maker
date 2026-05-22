@@ -61,3 +61,38 @@ class ActionLog(BaseModel):
     success: bool
     error: Optional[str] = None
     created_at: int = Field(default_factory=lambda: int(datetime.now().timestamp()))
+
+# New models for long-term interaction capabilities
+class ConversationMemory(BaseModel):
+    id: str
+    user_id: str
+    platform: str
+    target_user: str
+    message: str
+    response: str
+    timestamp: int
+    metadata: Optional[str] = None
+
+class RelationshipTracker(BaseModel):
+    id: str
+    user_id: str
+    platform: str
+    target_user: str
+    interaction_count: int = 0
+    last_interaction: Optional[int] = None
+    last_interaction_type: Optional[str] = None
+    metadata: Optional[str] = None
+
+class ScheduledAction(BaseModel):
+    id: str
+    user_id: str
+    platform: str
+    action_type: str
+    target_user: Optional[str] = None
+    parameters: Optional[str] = None
+    cron_expression: Optional[str] = None
+    start_time: int
+    end_time: Optional[int] = None
+    is_active: bool = True
+    created_at: int
+    last_run_at: Optional[int] = None

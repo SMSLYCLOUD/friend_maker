@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from playwright.async_api import Page
 from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 
@@ -106,6 +106,51 @@ class TiktokAdapter(PlatformAdapter):
         self.logger.info(f"Combing TikTok commenters: {post_url}")
         # Placeholder
         return []
+
+    async def get_post_comments(self, post_url: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get comments from a TikTok post"""
+        self.logger.info(f"Fetching comments from TikTok post: {post_url}")
+        # Placeholder implementation
+        comments = []
+        # TODO: Implement actual comment scraping
+        return comments
+
+    async def reply_to_comment(self, comment_id: str, message: str) -> ActionResult:
+        """Reply to a specific comment on TikTok"""
+        self.logger.info(f"Replying to TikTok comment {comment_id}")
+        # Placeholder implementation
+        # TODO: Implement actual comment reply
+        return ActionResult(success=False, action_type="reply_comment", error="Not implemented")
+
+    async def get_user_recent_posts(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get recent posts from a TikTok user"""
+        self.logger.info(f"Fetching recent posts from TikTok user: {user_id}")
+        # Placeholder implementation
+        posts = []
+        # TODO: Implement actual post fetching
+        return posts
+
+    async def comment_on_post(self, post_url: str, message: str) -> ActionResult:
+        """Comment on a specific TikTok post"""
+        self.logger.info(f"Commenting on TikTok post: {post_url}")
+        # Placeholder implementation
+        # TODO: Implement actual comment posting
+        return ActionResult(success=False, action_type="comment", error="Not implemented")
+
+    async def comment_on_recent_post(self, user_id: str, message: str) -> ActionResult:
+        """Comment on a TikTok user's most recent post"""
+        self.logger.info(f"Commenting on recent post of TikTok user: {user_id}")
+        # Get user's recent posts
+        posts = await self.get_user_recent_posts(user_id, limit=1)
+        if not posts:
+            return ActionResult(success=False, action_type="comment", error="No posts found")
+        
+        # Comment on the most recent post
+        post_url = posts[0].get("url") if posts else None
+        if not post_url:
+            return ActionResult(success=False, action_type="comment", error="Could not determine post URL")
+        
+        return await self.comment_on_post(post_url, message)
 
     async def capture_screenshot(self) -> Optional[str]:
         try:

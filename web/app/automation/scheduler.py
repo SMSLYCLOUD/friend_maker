@@ -1,6 +1,8 @@
 import asyncio
 import logging
-from typing import Dict
+import json
+from datetime import datetime
+from typing import Dict, Optional, List
 from app.database.repository import Repository
 from app.automation.executor import CampaignExecutor
 from app.platforms.instagram import InstagramAdapter
@@ -8,6 +10,7 @@ from app.ai.openrouter_manager import OpenRouterManager
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
 from app.ai.planner import CampaignPlanner
+from app.memory.conversation_memory import get_scheduled_action_manager
 from app.config import settings
 from playwright.async_api import async_playwright
 
@@ -33,9 +36,15 @@ class Scheduler:
             self.browser = await self.playwright.chromium.launch(headless=True)
         else:
             self.logger.info("Scheduler started. Playwright skipped (Using Android Emulator).")
+        
+        # Start scheduled action processor
+        self.scheduled_task = asyncio.create_task(self._process_scheduled_actions())
 
     async def stop(self):
         self.running = False
+        # Cancel scheduled action processor
+        if hasattr(self, 'scheduled_task'):
+            self.scheduled_task.cancel()
         for task in self.tasks.values():
             task.cancel()
         self.tasks.clear()
@@ -141,3 +150,119 @@ class Scheduler:
             self.logger.error(f"Swarm Agent [{account.username}] crashed: {e}")
         finally:
             if context: await context.close()
+
+    async def _process_scheduled_actions(self):
+        """Background task to process scheduled actions"""
+        self.logger.info("Started scheduled action processor")
+        while self.running:
+            try:
+                # Get repository for this background task
+                repo = Repository()
+                scheduled_manager = get_scheduled_action_manager(repo)
+                
+                # Get due actions
+                current_time = int(datetime.now().timestamp())
+                due_actions = await scheduled_manager.get_due_actions(current_time)
+                
+                for action_info in due_actions:
+                    if not self.running:
+                        break
+                        
+                    self.logger.info(f"Processing scheduled action: {action_info['id']} - {action_info['action_type']}")
+                    
+                    # Create a temporary campaign for this scheduled action
+                    # In a full implementation, this would be more integrated
+                    try:
+                        # Get user info
+                        user = repo.get_user(action_info['user_id'])
+                        if not user:
+                            self.logger.error(f"User not found for scheduled action: {action_info['user_id']}")
+                            continue
+                            
+                        # Get or create a default account for this platform
+                        account = repo.get_account_by_user_and_platform(
+                            action_info['user_id'], 
+                            action_info['platform']
+                        )
+                        
+                        if not account:
+                            self.logger.warning(f"No account found for user {action_info['user_id']} on platform {action_info['platform']}")
+                            continue
+                            
+                        # Create a temporary campaign for this action
+                        from app.database.models import Campaign
+                        temp_campaign = Campaign(
+                            id=f"sched_{action_info['id']}",
+                            user_id=action_info['user_id'],
+                            account_id=account.id,
+                            name=f"Scheduled {action_info['action_type']}",
+                            campaign_type=action_info['action_type'],
+                            status="active",
+                            targeting_json=json.dumps({
+                                "sources": [action_info['target_user']] if action_info['target_user'] else [],
+                                **action_info['parameters']
+                            }),
+                            message_template=action_info['parameters'].get('message', ''),
+                            ai_instructions=action_info['parameters'].get('ai_instructions', ''),
+                            schedule_json="{}",
+                            daily_limit=1,
+                            created_at=current_time
+                        )
+                        
+                        # Execute the campaign (single action)
+                        from app.automation.executor import CampaignExecutor
+                        from app.platforms.instagram import InstagramAdapter
+                        from app.platforms.tiktok import TiktokAdapter
+                        from app.platforms.facebook import FacebookAdapter
+                        from app.platforms.twitter import TwitterAdapter
+                        from app.platforms.linkedin import LinkedInAdapter
+                        
+                        # Get the appropriate adapter
+                        adapter_map = {
+                            'instagram': InstagramAdapter,
+                            'tiktok': TiktokAdapter,
+                            'facebook': FacebookAdapter,
+                            'twitter': TwitterAdapter,
+                            'linkedin': LinkedInAdapter
+                        }
+                        
+                        AdapterClass = adapter_map.get(account.platform.lower())
+                        if not AdapterClass:
+                            self.logger.error(f"No adapter for platform: {account.platform}")
+                            continue
+                            
+                        # We need a browser context - reuse the scheduler's browser if available
+                        if self.browser:
+                            context = await self.browser.new_context()
+                            page = await context.new_page()
+                            adapter = AdapterClass(page)
+                            
+                            executor = CampaignExecutor(repo, adapter)
+                            await executor.run_campaign(temp_campaign.id)
+                            
+                            await context.close()
+                        else:
+                            self.logger.error("Browser not available for scheduled action")
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error processing scheduled action {action_info['id']}: {e}")
+                    finally:
+                        # Mark action as completed
+                        try:
+                            # Calculate next run time based on cron (simplified)
+                            # In production, use a proper cron library
+                            next_run_time = current_time + 3600  # Default to 1 hour
+                            await scheduled_manager.mark_action_completed(
+                                action_info['id'], 
+                                next_run_time
+                            )
+                        except Exception as e:
+                            self.logger.error(f"Error marking action completed: {e}")
+                
+                repo.close()
+                
+            except Exception as e:
+                self.logger.error(f"Error in scheduled action processor: {e}")
+            
+            # Check every 30 seconds
+            await asyncio.sleep(30)

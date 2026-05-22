@@ -198,14 +198,132 @@ class Repository:
         res = self.session.execute(
             text("SELECT AVG(CAST(success AS FLOAT)) FROM action_logs WHERE user_id = :user_id"),
             {"user_id": user_id}
-        ).scalar()
-        success_rate = round(res * 100, 1) if res is not None else 0.0
+        ).scalar() or 0.0
+
+        success_rate = float(res) if res is not None else 0.0
 
         return {
             "total_actions": total_actions,
             "today_actions": today_actions,
             "success_rate": success_rate
         }
+
+    # --- Conversation Memory Operations ---
+    def store_conversation_memory(self, memory: ConversationMemory):
+        query = text("""
+        INSERT INTO conversation_memory (id, user_id, platform, target_user, message, response, timestamp, metadata)
+        VALUES (:id, :user_id, :platform, :target_user, :message, :response, :timestamp, :metadata)
+        """)
+        self.session.execute(query, {
+            "id": memory.id, "user_id": memory.user_id, "platform": memory.platform,
+            "target_user": memory.target_user, "message": memory.message, "response": memory.response,
+            "timestamp": memory.timestamp, "metadata": memory.metadata
+        })
+        self.session.commit()
+
+    def get_conversation_memory(self, user_id: str, platform: str, target_user: str, limit: int = 10) -> List[ConversationMemory]:
+        query = text("""
+        SELECT * FROM conversation_memory 
+        WHERE user_id = :user_id AND platform = :platform AND target_user = :target_user
+        ORDER BY timestamp DESC LIMIT :limit
+        """)
+        result = self.session.execute(query, {
+            "user_id": user_id, "platform": platform, "target_user": target_user, "limit": limit
+        })
+        return [ConversationMemory(**self._row_to_dict(row)) for row in result.fetchall()]
+
+    # --- Relationship Tracker Operations ---
+    def get_relationship_tracker(self, user_id: str, platform: str, target_user: str) -> Optional[RelationshipTracker]:
+        query = text("""
+        SELECT * FROM relationship_tracker 
+        WHERE user_id = :user_id AND platform = :platform AND target_user = :target_user
+        """)
+        result = self.session.execute(query, {
+            "user_id": user_id, "platform": platform, "target_user": target_user
+        })
+        row = result.fetchone()
+        if not row:
+            return None
+        return RelationshipTracker(**self._row_to_dict(row))
+
+    def save_relationship_tracker(self, tracker: RelationshipTracker):
+        # Check if exists
+        existing = self.get_relationship_tracker(tracker.user_id, tracker.platform, tracker.target_user)
+        if existing:
+            # Update
+            query = text("""
+            UPDATE relationship_tracker SET 
+                interaction_count = :interaction_count,
+                last_interaction = :last_interaction,
+                last_interaction_type = :last_interaction_type,
+                metadata = :metadata
+            WHERE user_id = :user_id AND platform = :platform AND target_user = :target_user
+            """)
+            self.session.execute(query, {
+                "interaction_count": tracker.interaction_count,
+                "last_interaction": tracker.last_interaction,
+                "last_interaction_type": tracker.last_interaction_type,
+                "metadata": tracker.metadata,
+                "user_id": tracker.user_id,
+                "platform": tracker.platform,
+                "target_user": tracker.target_user
+            })
+        else:
+            # Insert
+            query = text("""
+            INSERT INTO relationship_tracker (id, user_id, platform, target_user, interaction_count, 
+                                            last_interaction, last_interaction_type, metadata)
+            VALUES (:id, :user_id, :platform, :target_user, :interaction_count, 
+                    :last_interaction, :last_interaction_type, :metadata)
+            """)
+            self.session.execute(query, {
+                "id": tracker.id, "user_id": tracker.user_id, "platform": tracker.platform,
+                "target_user": tracker.target_user, "interaction_count": tracker.interaction_count,
+                "last_interaction": tracker.last_interaction,
+                "last_interaction_type": tracker.last_interaction_type,
+                "metadata": tracker.metadata
+            })
+        self.session.commit()
+
+    # --- Scheduled Action Operations ---
+    def save_scheduled_action(self, action: ScheduledAction):
+        query = text("""
+        INSERT INTO scheduled_actions (id, user_id, platform, action_type, target_user, parameters, 
+                                     cron_expression, start_time, end_time, is_active, created_at, last_run_at)
+        VALUES (:id, :user_id, :platform, :action_type, :target_user, :parameters, 
+                :cron_expression, :start_time, :end_time, :is_active, :created_at, :last_run_at)
+        """)
+        self.session.execute(query, {
+            "id": action.id, "user_id": action.user_id, "platform": action.platform,
+            "action_type": action.action_type, "target_user": action.target_user,
+            "parameters": action.parameters, "cron_expression": action.cron_expression,
+            "start_time": action.start_time, "end_time": action.end_time,
+            "is_active": action.is_active, "created_at": action.created_at,
+            "last_run_at": action.last_run_at
+        })
+        self.session.commit()
+
+    def update_scheduled_action_last_run(self, action_id: str, last_run_at: int):
+        query = text("""
+        UPDATE scheduled_actions SET last_run_at = :last_run_at WHERE id = :id
+        """)
+        self.session.execute(query, {"last_run_at": last_run_at, "id": action_id})
+        self.session.commit()
+
+    def update_scheduled_action_next_run(self, action_id: str, next_run_time: int):
+        # For simplicity, we'll store next run time in a custom field or calculate from cron
+        # In a full implementation, this would update a next_run_time column
+        pass  # Placeholder - would need DB schema update for next_run_time column
+
+    def get_due_scheduled_actions(self, current_time: int) -> List[ScheduledAction]:
+        query = text("""
+        SELECT * FROM scheduled_actions 
+        WHERE is_active = 1 
+        AND start_time <= :current_time
+        AND (end_time IS NULL OR end_time >= :current_time)
+        """)
+        result = self.session.execute(query, {"current_time": current_time})
+        return [ScheduledAction(**self._row_to_dict(row)) for row in result.fetchall()]
 
     def delete_campaign(self, campaign_id: str, user_id: str):
         query = text("DELETE FROM campaigns WHERE id = :id AND user_id = :user_id")

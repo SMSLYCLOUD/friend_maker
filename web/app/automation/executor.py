@@ -3,7 +3,7 @@ import logging
 import json
 import os
 import base64
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from app.database.repository import Repository
 from app.database.models import Campaign, Target, ActionLog
 from app.platforms.base import PlatformAdapter
@@ -11,20 +11,25 @@ from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
 from app.ai.planner import CampaignPlanner
 from app.automation.anti_detection import AntiDetection
+from app.memory.conversation_memory import get_conversation_memory, get_relationship_tracker, get_scheduled_action_manager
 
 class CampaignExecutor:
     def __init__(self,
-                 repository: Repository,
-                 adapter: PlatformAdapter,
-                 classifier: Optional[ProfileClassifier] = None,
-                 generator: Optional[MessageGenerator] = None,
-                 planner: Optional[CampaignPlanner] = None):
+                  repository: Repository,
+                  adapter: PlatformAdapter,
+                  classifier: Optional[ProfileClassifier] = None,
+                  generator: Optional[MessageGenerator] = None,
+                  planner: Optional[CampaignPlanner] = None):
         self.repo = repository
         self.adapter = adapter
         self.classifier = classifier
         self.generator = generator
         self.planner = planner
         self.anti_detect = AntiDetection()
+        # Initialize memory systems
+        self.conversation_memory = get_conversation_memory(repository)
+        self.relationship_tracker = get_relationship_tracker(repository)
+        self.scheduled_action_manager = get_scheduled_action_manager(repository)
         self.logger = logging.getLogger(f"Executor-{adapter.platform_name}")
         self.running = False
         self.bot_instructions = ""
@@ -221,8 +226,8 @@ class CampaignExecutor:
 
             self.repo.update_target_status(target.id, "analyzed", ai_score=score)
 
-        # 2. Action (Follow/DM)
-        action_type = campaign.campaign_type # e.g. "outreach", "growth"
+        # 2. Action (Follow/DM/Comment/Reply)
+        action_type = campaign.campaign_type # e.g. "outreach", "growth", "engagement", "comment"
 
         success = False
         error = None
@@ -245,6 +250,45 @@ class CampaignExecutor:
             res = await self.adapter.send_dm(target.platform_user_id, msg)
             success = res.success
             error = res.error
+        elif action_type == "comment":
+            # Comment on a user's recent post
+            comment_text = "Great post!"
+            if self.generator:
+                # Generate contextual comment based on user's profile/posts
+                comment_text = await self.generator.generate_comment(
+                    {"username": target.username, "bio": "Fetched bio..."},
+                    campaign.message_template,
+                    campaign.ai_instructions,
+                    image_base64=image_base64,
+                    bot_instructions=self.bot_instructions,
+                    ref_images=ref_images
+                )
+            # Get user's recent posts first (this would need to be implemented in adapter)
+            # For now, we'll skip if we can't get posts
+            res = await self.adapter.comment_on_recent_post(target.platform_user_id, comment_text)
+            success = res.success
+            error = res.error
+        elif action_type == "reply_comment":
+            # Reply to a specific comment (would need comment_id from targeting)
+            comment_id = getattr(target, 'comment_id', None)
+            if not comment_id:
+                self.logger.warning("No comment_id specified for reply_comment action")
+                success = False
+                error = "No comment_id specified"
+            else:
+                reply_text = "Thanks!"
+                if self.generator:
+                    reply_text = await self.generator.generate_reply(
+                        {"username": target.username},
+                        campaign.message_template,
+                        campaign.ai_instructions,
+                        image_base64=image_base64,
+                        bot_instructions=self.bot_instructions,
+                        ref_images=ref_images
+                    )
+                res = await self.adapter.reply_to_comment(comment_id, reply_text)
+                success = res.success
+                error = res.error
 
         # 3. Log
         self.repo.log_action(ActionLog(
@@ -256,6 +300,51 @@ class CampaignExecutor:
             success=success,
             error=error
         ))
+        
+        # 4. Update memory systems for conversation and relationship tracking
+        if success and action_type in ["outreach", "comment", "reply_comment"]:
+            # Store conversation memory
+            message_sent = ""
+            if action_type == "outreach":
+                message_sent = msg if 'msg' in locals() else "Hello!"
+            elif action_type == "comment":
+                message_sent = comment_text if 'comment_text' in locals() else "Great post!"
+            elif action_type == "reply_comment":
+                message_sent = reply_text if 'reply_text' in locals() else "Thanks!"
+            
+            await self.conversation_memory.store_conversation(
+                user_id=campaign.user_id,
+                platform=self.adapter.platform_name,
+                target_user=target.username,
+                message=message_sent,
+                response="Sent successfully" if success else "Failed",
+                metadata={
+                    "action_type": action_type,
+                    "campaign_id": campaign.id,
+                    "target_id": target.id
+                }
+            )
+            
+            # Track relationship interaction
+            interaction_type_map = {
+                "outreach": "dm",
+                "comment": "comment",
+                "reply_comment": "reply"
+            }
+            interaction_type = interaction_type_map.get(action_type, action_type)
+            
+            await self.relationship_tracker.track_interaction(
+                user_id=campaign.user_id,
+                platform=self.adapter.platform_name,
+                target_user=target.username,
+                interaction_type=interaction_type,
+                metadata={
+                    "action_type": action_type,
+                    "campaign_id": campaign.id,
+                    "target_id": target.id,
+                    "success": success
+                }
+            )
 
         self.repo.update_target_status(target.id, "completed" if success else "failed")
         self.anti_detect.record_action()

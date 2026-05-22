@@ -67,3 +67,28 @@ class PlatformAdapter(ABC):
     async def capture_screenshot(self) -> Optional[str]:
         """Capture a screenshot of the current page as a base64 string"""
         pass
+
+    @abstractmethod
+    async def get_post_comments(self, post_url: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get comments from a specific post or video"""
+        pass
+
+    @abstractmethod
+    async def reply_to_comment(self, comment_id: str, message: str) -> ActionResult:
+        """Reply to a specific comment"""
+        pass
+
+    @abstractmethod
+    async def get_user_recent_posts(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get recent posts from a user"""
+        pass
+
+    @abstractmethod
+    async def comment_on_post(self, post_url: str, message: str) -> ActionResult:
+        """Comment on a specific post"""
+        pass
+
+    @abstractmethod
+    async def comment_on_recent_post(self, user_id: str, message: str) -> ActionResult:
+        """Comment on a user's most recent post"""
+        pass
