@@ -268,16 +268,7 @@ export default function SettingsPage() {
                 <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handleUploadImage} />
               </label>
             </div>
-              ))}
-              <label className="w-24 h-24 rounded-xl border-2 border-dashed border-white/10 hover:border-purple-500/50 flex items-center justify-center cursor-pointer transition-colors touch-manipulation">
-                {uploading ? (
-                  <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                ) : (
-                  <ImagePlus className="w-6 h-6 text-gray-500" />
-                )}
-                <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handleUploadImage} />
-              </label>
-            </div>
+
           </div>
         </div>
 
