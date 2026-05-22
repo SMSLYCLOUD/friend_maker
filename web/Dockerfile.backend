@@ -17,9 +17,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs
 
 # Install noVNC
-RUN git clone https://github.com/novnc/noVNC /root/noVNC
-RUN cd /root/noVNC && npm install
-RUN cd /root/noVNC/utils && npm install
+RUN git clone https://github.com/novnc/noVNC /opt/noVNC
+RUN cd /opt/noVNC && npm install
+RUN cd /opt/noVNC/utils && npm install
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -29,6 +29,11 @@ RUN playwright install-deps chromium
 RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/data /app/cookies /app/scratch /app/uploads && \
     chown -R appuser:appuser /app
+USER appuser
+
+# Grant appuser access to noVNC
+USER root
+RUN chown -R appuser:appuser /opt/noVNC
 USER appuser
 
 # Install Playwright browsers for appuser

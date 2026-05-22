@@ -255,7 +255,7 @@ await wait(2000);
 
 // Start noVNC proxy
 console.log("[START] Starting noVNC proxy...");
-novncProcess = start("bash", ["/root/noVNC/utils/novnc_proxy", "--vnc", `localhost:${VNC_PORT}`, "--listen", String(NOVNC_PORT)]);
+novncProcess = start("bash", ["/opt/noVNC/utils/novnc_proxy", "--vnc", `localhost:${VNC_PORT}`, "--listen", String(NOVNC_PORT)]);
 await wait(3000);
 
 // Start API server

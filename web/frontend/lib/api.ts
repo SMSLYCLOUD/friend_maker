@@ -35,7 +35,7 @@ export async function fetchAccounts() {
   return res.json();
 }
 
-export async function createAccount(data: { platform: string; username: string; session_data?: string }) {
+export async function createAccount(data: { platform: string; username: string; password?: string }) {
   const res = await fetch(`${API_URL}/api/accounts`, {
     method: "POST",
     headers: authHeaders(),

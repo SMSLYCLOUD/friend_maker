@@ -385,7 +385,7 @@ def list_campaigns(
         CampaignResponse(id=c.id, name=c.name, campaign_type=c.campaign_type,
                         status=c.status, daily_limit=c.daily_limit,
                         ai_instructions=c.ai_instructions, message_template=c.message_template,
-                        account_id=c.account_id)
+                        account_id=c.account_id, platform=c.platform)
         for c in campaigns
     ]
 

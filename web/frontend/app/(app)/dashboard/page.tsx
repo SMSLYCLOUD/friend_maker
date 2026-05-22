@@ -1,9 +1,10 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { fetchAnalyticsSummary, fetchAccounts, fetchActivityFeed, fetchAudienceInsights } from "@/lib/api";
 import { Activity, Target, CheckCircle2, Shield, Zap, Clock, Star, BarChart, Globe, Cpu, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import clsx from "clsx";
-
-export const dynamic = "force-dynamic";
 
 function formatTime(unix: number): string {
   const seconds = Math.floor((Date.now() / 1000) - unix);
@@ -13,22 +14,27 @@ function formatTime(unix: number): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-export default async function Dashboard() {
-  let stats = { total_actions: 0, today_actions: 0, success_rate: 0 };
-  let accounts = [];
-  let activityFeed: any[] = [];
-  let audienceInsights: any = { total_targets: 0, processed_targets: 0, avg_ai_score: 0 };
+export default function Dashboard() {
+  const [stats, setStats] = useState({ total_actions: 0, today_actions: 0, success_rate: 0 });
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [activityFeed, setActivityFeed] = useState<any[]>([]);
+  const [audienceInsights, setAudienceInsights] = useState<any>({ total_targets: 0, processed_targets: 0, avg_ai_score: 0 });
 
-  try {
-    [stats, accounts, activityFeed, audienceInsights] = await Promise.all([
+  useEffect(() => {
+    Promise.all([
       fetchAnalyticsSummary(),
       fetchAccounts(),
       fetchActivityFeed(),
       fetchAudienceInsights()
-    ]);
-  } catch (err) {
-    console.error("Failed to load dashboard stats", err);
-  }
+    ]).then(([s, a, f, i]) => {
+      setStats(s);
+      setAccounts(a);
+      setActivityFeed(f);
+      setAudienceInsights(i);
+    }).catch(err => {
+      console.error("Failed to load dashboard stats", err);
+    });
+  }, []);
 
   const activeAccounts = accounts.filter((a: any) => a.is_active).length;
   const topAccounts = accounts.slice(0, 3);

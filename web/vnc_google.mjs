@@ -116,7 +116,7 @@ await new Promise(r => setTimeout(r, 2000));
 start("x11vnc", ["-display", DISPLAY, "-forever", "-nopw", "-rfbport", String(VNC_PORT)]);
 await new Promise(r => setTimeout(r, 2000));
 
-start("/root/noVNC/utils/novnc_proxy", ["--vnc", `localhost:${VNC_PORT}`, "--listen", String(NOVNC_PORT)]);
+start("/opt/noVNC/utils/novnc_proxy", ["--vnc", `localhost:${VNC_PORT}`, "--listen", String(NOVNC_PORT)]);
 await new Promise(r => setTimeout(r, 3000));
 
 startApi();
