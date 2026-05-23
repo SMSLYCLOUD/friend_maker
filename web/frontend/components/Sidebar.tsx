@@ -57,7 +57,7 @@ export function Sidebar() {
       {isMobile && (
         <button
           onClick={toggleSidebar}
-          className="fixed top-4 left-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-lg lg:hidden"
+          className="fixed top-4 left-4 z-50 flex h-11 w-11 items-center justify-center rounded-lg bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-lg lg:hidden"
         >
           {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
@@ -99,7 +99,7 @@ export function Sidebar() {
             {isMobile && (
               <button
                 onClick={closeSidebar}
-                className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors"
               >
                 <X className="h-5 w-5 text-gray-400" />
               </button>

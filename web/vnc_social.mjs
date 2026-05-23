@@ -252,7 +252,7 @@ await wait(2000);
 
 // Start VNC server
 console.log("[START] Starting x11vnc...");
-x11vncProcess = start("x11vnc", ["-display", DISPLAY, "-forever", "-nopw", "-rfbport", String(VNC_PORT)]);
+x11vncProcess = start("x11vnc", ["-display", DISPLAY, "-forever", "-nopw", "-rfbport", String(VNC_PORT), "-cursor", "none"]);
 await wait(2000);
 
 // Start noVNC proxy

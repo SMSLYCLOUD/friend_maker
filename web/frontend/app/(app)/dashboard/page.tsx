@@ -45,7 +45,7 @@ export default function Dashboard() {
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
-          <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-500">System Online</span>
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-500">System Online</span>
         </div>
         <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white lg:text-6xl">
           Fleet <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-violet-500">Intelligence</span>
@@ -88,7 +88,7 @@ export default function Dashboard() {
                     <Star className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400" />
                     <h2 className="text-lg sm:text-xl font-bold text-white">Elite Nodes</h2>
                 </div>
-                <Link href="/accounts" className="text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider">View All</Link>
+                <Link href="/accounts" className="px-3 py-1.5 text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider rounded-lg hover:bg-blue-500/10">View All</Link>
             </div>
             <div className="space-y-3 sm:space-y-5">
                 {topAccounts.length > 0 ? topAccounts.map((acc: any, i) => (
@@ -98,18 +98,18 @@ export default function Dashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-xs sm:text-sm font-bold text-white truncate">@{acc.username}</p>
-                            <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase tracking-wider">{acc.platform}</p>
+                            <p className="text-[10px] sm:text-[11px] text-gray-500 uppercase tracking-wider">{acc.platform}</p>
                         </div>
                         <div className="text-right">
                             <p className="text-xs sm:text-sm font-bold text-blue-400">{acc.is_active ? "Active" : "Inactive"}</p>
-                            <p className="text-[9px] sm:text-[10px] text-gray-500">STATUS</p>
+                            <p className="text-[10px] sm:text-[11px] text-gray-500">STATUS</p>
                         </div>
                     </div>
                 )) : (
                     <p className="text-sm text-gray-600 italic">No nodes available yet.</p>
                 )}
             </div>
-            <Link href="/campaigns" className="w-full mt-6 sm:mt-8 py-2 sm:py-3 rounded-xl bg-white/5 border border-white/5 text-xs sm:text-xs font-bold text-gray-400 hover:bg-white/10 hover:text-white transition-all flex items-center justify-center gap-2">
+            <Link href="/campaigns" className="w-full mt-6 sm:mt-8 py-3 sm:py-3 rounded-xl bg-white/5 border border-white/5 text-xs sm:text-xs font-bold text-gray-400 hover:bg-white/10 hover:text-white transition-all flex items-center justify-center gap-2">
                 Deploy Campaigns <ArrowRight className="w-3 h-3 sm:w-3 sm:h-3" />
             </Link>
         </div>
@@ -124,16 +124,16 @@ export default function Dashboard() {
             <div className="space-y-4 sm:space-y-6">
               <div className="flex items-center justify-between p-3 sm:p-4 rounded-xl bg-white/5 border border-white/5">
                 <div>
-                  <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Total Targets</p>
+                  <p className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Targets</p>
                   <p className="text-xl sm:text-2xl font-black text-white">{audienceInsights.total_targets}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider">Processed</p>
+                  <p className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider">Processed</p>
                   <p className="text-xl sm:text-2xl font-black text-purple-400">{audienceInsights.processed_targets}</p>
                 </div>
               </div>
               <div className="p-3 sm:p-4 rounded-xl bg-white/5 border border-white/5">
-                <p className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Avg AI Score</p>
+                <p className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Avg AI Score</p>
                 <p className="text-xl sm:text-2xl font-black text-white">{audienceInsights.avg_ai_score}</p>
                 <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mt-2">
                   <div className="h-full bg-purple-500 rounded-full" style={{ width: `${Math.min(audienceInsights.avg_ai_score * 20, 100)}%` }} />
@@ -202,7 +202,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 sm:gap-4">
                  <div className="flex items-center gap-2">
                     <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
-                    <span className="text-[9px] sm:text-[10px] font-bold text-blue-400 uppercase">Live Streaming</span>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-blue-400 uppercase">Live Streaming</span>
                  </div>
             </div>
           </div>
@@ -217,9 +217,9 @@ export default function Dashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                            <p className="text-xs sm:text-sm font-medium text-white truncate capitalize">{act.action_type.replace(/_/g, ' ')}</p>
-                           <p className="text-[9px] sm:text-xs text-gray-500">{formatTime(act.created_at)} • {act.platform || act.action_type}</p>
+                           <p className="text-[10px] sm:text-xs text-gray-500">{formatTime(act.created_at)} • {act.platform || act.action_type}</p>
                         </div>
-                        <span className={clsx("text-[8px] sm:text-[10px] font-bold px-2 py-1 rounded-md", act.success ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10')}>
+                        <span className={clsx("text-[10px] font-bold px-2 py-1 rounded-md", act.success ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10')}>
                             {act.success ? "SUCCESS" : "FAILED"}
                         </span>
                     </div>

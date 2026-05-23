@@ -288,7 +288,7 @@ export default function CampaignsPage() {
                        <div className="flex-1 min-w-0">
                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2">
                            <h3 className="font-bold text-white truncate">{c.name}</h3>
-                           <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase whitespace-nowrap ${c.status === 'active' ? 'bg-green-500/10 text-green-500 ring-1 ring-green-500/20' : 'bg-yellow-500/10 text-yellow-500 ring-1 ring-yellow-500/20'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${c.status === 'active' ? 'bg-green-500/10 text-green-500 ring-1 ring-green-500/20' : 'bg-yellow-500/10 text-yellow-500 ring-1 ring-yellow-500/20'}`}>
                              {c.status}
                            </span>
                          </div>
@@ -314,14 +314,14 @@ export default function CampaignsPage() {
                      {expandedCampaign === c.id && (
                        <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0 border-t border-gray-800/50 space-y-2">
                          {c.ai_instructions && (
-                           <div className="p-3 rounded-lg bg-white/[0.03] border border-white/5">
-                             <p className="text-[9px] sm:text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1">AI Instructions</p>
+                            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/5">
+                              <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1">AI Instructions</p>
                              <p className="text-xs text-gray-300 whitespace-pre-wrap">{c.ai_instructions}</p>
                            </div>
                          )}
                          {c.message_template && (
-                           <div className="p-3 rounded-lg bg-white/[0.03] border border-white/5">
-                             <p className="text-[9px] sm:text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Message Template</p>
+                            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/5">
+                              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Message Template</p>
                              <p className="text-xs text-gray-300 whitespace-pre-wrap">{c.message_template}</p>
                            </div>
                          )}

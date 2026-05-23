@@ -154,7 +154,7 @@ export default function AccountsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className={clsx("h-2 w-2 rounded-full", acc.is_active ? "bg-emerald-500 shadow-[0_0_8px_#10b981]" : "bg-red-500")} />
-                <span className={clsx("text-[9px] sm:text-[10px] font-bold uppercase tracking-widest", acc.is_active ? "text-emerald-500" : "text-red-500")}>
+                <span className={clsx("text-[10px] font-bold uppercase tracking-widest", acc.is_active ? "text-emerald-500" : "text-red-500")}>
                   {acc.is_active ? "Active" : "Disabled"}
                 </span>
               </div>
@@ -164,7 +164,7 @@ export default function AccountsPage() {
               <h3 className="text-base sm:text-lg font-bold text-white truncate max-w-full" title={acc.username}>
                 {acc.username}
               </h3>
-              <p className="text-[9px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mt-1 flex items-center gap-2">
+              <p className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-widest mt-1 flex items-center gap-2">
                 {acc.platform} 
                 <span className="h-1 w-1 rounded-full bg-gray-700" /> 
                 {acc.has_session ? (
@@ -177,8 +177,8 @@ export default function AccountsPage() {
 
             <div className="mt-6 sm:mt-8 flex items-center justify-between pt-4 sm:pt-6 border-t border-white/5 relative z-10">
                <div className="flex -space-x-2">
-                  <div className="h-7 w-7 rounded-full border-2 border-black bg-gray-800 flex items-center justify-center text-[8px] font-bold text-white">AI</div>
-                  <div className="h-7 w-7 rounded-full border-2 border-black bg-blue-600 flex items-center justify-center text-[8px] font-bold text-white">V2</div>
+                  <div className="h-7 w-7 rounded-full border-2 border-black bg-gray-800 flex items-center justify-center text-[10px] font-bold text-white">AI</div>
+                  <div className="h-7 w-7 rounded-full border-2 border-black bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white">V2</div>
                </div>
                <div className="flex gap-2">
                    <button onClick={() => { setSelectedAccount(acc); setShowDetailModal(true); }} className="p-3 sm:p-2 rounded-xl sm:rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors touch-manipulation">

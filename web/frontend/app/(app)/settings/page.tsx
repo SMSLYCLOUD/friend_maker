@@ -229,7 +229,7 @@ export default function SettingsPage() {
                   <img src={getImageUrl(img.filename)} alt="Reference" className="w-full h-24 rounded-xl object-cover border border-white/10" />
                   <button
                     onClick={() => handleDeleteImage(img.filename)}
-                    className="absolute top-1 -right-1 w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity touch-manipulation"
+                    className="absolute top-1 -right-1 h-10 w-10 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity touch-manipulation"
                   >
                     <X className="w-4 h-4" />
                   </button>

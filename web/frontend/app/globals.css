@@ -36,6 +36,14 @@ body {
     @apply shadow-[0_0_20px_-5px_rgba(168,85,247,0.3)];
   }
 
+  .glow-emerald {
+    @apply shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)];
+  }
+
+  .glow-amber {
+    @apply shadow-[0_0_20px_-5px_rgba(245,158,11,0.3)];
+  }
+
   .mesh-gradient {
     background-image: 
       radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
