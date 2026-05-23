@@ -4,7 +4,7 @@ const IS_SERVER = typeof window === "undefined";
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL || "http://python-backend:8000";
 const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || "";
 const CLEAN_API_URL = PUBLIC_API_URL.replace(/\/api\/?$/, "").replace(/\/$/, "");
-const API_URL = IS_SERVER ? INTERNAL_API_URL : (CLEAN_API_URL || "http://localhost:8010");
+const API_URL = IS_SERVER ? INTERNAL_API_URL : (CLEAN_API_URL || "http://localhost:8000");
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
