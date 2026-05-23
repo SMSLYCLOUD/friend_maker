@@ -250,6 +250,23 @@ console.log("[START] Starting Xvfb...");
 xvfbProcess = start("Xvfb", [DISPLAY, "-screen", "0", "1280x800x24"]);
 await wait(2000);
 
+// Set a blank/transparent cursor so no cursor is visible in VNC
+try {
+  fs.writeFileSync("/tmp/blank.xbm", "#define blank_width 1\n#define blank_height 1\nstatic unsigned char blank_bits[] = { 0x00 };\n");
+  execSync(`xsetroot -display ${DISPLAY} -cursor /tmp/blank.xbm /tmp/blank.xbm`, { stdio: "ignore" });
+  console.log("[CURSOR] Set blank transparent cursor via xsetroot");
+} catch (e) {
+  console.log("[CURSOR] Could not set blank cursor via xsetroot (non-fatal):", e.message);
+}
+// Also run unclutter to auto-hide cursor as a second layer
+try {
+  const unclutter = spawn("unclutter", ["-display", DISPLAY, "-idle", "0", "-root"], { stdio: "ignore" });
+  unclutter.on("error", () => {});
+  console.log("[CURSOR] Started unclutter to auto-hide cursor");
+} catch (e) {
+  console.log("[CURSOR] Could not start unclutter (non-fatal):", e.message);
+}
+
 // Start VNC server
 console.log("[START] Starting x11vnc...");
 x11vncProcess = start("x11vnc", ["-display", DISPLAY, "-forever", "-nopw", "-rfbport", String(VNC_PORT), "-cursor", "none"]);
