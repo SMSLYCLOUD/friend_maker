@@ -223,7 +223,7 @@ function startApi() {
           loginDetected,
           platform,
           cookiesFile: fs.existsSync(file) ? file : null,
-          vncUrl: `http://153.75.247.117:${NOVNC_PORT}/vnc.html`,
+          vncUrl: `http://153.75.247.117:${NOVNC_PORT}/vnc.html?touch=true&resize=remote`,
         }));
       } else {
         res.writeHead(200);
@@ -245,9 +245,11 @@ process.on("exit", cleanup);
 
 ensureCookieDir();
 
-// Start virtual display
-console.log("[START] Starting Xvfb...");
-xvfbProcess = start("Xvfb", [DISPLAY, "-screen", "0", "1280x800x24"]);
+// Start virtual display at mobile viewport size so the VNC shows only the browser
+const vncWidth = isDesktop ? 1280 : MOBILE_VIEWPORT.width;
+const vncHeight = isDesktop ? 800 : MOBILE_VIEWPORT.height;
+console.log(`[START] Starting Xvfb at ${vncWidth}x${vncHeight}...`);
+xvfbProcess = start("Xvfb", [DISPLAY, "-screen", "0", `${vncWidth}x${vncHeight}x24`]);
 await wait(2000);
 
 // Set a blank/transparent cursor so no cursor is visible in VNC
@@ -283,7 +285,7 @@ console.log(`\n========================================`);
 console.log(`VNC SOCIAL LOGIN HELPER`);
 console.log(`Platform: ${platform}`);
 console.log(`Viewport: ${isDesktop ? "Desktop" : `Mobile (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height})`}`);
-console.log(`VNC:  http://153.75.247.117:${NOVNC_PORT}/vnc.html`);
+console.log(`VNC:  http://153.75.247.117:${NOVNC_PORT}/vnc.html?touch=true&resize=remote`);
 console.log(`API:  http://localhost:${API_PORT}`);
 if (accountId) console.log(`Account: ${accountId}`);
 console.log(`========================================\n`);
@@ -304,7 +306,9 @@ try {
         "--disable-setuid-sandbox", 
         "--disable-dev-shm-usage", 
         "--single-process",
-        "--disable-gpu"
+        "--disable-gpu",
+        "--start-maximized",
+        `--window-size=${vncWidth},${vncHeight}`
       ]
     }), 
     "Browser launch"
