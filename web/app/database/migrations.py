@@ -69,4 +69,38 @@ CREATE TABLE IF NOT EXISTS action_logs (
     error TEXT,
     created_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS conversation_memory (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    target_user TEXT NOT NULL,
+    message TEXT,
+    response TEXT,
+    timestamp INTEGER,
+    metadata TEXT
+);
+CREATE TABLE IF NOT EXISTS relationship_tracker (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    target_user TEXT NOT NULL,
+    interaction_count INTEGER DEFAULT 0,
+    last_interaction INTEGER,
+    last_interaction_type TEXT,
+    metadata TEXT
+);
+CREATE TABLE IF NOT EXISTS scheduled_actions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    target_user TEXT,
+    parameters TEXT,
+    cron_expression TEXT,
+    start_time INTEGER,
+    end_time INTEGER,
+    is_active INTEGER DEFAULT 1,
+    created_at INTEGER,
+    last_run_at INTEGER
+);
 """
