@@ -15,6 +15,8 @@ class TwitterAdapter(PlatformAdapter):
         try:
             if session_data:
                 cookies = json.loads(session_data)
+                if isinstance(cookies, dict):
+                    cookies = [cookies]
                 await self.page.context.add_cookies(cookies)
                 await self.page.goto("https://twitter.com/home")
                 try:
