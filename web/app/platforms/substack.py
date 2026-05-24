@@ -11,7 +11,7 @@ class SubstackAdapter(PlatformAdapter):
         self.page = page
         self.logger = logging.getLogger("SubstackAdapter")
 
-    async def authenticate(self, session_data: str) -> bool:
+    async def authenticate(self, session_data: str, username: Optional[str] = None, password: Optional[str] = None) -> bool:
         try:
             if session_data:
                 cookies = json.loads(session_data)
