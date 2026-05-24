@@ -120,17 +120,40 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider">AI Intelligence Model</label>
-              <select
-                value={settings.OPENROUTER_MODEL || "google/gemini-flash-1.5"}
-                onChange={(e) => setSettings({ ...settings, OPENROUTER_MODEL: e.target.value })}
-                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all"
-              >
-                <option value="google/gemini-flash-1.5">Gemini Flash 1.5 (Vision Fast)</option>
-                <option value="google/gemini-pro-1.5">Gemini Pro 1.5 (Vision Ultra)</option>
-                <option value="openai/gpt-4o-mini">GPT-4o Mini (Vision Compact)</option>
-                <option value="openai/gpt-4o">GPT-4o (Vision Power)</option>
-                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (Elite)</option>
-              </select>
+                <select
+                  value={settings.OPENROUTER_MODEL || "google/gemini-2.0-flash-001"}
+                  onChange={(e) => setSettings({ ...settings, OPENROUTER_MODEL: e.target.value })}
+                  className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                >
+                  <optgroup label="— Free Models —">
+                    <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash (Free)</option>
+                    <option value="google/gemini-2.0-flash-lite-preview-02-05:free">Gemini 2.0 Flash Lite (Free)</option>
+                    <option value="deepseek/deepseek-chat:free">DeepSeek V3 (Free)</option>
+                    <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free)</option>
+                    <option value="mistralai/mistral-small-3.1:free">Mistral Small 3.1 (Free)</option>
+                    <option value="meta-llama/llama-3.2-3b-instruct:free">Llama 3.2 3B (Free)</option>
+                    <option value="qwen/qwen-2.5-72b-instruct:free">Qwen 2.5 72B (Free)</option>
+                    <option value="cohere/command-r-08-2024:free">Command R (Free)</option>
+                  </optgroup>
+                  <optgroup label="— Paid Models —">
+                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+                    <option value="google/gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash Lite</option>
+                    <option value="google/gemini-1.5-pro">Gemini 1.5 Pro</option>
+                    <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                    <option value="openai/gpt-4o">GPT-4o</option>
+                    <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
+                    <option value="openai/o3-mini">o3 Mini</option>
+                    <option value="openai/o1">o1</option>
+                    <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                    <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
+                    <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+                    <option value="deepseek/deepseek-chat">DeepSeek V3</option>
+                    <option value="deepseek/deepseek-r1">DeepSeek R1</option>
+                    <option value="mistralai/mistral-large-2407">Mistral Large</option>
+                    <option value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B</option>
+                    <option value="cohere/command-r-plus-08-2024">Command R+</option>
+                  </optgroup>
+                </select>
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider">OpenRouter API Key</label>
