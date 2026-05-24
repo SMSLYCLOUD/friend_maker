@@ -51,7 +51,7 @@ const PLATFORMS = {
 let platform = process.argv.includes("--platform") ? process.argv[process.argv.indexOf("--platform") + 1] : "gmail";
 const email = process.argv.includes("--email") ? process.argv[process.argv.indexOf("--email") + 1] : null;
 let accountId = process.argv.includes("--account-id") ? process.argv[process.argv.indexOf("--account-id") + 1] : null;
-const isDesktop = process.argv.includes("--desktop");
+const isMobile = process.argv.includes("--mobile");
 
 let cfg = PLATFORMS[platform] || PLATFORMS.gmail;
 
@@ -223,7 +223,7 @@ function startApi() {
           loginDetected,
           platform,
           cookiesFile: fs.existsSync(file) ? file : null,
-          vncUrl: `http://153.75.247.117:${NOVNC_PORT}/vnc.html?touch=true&resize=remote`,
+          vncUrl: `http://153.75.247.117:${NOVNC_PORT}/vnc.html`,
         }));
       } else {
         res.writeHead(200);
@@ -245,33 +245,14 @@ process.on("exit", cleanup);
 
 ensureCookieDir();
 
-// Start virtual display at mobile viewport size so the VNC shows only the browser
-const vncWidth = isDesktop ? 1280 : MOBILE_VIEWPORT.width;
-const vncHeight = isDesktop ? 800 : MOBILE_VIEWPORT.height;
-console.log(`[START] Starting Xvfb at ${vncWidth}x${vncHeight}...`);
-xvfbProcess = start("Xvfb", [DISPLAY, "-screen", "0", `${vncWidth}x${vncHeight}x24`]);
+// Start virtual display
+console.log("[START] Starting Xvfb...");
+xvfbProcess = start("Xvfb", [DISPLAY, "-screen", "0", "1280x800x24"]);
 await wait(2000);
-
-// Set a blank/transparent cursor so no cursor is visible in VNC
-try {
-  fs.writeFileSync("/tmp/blank.xbm", "#define blank_width 1\n#define blank_height 1\nstatic unsigned char blank_bits[] = { 0x00 };\n");
-  execSync(`xsetroot -display ${DISPLAY} -cursor /tmp/blank.xbm /tmp/blank.xbm`, { stdio: "ignore" });
-  console.log("[CURSOR] Set blank transparent cursor via xsetroot");
-} catch (e) {
-  console.log("[CURSOR] Could not set blank cursor via xsetroot (non-fatal):", e.message);
-}
-// Also run unclutter to auto-hide cursor as a second layer
-try {
-  const unclutter = spawn("unclutter", ["-display", DISPLAY, "-idle", "0", "-root"], { stdio: "ignore" });
-  unclutter.on("error", () => {});
-  console.log("[CURSOR] Started unclutter to auto-hide cursor");
-} catch (e) {
-  console.log("[CURSOR] Could not start unclutter (non-fatal):", e.message);
-}
 
 // Start VNC server
 console.log("[START] Starting x11vnc...");
-x11vncProcess = start("x11vnc", ["-display", DISPLAY, "-forever", "-nopw", "-rfbport", String(VNC_PORT), "-cursor", "none"]);
+x11vncProcess = start("x11vnc", ["-display", DISPLAY, "-forever", "-nopw", "-rfbport", String(VNC_PORT)]);
 await wait(2000);
 
 // Start noVNC proxy
@@ -284,8 +265,8 @@ startApi();
 console.log(`\n========================================`);
 console.log(`VNC SOCIAL LOGIN HELPER`);
 console.log(`Platform: ${platform}`);
-console.log(`Viewport: ${isDesktop ? "Desktop" : `Mobile (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height})`}`);
-console.log(`VNC:  http://153.75.247.117:${NOVNC_PORT}/vnc.html?touch=true&resize=remote`);
+console.log(`Viewport: ${isMobile ? `Mobile (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height})` : "Desktop"}`);
+console.log(`VNC:  http://153.75.247.117:${NOVNC_PORT}/vnc.html`);
 console.log(`API:  http://localhost:${API_PORT}`);
 if (accountId) console.log(`Account: ${accountId}`);
 console.log(`========================================\n`);
@@ -306,9 +287,7 @@ try {
         "--disable-setuid-sandbox", 
         "--disable-dev-shm-usage", 
         "--single-process",
-        "--disable-gpu",
-        "--start-maximized",
-        `--window-size=${vncWidth},${vncHeight}`
+        "--disable-gpu"
       ]
     }), 
     "Browser launch"
@@ -320,7 +299,7 @@ try {
 }
 
 try {
-  const ctxOpts = isDesktop ? {} : { viewport: MOBILE_VIEWPORT, isMobile: true };
+  const ctxOpts = isMobile ? { viewport: MOBILE_VIEWPORT, isMobile: true } : {};
   ctx = await withErrorHandling(
     () => browser.newContext(ctxOpts), 
     "Creating browser context"

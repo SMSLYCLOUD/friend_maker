@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
     libgtk-3-0 libgbm-dev libxshmfence1 \
     wget gnupg \
-    curl x11vnc xvfb x11-xserver-utils unclutter git \
+    curl x11vnc xvfb git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x
