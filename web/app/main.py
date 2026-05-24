@@ -386,13 +386,20 @@ def list_campaigns(
     user: dict = Depends(get_current_user)
 ):
     campaigns = repo.list_campaigns(user["id"])
-    return [
-        CampaignResponse(id=c.id, name=c.name, campaign_type=c.campaign_type,
-                        status=c.status, daily_limit=c.daily_limit,
-                        ai_instructions=c.ai_instructions, message_template=c.message_template,
-                        account_id=c.account_id, platform=c.platform)
-        for c in campaigns
-    ]
+    result = []
+    for c in campaigns:
+        platform = None
+        if c.account_id:
+            account = repo.get_account(c.account_id, user["id"])
+            if account:
+                platform = account.platform
+        result.append(
+            CampaignResponse(id=c.id, name=c.name, campaign_type=c.campaign_type,
+                            status=c.status, daily_limit=c.daily_limit,
+                            ai_instructions=c.ai_instructions, message_template=c.message_template,
+                            account_id=c.account_id, platform=platform)
+        )
+    return result
 
 @app.post("/api/campaigns/{campaign_id}/start")
 async def start_campaign(
