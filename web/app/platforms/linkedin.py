@@ -12,7 +12,7 @@ class LinkedInAdapter(PlatformAdapter):
         self.page = page
         self.logger = logging.getLogger("LinkedInAdapter")
 
-    async def authenticate(self, session_data: str, username: Optional[str] = None, password: Optional[str] = None) -> bool:
+    async def authenticate(self, session_data: str) -> bool:
         """
         Login using saved cookies.
         session_data should be a JSON string of cookies.

@@ -74,7 +74,7 @@ class CampaignExecutor:
             self.logger.error("Account not found")
             return
 
-        if not await self.adapter.authenticate(account.session_data, account.username, account.password):
+        if not await self.adapter.authenticate(account.session_data):
             self.logger.error("Authentication failed. Aborting.")
             return
 
