@@ -56,9 +56,9 @@ class CampaignExecutor:
             self.logger.info(f"Loaded {len(images)} reference images")
         return images
 
-    async def run_campaign(self, campaign_id: str):
+    async def run_campaign(self, campaign_id: str, user_id: str):
         self.running = True
-        campaign = self.repo.get_campaign(campaign_id)
+        campaign = self.repo.get_campaign(campaign_id, user_id)
         if not campaign:
             self.logger.error("Campaign not found")
             return
@@ -69,7 +69,7 @@ class CampaignExecutor:
         ref_images = self.load_reference_images()
 
         # 1. Authenticate
-        account = self.repo.get_account(campaign.account_id)
+        account = self.repo.get_account(campaign.account_id, user_id)
         if not account:
             self.logger.error("Account not found")
             return

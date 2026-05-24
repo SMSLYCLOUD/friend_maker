@@ -126,32 +126,41 @@ export default function SettingsPage() {
                   className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all"
                 >
                   <optgroup label="— Free Models —">
-                    <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash (Free)</option>
-                    <option value="google/gemini-2.0-flash-lite-preview-02-05:free">Gemini 2.0 Flash Lite (Free)</option>
-                    <option value="deepseek/deepseek-chat:free">DeepSeek V3 (Free)</option>
-                    <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free)</option>
-                    <option value="mistralai/mistral-small-3.1:free">Mistral Small 3.1 (Free)</option>
-                    <option value="meta-llama/llama-3.2-3b-instruct:free">Llama 3.2 3B (Free)</option>
-                    <option value="qwen/qwen-2.5-72b-instruct:free">Qwen 2.5 72B (Free)</option>
-                    <option value="cohere/command-r-08-2024:free">Command R (Free)</option>
+                    <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash (Free) - 1M ctx, multimodal</option>
+                    <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free) - 128K, reasoning</option>
+                    <option value="deepseek/deepseek-chat:free">DeepSeek V3 (Free) - 128K, general</option>
+                    <option value="deepseek/deepseek-v4-flash:free">DeepSeek V4 Flash (Free) - 1M ctx, fast</option>
+                    <option value="meta-llama/llama-4-maverick:free">Llama 4 Maverick (Free) - 1M ctx, multimodal</option>
+                    <option value="meta-llama/llama-4-scout:free">Llama 4 Scout (Free) - 10M ctx</option>
+                    <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Free) - 128K</option>
+                    <option value="qwen/qwen3-235b-a22b:free">Qwen3 235B (Free) - coding, analysis</option>
+                    <option value="qwen/qwen3-coder-480b-a35b:free">Qwen3 Coder 480B (Free) - 1M ctx</option>
+                    <option value="mistralai/mistral-small-3.1-24b-instruct:free">Mistral Small 24B (Free)</option>
+                    <option value="x-ai/grok-3-mini-beta:free">Grok 3 Mini (Free) - 131K, fast</option>
+                    <option value="google/gemma-3-27b-it:free">Gemma 3 27B (Free) - 128K</option>
+                    <option value="nousresearch/hermes-3-llama-3.1-70b:free">Hermes 3 70B (Free)</option>
+                    <option value="nvidia/nemotron-3-super:free">Nemotron 3 Super (Free) - 1M ctx</option>
+                    <option value="openai/gpt-oss-120b:free">GPT-OSS 120B (Free) - 131K</option>
+                    <option value="zhipu-ai/glm-4.5-air:free">GLM 4.5 Air (Free) - 131K</option>
+                    <option value="openrouter/free">Auto: Best Free Model (Router)</option>
                   </optgroup>
                   <optgroup label="— Paid Models —">
-                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
-                    <option value="google/gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash Lite</option>
-                    <option value="google/gemini-1.5-pro">Gemini 1.5 Pro</option>
-                    <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-                    <option value="openai/gpt-4o">GPT-4o</option>
-                    <option value="openai/gpt-4-turbo">GPT-4 Turbo</option>
-                    <option value="openai/o3-mini">o3 Mini</option>
-                    <option value="openai/o1">o1</option>
-                    <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                    <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
-                    <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
-                    <option value="deepseek/deepseek-chat">DeepSeek V3</option>
-                    <option value="deepseek/deepseek-r1">DeepSeek R1</option>
-                    <option value="mistralai/mistral-large-2407">Mistral Large</option>
-                    <option value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B</option>
-                    <option value="cohere/command-r-plus-08-2024">Command R+</option>
+                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash - 1M ctx, cheap</option>
+                    <option value="google/gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro - 2M ctx</option>
+                    <option value="google/gemini-1.5-pro">Gemini 1.5 Pro - 2M ctx, vision</option>
+                    <option value="openai/gpt-4o-mini">GPT-4o Mini - cheap, fast</option>
+                    <option value="openai/gpt-4o">GPT-4o - vision, strong all-round</option>
+                    <option value="openai/gpt-4-turbo">GPT-4 Turbo - 128K</option>
+                    <option value="openai/o3-mini">o3 Mini - reasoning, coding</option>
+                    <option value="openai/o1">o1 - deep reasoning</option>
+                    <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet - balanced</option>
+                    <option value="anthropic/claude-3-opus">Claude 3 Opus - max intelligence</option>
+                    <option value="anthropic/claude-3-haiku">Claude 3 Haiku - fastest Claude</option>
+                    <option value="deepseek/deepseek-chat">DeepSeek V3 - 128K</option>
+                    <option value="deepseek/deepseek-r1">DeepSeek R1 - reasoning</option>
+                    <option value="mistralai/mistral-large-2407">Mistral Large - 128K</option>
+                    <option value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B - largest open</option>
+                    <option value="cohere/command-r-plus-08-2024">Command R+ - 128K, RAG</option>
                   </optgroup>
                 </select>
             </div>

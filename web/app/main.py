@@ -410,7 +410,7 @@ async def start_campaign(
     campaign = repo.get_campaign(campaign_id, user["id"])
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    await scheduler.start_campaign(campaign_id)
+    await scheduler.start_campaign(campaign_id, user["id"])
     return {"status": "started", "campaign_id": campaign_id}
 
 @app.post("/api/campaigns/{campaign_id}/stop")

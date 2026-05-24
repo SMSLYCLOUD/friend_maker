@@ -51,13 +51,13 @@ class Scheduler:
             await self.playwright.stop()
         self.logger.info("Scheduler stopped.")
 
-    async def start_campaign(self, campaign_id: str):
+    async def start_campaign(self, campaign_id: str, user_id: str):
         if campaign_id in self.tasks:
             self.logger.warning(f"Campaign {campaign_id} already running.")
             return
 
         self.logger.info(f"Starting campaign {campaign_id}")
-        task = asyncio.create_task(self._run_wrapper(campaign_id))
+        task = asyncio.create_task(self._run_wrapper(campaign_id, user_id))
         self.tasks[campaign_id] = task
 
     async def stop_campaign(self, campaign_id: str):
@@ -66,11 +66,11 @@ class Scheduler:
             del self.tasks[campaign_id]
             self.logger.info(f"Stopped campaign {campaign_id}")
 
-    async def _run_wrapper(self, campaign_id: str, attempt=1):
+    async def _run_wrapper(self, campaign_id: str, user_id: str, attempt=1):
         task_repo = Repository()
 
         try:
-            campaign = task_repo.get_campaign(campaign_id)
+            campaign = task_repo.get_campaign(campaign_id, user_id)
             if not campaign:
                 self.logger.error(f"Campaign {campaign_id} not found.")
                 return
@@ -81,7 +81,7 @@ class Scheduler:
 
             swarm_tasks = []
             for account_id in account_ids:
-                swarm_tasks.append(self._run_account_agent(campaign_id, account_id, task_repo))
+                swarm_tasks.append(self._run_account_agent(campaign_id, account_id, user_id, task_repo))
             
             await asyncio.gather(*swarm_tasks)
 
@@ -94,15 +94,15 @@ class Scheduler:
                 await asyncio.sleep(60)
                 if campaign_id in self.tasks:
                     del self.tasks[campaign_id]
-                self.tasks[campaign_id] = asyncio.create_task(self._run_wrapper(campaign_id, attempt=attempt+1))
+                self.tasks[campaign_id] = asyncio.create_task(self._run_wrapper(campaign_id, user_id, attempt=attempt+1))
         finally:
             task_repo.close()
             if campaign_id in self.tasks and self.tasks[campaign_id] == asyncio.current_task():
                 del self.tasks[campaign_id]
 
-    async def _run_account_agent(self, campaign_id: str, account_id: str, repo: Repository):
+    async def _run_account_agent(self, campaign_id: str, account_id: str, user_id: str, repo: Repository):
         """Runs a single agent in the swarm."""
-        account = repo.get_account(account_id)
+        account = repo.get_account(account_id, user_id)
         if not account:
             self.logger.error(f"Account {account_id} not found. Agent skipped.")
             return
@@ -135,7 +135,7 @@ class Scheduler:
                 return
 
             executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
-            await executor.run_campaign(campaign_id)
+            await executor.run_campaign(campaign_id, user_id)
 
         except Exception as e:
             self.logger.error(f"Swarm Agent [{account.username}] crashed: {e}")
@@ -229,7 +229,7 @@ class Scheduler:
                             adapter = AdapterClass(page)
                             
                             executor = CampaignExecutor(repo, adapter)
-                            await executor.run_campaign(temp_campaign.id)
+                            await executor.run_campaign(temp_campaign.id, action_info['user_id'])
                             
                             await context.close()
                         else:

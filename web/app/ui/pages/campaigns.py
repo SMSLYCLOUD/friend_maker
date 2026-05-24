@@ -56,9 +56,10 @@ class CampaignsPage(BasePage):
         self.app.show_page("CampaignBuilder")
 
     def run_campaign(self, campaign_id):
-        # Call Scheduler via App context
         print(f"Running {campaign_id}")
-        self.app.run_async_task(self.app.scheduler.start_campaign(campaign_id))
+        camp = self.repo.get_campaign_by_id(campaign_id)
+        if camp:
+            self.app.run_async_task(self.app.scheduler.start_campaign(campaign_id, camp.user_id))
 
     def stop_campaign(self, campaign_id):
         print(f"Stopping {campaign_id}")

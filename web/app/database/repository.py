@@ -119,6 +119,14 @@ class Repository:
             return None
         return Campaign(**self._row_to_dict(row))
 
+    def get_campaign_by_id(self, campaign_id: str) -> Optional[Campaign]:
+        query = text("SELECT * FROM campaigns WHERE id = :id")
+        result = self.session.execute(query, {"id": campaign_id})
+        row = result.fetchone()
+        if not row:
+            return None
+        return Campaign(**self._row_to_dict(row))
+
     def update_campaign(self, campaign: Campaign):
         query = text("""
         UPDATE campaigns
