@@ -325,24 +325,28 @@ async def capture_cookies(
         data = resp.json()
         if not data.get("success"):
             raise HTTPException(status_code=502, detail="VNC service failed to capture cookies")
-        result = json.dumps(data)
+        cookie_file = data.get("file")
+        if cookie_file and os.path.exists(cookie_file):
+            with open(cookie_file) as f:
+                cookies = json.load(f)
+            result = json.dumps(cookies)
+        else:
+            raise HTTPException(status_code=502, detail="Cookie file not found from VNC capture")
     except requests.exceptions.ConnectionError:
         cookie_files = [
             f"cookies/{account_id}_cookies.json",
             f"cookies/{account.platform}_cookies.json",
         ]
-        found = None
+        result = None
         for cf in cookie_files:
             try:
                 with open(cf) as f:
                     cookies = json.load(f)
-                    found = json.dumps({"success": True, "count": len(cookies)})
+                    result = json.dumps(cookies)
                     break
             except (FileNotFoundError, json.JSONDecodeError):
                 continue
-        if found:
-            result = found
-        else:
+        if not result:
             raise HTTPException(status_code=502, detail="VNC login service not running or no cookies yet. Log in via VNC first.")
     repo.update_account_session(account_id, user["id"], result)
     return {"status": "success", "message": f"{account.platform} session saved for {account.username}"}
