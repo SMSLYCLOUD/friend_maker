@@ -58,6 +58,7 @@ class CampaignExecutor:
 
     async def run_campaign(self, campaign_id: str, user_id: str):
         self.running = True
+        self.user_id = user_id
         campaign = self.repo.get_campaign(campaign_id, user_id)
         if not campaign:
             self.logger.error("Campaign not found")
@@ -94,12 +95,12 @@ class CampaignExecutor:
             if not self.running: break
 
             # 2. Get pending targets or fetch new ones
-            pending = self.repo.get_pending_targets(campaign_id, limit=1)
+            pending = self.repo.get_pending_targets(campaign_id, self.user_id, limit=1)
 
             if not pending:
                 self.logger.info("No pending targets. Fetching new ones...")
                 await self._fetch_new_targets(campaign)
-                pending = self.repo.get_pending_targets(campaign_id, limit=1)
+                pending = self.repo.get_pending_targets(campaign_id, self.user_id, limit=1)
                 if not pending:
                     self.logger.info("Could not find new targets. Stopping.")
                     break
