@@ -23,6 +23,7 @@ class SkyvernAdapter(PlatformAdapter):
 
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
+        import asyncio
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=SKYVERN_API_KEY)
         kwargs = {"prompt": prompt}
         if url:
@@ -30,7 +31,42 @@ class SkyvernAdapter(PlatformAdapter):
         if extraction_schema:
             kwargs["data_extraction_schema"] = extraction_schema
         result = await skyvern.run_task(**kwargs)
-        # Convert to dict regardless of Pydantic version
+        if isinstance(result, dict):
+            run_id = result.get("run_id") or result.get("id")
+            status = result.get("status", "")
+        else:
+            run_id = getattr(result, "run_id", None) or getattr(result, "id", None)
+            status = getattr(result, "status", "")
+        # Poll until completed or failed
+        if status not in ("completed", "failed", "error"):
+            for _ in range(120):  # up to 10 minutes
+                await asyncio.sleep(5)
+                try:
+                    latest = await skyvern.get_task(run_id)
+                    if isinstance(latest, dict):
+                        status = latest.get("status", "")
+                    else:
+                        for method in ("model_dump", "dict"):
+                            fn = getattr(latest, method, None)
+                            if fn:
+                                latest = fn()
+                                break
+                        status = latest.get("status", "") if isinstance(latest, dict) else getattr(latest, "status", "")
+                    if status in ("completed", "failed", "error"):
+                        if isinstance(latest, dict):
+                            result = latest
+                        else:
+                            for method in ("model_dump", "dict"):
+                                fn = getattr(latest, method, None)
+                                if fn:
+                                    result = fn()
+                                    break
+                            if not isinstance(result, dict):
+                                result = vars(latest)
+                        break
+                except Exception:
+                    pass
+        # Final conversion
         if isinstance(result, dict):
             return result
         for method in ("model_dump", "dict"):
