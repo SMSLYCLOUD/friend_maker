@@ -136,6 +136,8 @@ class CampaignExecutor:
         """Search for or discover users based on campaign targeting settings."""
         targeting = campaign.targeting
         
+        ref_images = self.load_reference_images()
+        
         # 1. Check if we need AI Strategic Planning
         if not targeting.get("sources") and self.planner and campaign.ai_instructions:
             self.logger.info("No sources defined. Triggering AI Strategic Planning...")
