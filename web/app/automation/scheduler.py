@@ -5,14 +5,13 @@ from datetime import datetime
 from typing import Dict, Optional, List
 from app.database.repository import Repository
 from app.automation.executor import CampaignExecutor
-from app.platforms.instagram import InstagramAdapter
+from app.platforms.skyvern_adapter import SkyvernAdapter
 from app.ai.openrouter_manager import OpenRouterManager
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
 from app.ai.planner import CampaignPlanner
 from app.memory.conversation_memory import get_scheduled_action_manager
 from app.config import settings
-from playwright.async_api import async_playwright
 
 class Scheduler:
     def __init__(self):
@@ -30,9 +29,7 @@ class Scheduler:
 
     async def start(self):
         self.running = True
-        self.logger.info("Scheduler started. Launching Playwright browser instance...")
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=True)
+        self.logger.info("Scheduler started (Skyvern AI browser automation).")
         
         # Start scheduled action processor
         self.scheduled_task = asyncio.create_task(self._process_scheduled_actions())
@@ -45,10 +42,6 @@ class Scheduler:
         for task in self.tasks.values():
             task.cancel()
         self.tasks.clear()
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
         self.logger.info("Scheduler stopped.")
 
     async def start_campaign(self, campaign_id: str, user_id: str):
@@ -101,46 +94,19 @@ class Scheduler:
                 del self.tasks[campaign_id]
 
     async def _run_account_agent(self, campaign_id: str, account_id: str, user_id: str, repo: Repository):
-        """Runs a single agent in the swarm."""
+        """Runs a single agent in the swarm using Skyvern AI browser automation."""
         account = repo.get_account(account_id, user_id)
         if not account:
             self.logger.error(f"Account {account_id} not found. Agent skipped.")
             return
 
-        context = None
         try:
-            if not self.browser:
-                self.logger.error("Browser is not initialized.")
-                return
-
-            context = await self.browser.new_context()
-            page = await context.new_page()
-
-            if account.platform.lower() == "instagram":
-                adapter = InstagramAdapter(page)
-            elif account.platform.lower() == "twitter":
-                from app.platforms.twitter import TwitterAdapter
-                adapter = TwitterAdapter(page)
-            elif account.platform.lower() == "facebook":
-                from app.platforms.facebook import FacebookAdapter
-                adapter = FacebookAdapter(page)
-            elif account.platform.lower() == "linkedin":
-                from app.platforms.linkedin import LinkedInAdapter
-                adapter = LinkedInAdapter(page)
-            elif account.platform.lower() == "tiktok":
-                from app.platforms.tiktok import TiktokAdapter
-                adapter = TiktokAdapter(page)
-            else:
-                self.logger.error(f"Platform {account.platform} not supported for swarm agent.")
-                return
-
+            adapter = SkyvernAdapter(platform=account.platform)
             executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
             await executor.run_campaign(campaign_id, user_id)
 
         except Exception as e:
             self.logger.error(f"Swarm Agent [{account.username}] crashed: {e}")
-        finally:
-            if context: await context.close()
 
     async def _process_scheduled_actions(self):
         """Background task to process scheduled actions"""
@@ -200,40 +166,13 @@ class Scheduler:
                             created_at=current_time
                         )
                         
-                        # Execute the campaign (single action)
+                        # Execute the campaign (single action) using Skyvern
                         from app.automation.executor import CampaignExecutor
-                        from app.platforms.instagram import InstagramAdapter
-                        from app.platforms.tiktok import TiktokAdapter
-                        from app.platforms.facebook import FacebookAdapter
-                        from app.platforms.twitter import TwitterAdapter
-                        from app.platforms.linkedin import LinkedInAdapter
+                        from app.platforms.skyvern_adapter import SkyvernAdapter
                         
-                        # Get the appropriate adapter
-                        adapter_map = {
-                            'instagram': InstagramAdapter,
-                            'tiktok': TiktokAdapter,
-                            'facebook': FacebookAdapter,
-                            'twitter': TwitterAdapter,
-                            'linkedin': LinkedInAdapter
-                        }
-                        
-                        AdapterClass = adapter_map.get(account.platform.lower())
-                        if not AdapterClass:
-                            self.logger.error(f"No adapter for platform: {account.platform}")
-                            continue
-                            
-                        # We need a browser context - reuse the scheduler's browser if available
-                        if self.browser:
-                            context = await self.browser.new_context()
-                            page = await context.new_page()
-                            adapter = AdapterClass(page)
-                            
-                            executor = CampaignExecutor(repo, adapter)
-                            await executor.run_campaign(temp_campaign.id, action_info['user_id'])
-                            
-                            await context.close()
-                        else:
-                            self.logger.error("Browser not available for scheduled action")
+                        adapter = SkyvernAdapter(platform=account.platform)
+                        executor = CampaignExecutor(repo, adapter)
+                        await executor.run_campaign(temp_campaign.id, action_info['user_id'])
                             
                     except Exception as e:
                         self.logger.error(f"Error processing scheduled action {action_info['id']}: {e}")
