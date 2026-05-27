@@ -282,7 +282,7 @@ async def vnc_social_login(
     return {
         "vnc_url": "http://153.75.247.117:6082/vnc.html",
         "platform": account.platform,
-        "message": f"Open VNC and sign in to {account.platform}. Cookies will be captured automatically."
+        "message": f"Open VNC to {account.platform} and sign in. Used for OTP/CAPTCHA — Skyvern handles automation."
     }
 
 @app.get("/api/accounts/{account_id}/vnc-session-status")
