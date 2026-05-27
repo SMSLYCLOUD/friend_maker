@@ -30,11 +30,14 @@ class SkyvernAdapter(PlatformAdapter):
         if extraction_schema:
             kwargs["data_extraction_schema"] = extraction_schema
         result = await skyvern.run_task(**kwargs)
-        if hasattr(result, "__dict__"):
-            return result.__dict__
-        if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return result if isinstance(result, dict) else {}
+        # Convert to dict regardless of Pydantic version
+        if isinstance(result, dict):
+            return result
+        for method in ("model_dump", "dict"):
+            fn = getattr(result, method, None)
+            if fn:
+                return fn()
+        return vars(result)
 
     async def authenticate(
         self,
@@ -54,7 +57,8 @@ class SkyvernAdapter(PlatformAdapter):
             prompt += ". Check if I am already logged in by looking for a profile icon or avatar."
 
             task = await self._run_task(prompt=prompt, url=home_url)
-            return task.get("status") in ("completed", "created")
+            status = task.get("status") if isinstance(task, dict) else getattr(task, "status", "")
+            return status in ("completed", "created")
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
             return False
