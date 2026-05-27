@@ -24,6 +24,8 @@ class SkyvernAdapter(PlatformAdapter):
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
         import asyncio
+        # Delay between tasks to avoid rate limiting
+        await asyncio.sleep(15)
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=SKYVERN_API_KEY)
         kwargs = {"prompt": prompt}
         if url:
