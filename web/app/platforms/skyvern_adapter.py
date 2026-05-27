@@ -24,58 +24,69 @@ class SkyvernAdapter(PlatformAdapter):
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
         import asyncio
-        # Delay between tasks to avoid rate limiting
-        await asyncio.sleep(15)
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=SKYVERN_API_KEY)
         kwargs = {"prompt": prompt}
         if url:
             kwargs["url"] = url
         if extraction_schema:
             kwargs["data_extraction_schema"] = extraction_schema
-        result = await skyvern.run_task(**kwargs)
-        if isinstance(result, dict):
-            run_id = result.get("run_id") or result.get("id")
-            status = result.get("status", "")
-        else:
-            run_id = getattr(result, "run_id", None) or getattr(result, "id", None)
-            status = getattr(result, "status", "")
-        # Poll until completed or failed
-        if status not in ("completed", "failed", "error"):
-            for _ in range(120):  # up to 10 minutes
-                await asyncio.sleep(5)
-                try:
-                    latest = await skyvern.get_task(run_id)
-                    if isinstance(latest, dict):
-                        status = latest.get("status", "")
-                    else:
-                        for method in ("model_dump", "dict"):
-                            fn = getattr(latest, method, None)
-                            if fn:
-                                latest = fn()
+        last_error = None
+        for attempt in range(6):
+            try:
+                if attempt > 0:
+                    delay = min(30 * (2 ** (attempt - 1)), 300)
+                    logger.info(f"Retry attempt {attempt} after {delay}s delay")
+                    await asyncio.sleep(delay)
+                result = await skyvern.run_task(**kwargs)
+                if isinstance(result, dict):
+                    run_id = result.get("run_id") or result.get("id")
+                    status = result.get("status", "")
+                else:
+                    run_id = getattr(result, "run_id", None) or getattr(result, "id", None)
+                    status = getattr(result, "status", "")
+                if status not in ("completed", "failed", "error"):
+                    for _ in range(120):
+                        await asyncio.sleep(5)
+                        try:
+                            latest = await skyvern.get_task(run_id)
+                            if isinstance(latest, dict):
+                                status = latest.get("status", "")
+                            else:
+                                for method in ("model_dump", "dict"):
+                                    fn = getattr(latest, method, None)
+                                    if fn:
+                                        latest = fn()
+                                        break
+                                status = latest.get("status", "") if isinstance(latest, dict) else getattr(latest, "status", "")
+                            if status in ("completed", "failed", "error"):
+                                if isinstance(latest, dict):
+                                    result = latest
+                                else:
+                                    for method in ("model_dump", "dict"):
+                                        fn = getattr(latest, method, None)
+                                        if fn:
+                                            result = fn()
+                                            break
+                                    if not isinstance(result, dict):
+                                        result = vars(latest)
                                 break
-                        status = latest.get("status", "") if isinstance(latest, dict) else getattr(latest, "status", "")
-                    if status in ("completed", "failed", "error"):
-                        if isinstance(latest, dict):
-                            result = latest
-                        else:
-                            for method in ("model_dump", "dict"):
-                                fn = getattr(latest, method, None)
-                                if fn:
-                                    result = fn()
-                                    break
-                            if not isinstance(result, dict):
-                                result = vars(latest)
-                        break
-                except Exception:
-                    pass
-        # Final conversion
-        if isinstance(result, dict):
-            return result
-        for method in ("model_dump", "dict"):
-            fn = getattr(result, method, None)
-            if fn:
-                return fn()
-        return vars(result)
+                        except Exception:
+                            pass
+                if isinstance(result, dict):
+                    return result
+                for method in ("model_dump", "dict"):
+                    fn = getattr(result, method, None)
+                    if fn:
+                        return fn()
+                return vars(result)
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                if "429" in error_str or "rate" in error_str.lower() or "RateLimit" in error_str:
+                    logger.warning(f"Rate limited on attempt {attempt + 1}, backing off")
+                    continue
+                raise
+        raise last_error or Exception("All retry attempts exhausted")
 
     async def authenticate(
         self,
