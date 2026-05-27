@@ -28,9 +28,10 @@ class SkyvernAdapter(PlatformAdapter):
     ):
         self.platform = platform.lower()
         self.platform_name = platform.lower()
+        # Default to self-hosted Skyvern server
         self._skyvern = skyvern_instance
-        self._base_url = skyvern_base_url
-        self._api_key = skyvern_api_key
+        self._base_url = skyvern_base_url or os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
+        self._api_key = skyvern_api_key or os.getenv("SKYVERN_API_KEY", "")
         self._browser = None
         self._page = None
         self._initialized = False
@@ -42,13 +43,10 @@ class SkyvernAdapter(PlatformAdapter):
         from skyvern import Skyvern
 
         if self._skyvern is None:
-            if self._base_url:
-                self._skyvern = Skyvern(
-                    base_url=self._base_url,
-                    api_key=self._api_key or os.getenv("SKYVERN_API_KEY", ""),
-                )
-            else:
-                self._skyvern = Skyvern.local()
+            self._skyvern = Skyvern(
+                base_url=self._base_url,
+                api_key=self._api_key,
+            )
 
         self._browser = await self._skyvern.launch_cloud_browser()
         self._page = await self._browser.get_working_page()
