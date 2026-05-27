@@ -29,8 +29,12 @@ class SkyvernAdapter(PlatformAdapter):
             kwargs["url"] = url
         if extraction_schema:
             kwargs["data_extraction_schema"] = extraction_schema
-        task = await skyvern.run_task(**kwargs)
-        return task
+        result = await skyvern.run_task(**kwargs)
+        if hasattr(result, "__dict__"):
+            return result.__dict__
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        return result if isinstance(result, dict) else {}
 
     async def authenticate(
         self,
@@ -50,7 +54,7 @@ class SkyvernAdapter(PlatformAdapter):
             prompt += ". Check if I am already logged in by looking for a profile icon or avatar."
 
             task = await self._run_task(prompt=prompt, url=home_url)
-            return task.get("status") == "completed"
+            return task.get("status") in ("completed", "created")
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
             return False
@@ -77,7 +81,7 @@ class SkyvernAdapter(PlatformAdapter):
                     },
                 },
             )
-            data = task.get("extracted_data", {})
+            data = task.get("output", {})
             users = data.get("users", []) if isinstance(data, dict) else []
             for item in users[:limit]:
                 results.append(
@@ -113,7 +117,7 @@ class SkyvernAdapter(PlatformAdapter):
                     },
                 },
             )
-            data = task.get("extracted_data", {})
+            data = task.get("output", {})
             users = data.get("users", []) if isinstance(data, dict) else []
             for item in users[:limit]:
                 results.append(
@@ -179,7 +183,7 @@ class SkyvernAdapter(PlatformAdapter):
                     },
                 },
             )
-            data = task.get("extracted_data", {})
+            data = task.get("output", {})
             users = data.get("users", []) if isinstance(data, dict) else []
             for item in users[:limit]:
                 results.append(
@@ -215,7 +219,7 @@ class SkyvernAdapter(PlatformAdapter):
                     },
                 },
             )
-            data = task.get("extracted_data", {})
+            data = task.get("output", {})
             users = data.get("users", []) if isinstance(data, dict) else []
             for item in users[:limit]:
                 results.append(
@@ -250,7 +254,7 @@ class SkyvernAdapter(PlatformAdapter):
                     },
                 },
             )
-            data = task.get("extracted_data", {})
+            data = task.get("output", {})
             comments = data.get("comments", []) if isinstance(data, dict) else []
             return comments[:limit]
         except Exception as e:
@@ -287,7 +291,7 @@ class SkyvernAdapter(PlatformAdapter):
                     },
                 },
             )
-            data = task.get("extracted_data", {})
+            data = task.get("output", {})
             posts = data.get("posts", []) if isinstance(data, dict) else []
             return posts[:limit]
         except Exception as e:
