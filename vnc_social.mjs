@@ -51,7 +51,7 @@ const PLATFORMS = {
 let platform = process.argv.includes("--platform") ? process.argv[process.argv.indexOf("--platform") + 1] : "gmail";
 const email = process.argv.includes("--email") ? process.argv[process.argv.indexOf("--email") + 1] : null;
 let accountId = process.argv.includes("--account-id") ? process.argv[process.argv.indexOf("--account-id") + 1] : null;
-const isDesktop = process.argv.includes("--desktop");
+const isDesktop = !process.argv.includes("--mobile");
 
 let cfg = PLATFORMS[platform] || PLATFORMS.gmail;
 
