@@ -631,7 +631,7 @@ EDITABLE_ENV_VARS = {
     "SKYVERN_INTER_TASK_DELAY",
 }
 
-ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", ".env")
+ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
 ENV_FILE_PATH = os.path.normpath(ENV_FILE_PATH)
 
 

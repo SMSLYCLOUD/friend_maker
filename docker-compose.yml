@@ -117,6 +117,7 @@ services:
       - cookies:/app/cookies
       - scratch:/app/scratch
       - uploads:/app/uploads
+      - ./.env:/app/.env
     env_file:
       - ./.env
     environment:
