@@ -56,7 +56,10 @@ CREATE TABLE IF NOT EXISTS targets (
     profile_json TEXT,
     ai_score REAL,
     status TEXT DEFAULT 'pending',
-    processed_at INTEGER
+    processed_at INTEGER,
+    comment_id TEXT,
+    post_url TEXT,
+    source_post_url TEXT
 );
 CREATE TABLE IF NOT EXISTS action_logs (
     id TEXT PRIMARY KEY,

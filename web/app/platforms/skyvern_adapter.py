@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Optional, List, Dict, Any
 
 from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
@@ -10,6 +11,12 @@ logger = logging.getLogger("SkyvernAdapter")
 
 SKYVERN_BASE_URL = os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
 SKYVERN_API_KEY = os.getenv("SKYVERN_API_KEY", "")
+
+# Minimum seconds between consecutive Skyvern tasks to avoid 429 rate limits
+INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "90"))
+
+# Timestamp of last completed Skyvern task (module-level for adapter instances)
+_last_task_time: float = 0.0
 
 
 class SkyvernAdapter(PlatformAdapter):
@@ -21,9 +28,19 @@ class SkyvernAdapter(PlatformAdapter):
         self.platform = platform.lower()
         self.platform_name = platform.lower()
 
+    async def _inter_task_wait(self):
+        """Wait the minimum interval between tasks to stay under rate limits."""
+        global _last_task_time
+        elapsed = time.monotonic() - _last_task_time
+        if elapsed < INTER_TASK_DELAY:
+            wait = INTER_TASK_DELAY - elapsed
+            logger.info(f"Rate-limit guard: sleeping {wait:.0f}s before next task")
+            await asyncio.sleep(wait)
+
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
         import asyncio
+        await self._inter_task_wait()
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=SKYVERN_API_KEY)
         kwargs = {"prompt": prompt}
         if url:
@@ -34,7 +51,7 @@ class SkyvernAdapter(PlatformAdapter):
         for attempt in range(6):
             try:
                 if attempt > 0:
-                    delay = min(30 * (2 ** (attempt - 1)), 300)
+                    delay = min(60 * (2 ** (attempt - 1)), 600)
                     logger.info(f"Retry attempt {attempt} after {delay}s delay")
                     await asyncio.sleep(delay)
                 result = await skyvern.run_task(**kwargs)
@@ -72,6 +89,7 @@ class SkyvernAdapter(PlatformAdapter):
                                 break
                         except Exception:
                             pass
+                _last_task_time = time.monotonic()
                 if isinstance(result, dict):
                     return result
                 for method in ("model_dump", "dict"):
@@ -314,11 +332,14 @@ class SkyvernAdapter(PlatformAdapter):
             logger.error(f"Get post comments on {self.platform} failed: {e}")
             return []
 
-    async def reply_to_comment(self, comment_id: str, message: str) -> ActionResult:
+    async def reply_to_comment(self, comment_id: str, message: str, post_url: Optional[str] = None) -> ActionResult:
         try:
-            await self._run_task(
-                prompt=f"Find the comment with id '{comment_id}', click reply, type '{message}', and submit.",
-            )
+            prompt = f"Reply '{message}' to the comment by user '{comment_id}'"
+            url = post_url
+            if url:
+                prompt += f" on the post at {url}"
+            prompt += ". Find the comment in the comment thread, click the reply button, type the message, and submit it."
+            await self._run_task(prompt=prompt, url=url)
             return ActionResult(success=True, action_type="reply_comment")
         except Exception as e:
             return ActionResult(success=False, action_type="reply_comment", error=str(e))

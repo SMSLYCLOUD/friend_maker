@@ -171,6 +171,7 @@ class CampaignExecutor:
         self.logger.info(f"Executing discovery strategy: {strategy} across {len(sources)} sources")
 
         users = []
+        post_url_for_source = {}
         for source in sources:
             if not self.running: break
             
@@ -183,6 +184,7 @@ class CampaignExecutor:
                     new_users = await self.adapter.get_group_members(source, limit=20)
                 elif strategy == "post_auditing":
                     new_users = await self.adapter.get_post_commenters(source, limit=20)
+                    post_url_for_source[source] = source
                 elif strategy == "follower_mining":
                     new_users = await self.adapter.get_followers(source, limit=20)
                 else:
@@ -194,13 +196,15 @@ class CampaignExecutor:
                 self.logger.error(f"Failed to comb {source}: {e}")
 
         for u in users:
-            # Add to DB
+            source_post = post_url_for_source.get(u.platform_id, None)
             t = Target(
                 id=f"{campaign.id}_{u.platform_id}",
+                user_id=self.user_id,
                 campaign_id=campaign.id,
                 platform_user_id=u.platform_id,
                 username=u.username,
-                status="pending"
+                status="pending",
+                source_post_url=source_post
             )
             self.repo.add_target(t)
 
@@ -272,8 +276,8 @@ class CampaignExecutor:
             success = res.success
             error = res.error
         elif action_type == "reply_comment":
-            # Reply to a specific comment (would need comment_id from targeting)
-            comment_id = getattr(target, 'comment_id', None)
+            comment_id = getattr(target, 'comment_id', None) or target.platform_user_id
+            post_url = getattr(target, 'source_post_url', None) or getattr(target, 'post_url', None)
             if not comment_id:
                 self.logger.warning("No comment_id specified for reply_comment action")
                 success = False
@@ -289,7 +293,7 @@ class CampaignExecutor:
                         bot_instructions=self.bot_instructions,
                         ref_images=ref_images
                     )
-                res = await self.adapter.reply_to_comment(comment_id, reply_text)
+                res = await self.adapter.reply_to_comment(comment_id, reply_text, post_url=post_url)
                 success = res.success
                 error = res.error
 

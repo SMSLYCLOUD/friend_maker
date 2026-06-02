@@ -73,6 +73,15 @@ def init_db():
                     if 'user_id' not in columns:
                         conn.execute(text("ALTER TABLE targets ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"))
                         logging.info("Migration: Added user_id column to targets.")
+                    if 'comment_id' not in columns:
+                        conn.execute(text("ALTER TABLE targets ADD COLUMN comment_id TEXT"))
+                        logging.info("Migration: Added comment_id column to targets.")
+                    if 'post_url' not in columns:
+                        conn.execute(text("ALTER TABLE targets ADD COLUMN post_url TEXT"))
+                        logging.info("Migration: Added post_url column to targets.")
+                    if 'source_post_url' not in columns:
+                        conn.execute(text("ALTER TABLE targets ADD COLUMN source_post_url TEXT"))
+                        logging.info("Migration: Added source_post_url column to targets.")
                     conn.commit()
 
                 # --- action_logs table migrations ---

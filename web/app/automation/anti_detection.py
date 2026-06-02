@@ -6,10 +6,10 @@ from typing import Callable
 
 class AntiDetection:
     def __init__(self):
-        self.min_delay = 3.0
-        self.max_delay = 12.0
+        self.min_delay = 30.0
+        self.max_delay = 90.0
         self.actions_this_session = 0
-        self.max_per_session = 25
+        self.max_per_session = 10
         self.logger = logging.getLogger("AntiDetection")
 
     async def _cancellable_sleep(self, seconds: float, is_running: Callable[[], bool]):
@@ -34,15 +34,14 @@ class AntiDetection:
 
     async def take_break(self, is_running: Callable[[], bool] = lambda: True):
         """Take a long break."""
-        # For testing/demo, we might want shorter breaks, but here is the logic.
-        mins = random.randint(15, 45)
+        mins = random.randint(30, 60)
         self.logger.info(f"Taking a break for {mins} minutes...")
         await self._cancellable_sleep(mins * 60, is_running)
         self.actions_this_session = 0
 
     async def trigger_cooldown(self, is_running: Callable[[], bool] = lambda: True):
         """Trigger an emergency cool down due to errors."""
-        wait_time = 300 # 5 minutes
+        wait_time = 600  # 10 minutes
         self.logger.warning(f"Triggering cooldown for {wait_time}s due to errors...")
         await self._cancellable_sleep(wait_time, is_running)
 

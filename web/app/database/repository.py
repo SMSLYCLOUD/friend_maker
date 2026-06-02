@@ -151,14 +151,16 @@ class Repository:
     # --- Target Operations ---
     def add_target(self, target: Target):
         query = text("""
-        INSERT INTO targets (id, user_id, campaign_id, platform_user_id, username, profile_json, status)
-        VALUES (:id, :user_id, :campaign_id, :platform_user_id, :username, :profile_json, :status)
+        INSERT INTO targets (id, user_id, campaign_id, platform_user_id, username, profile_json, status, comment_id, post_url, source_post_url)
+        VALUES (:id, :user_id, :campaign_id, :platform_user_id, :username, :profile_json, :status, :comment_id, :post_url, :source_post_url)
         ON CONFLICT DO NOTHING
         """)
         self.session.execute(query, {
             "id": target.id, "user_id": target.user_id, "campaign_id": target.campaign_id,
             "platform_user_id": target.platform_user_id, "username": target.username,
-            "profile_json": target.profile_json, "status": target.status
+            "profile_json": target.profile_json, "status": target.status,
+            "comment_id": target.comment_id, "post_url": target.post_url,
+            "source_post_url": target.source_post_url
         })
         self.session.commit()
 

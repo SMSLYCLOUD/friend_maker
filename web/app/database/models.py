@@ -50,6 +50,9 @@ class Target(BaseModel):
     ai_score: Optional[float] = None
     status: str = "pending"
     processed_at: Optional[int] = None
+    comment_id: Optional[str] = None
+    post_url: Optional[str] = None
+    source_post_url: Optional[str] = None
 
 class ActionLog(BaseModel):
     id: str
