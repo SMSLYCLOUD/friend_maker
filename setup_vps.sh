@@ -45,7 +45,7 @@ fi
 # Inject Public IP into .env
 sed -i "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8010|" .env
 sed -i "s|FRONTEND_URL=.*|FRONTEND_URL=http://$PUBLIC_IP|" .env
-sed -i "s|CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=http://$PUBLIC_IP,http://localhost:3000|" .env
+sed -i "s|CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=http://$PUBLIC_IP,http://$PUBLIC_IP:3000,http://localhost:3000,http://localhost|" .env
 
 # Ensure rate-limit and Skyvern env vars exist (in case .env.example is older)
 grep -q "^SKYVERN_INTER_TASK_DELAY=" .env || echo "SKYVERN_INTER_TASK_DELAY=120" >> .env
