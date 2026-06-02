@@ -1,4 +1,88 @@
 services:
+  # ── Skyvern AI Browser Automation ──────────────────────────
+  skyvern-postgres:
+    image: postgres:14-alpine
+    container_name: socialgrowthai-skyvern-db
+    restart: always
+    volumes:
+      - skyvern-pgdata:/var/lib/postgresql/data
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=skyvern
+      - POSTGRES_PASSWORD=skyvern
+      - POSTGRES_DB=skyvern
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skyvern"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - social-network
+
+  skyvern:
+    image: public.ecr.aws/skyvern/skyvern:latest
+    container_name: socialgrowthai-skyvern
+    restart: on-failure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"   # Skyvern API
+      - "6080:6080"   # Skyvern VNC
+    volumes:
+      - skyvern-artifacts:/data/artifacts
+      - skyvern-videos:/data/videos
+      - skyvern-har:/data/har
+      - skyvern-log:/data/log
+      - skyvern-config:/app/.skyvern
+    env_file:
+      - ./.env
+    environment:
+      - DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@skyvern-postgres:5432/skyvern
+      - BROWSER_STREAMING_MODE=cdp
+      - BROWSER_TYPE=chromium-headful
+      - ENABLE_CODE_BLOCK=true
+      # LLM via OpenRouter
+      - ENABLE_OPENROUTER=true
+      - LLM_KEY=OPENROUTER
+      # Cap LLM-driven steps to avoid OpenRouter free-tier 429s
+      - MAX_STEPS_PER_RUN=5
+      - MAX_RETRIES_PER_STEP=2
+    depends_on:
+      skyvern-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/heartbeat', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
+    networks:
+      - social-network
+
+  skyvern-ui:
+    image: public.ecr.aws/skyvern/skyvern-ui:latest
+    container_name: socialgrowthai-skyvern-ui
+    restart: on-failure
+    ports:
+      - "8080:8080"   # Skyvern UI
+      - "9090:9090"   # Artifacts API
+    volumes:
+      - skyvern-artifacts:/data/artifacts
+      - skyvern-videos:/data/videos
+      - skyvern-har:/data/har
+      - skyvern-config:/app/.skyvern
+    environment:
+      - VITE_BROWSER_STREAMING_MODE=cdp
+      - VITE_API_BASE_URL=http://localhost:8000/api/v1
+      - VITE_WSS_BASE_URL=ws://localhost:8000/api/v1
+      - VITE_ARTIFACT_API_BASE_URL=http://localhost:9090
+    depends_on:
+      skyvern:
+        condition: service_healthy
+    networks:
+      - social-network
+
+  # ── VNC browser for OTP / CAPTCHA manual intervention ─────
   vnc-social:
     build:
       context: ./web
@@ -17,6 +101,25 @@ services:
       - social-network
     restart: always
 
+  vnc-social-desktop:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.backend
+    container_name: socialgrowthai-vnc-social-desktop
+    command: ["node", "vnc_social.mjs", "--desktop"]
+    ports:
+      - "6101:6100"
+      - "6083:6082"
+    volumes:
+      - cookies:/app/cookies
+    environment:
+      - VNC_PORT=5902
+      - NOVNC_PORT=6082
+    networks:
+      - social-network
+    restart: always
+
+  # ── Python backend ────────────────────────────────────────
   python-backend:
     build:
       context: ./web
@@ -32,13 +135,15 @@ services:
       - scratch:/app/scratch
       - uploads:/app/uploads
     env_file:
-      - ./web/.env
+      - ./.env
     environment:
       - DATABASE_URL=sqlite:///data/social_growth.db
+      - SKYVERN_API_URL=http://skyvern:8000
     networks:
       - social-network
     restart: always
 
+  # ── Next.js frontend ─────────────────────────────────────
   frontend:
     build:
       context: ./web
@@ -65,3 +170,9 @@ volumes:
   cookies:
   scratch:
   uploads:
+  skyvern-pgdata:
+  skyvern-artifacts:
+  skyvern-videos:
+  skyvern-har:
+  skyvern-log:
+  skyvern-config:
