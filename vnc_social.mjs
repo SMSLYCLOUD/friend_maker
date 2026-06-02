@@ -34,7 +34,7 @@ const PLATFORMS = {
   tiktok: {
     loginUrl: "https://www.tiktok.com/login/phone-or-email/email",
     loginPaths: ["login"],
-    authCookies: ["sessionid", "sid_tt"],
+    authCookies: ["sessionid", "sid_tt", "passport_csrf_token"],
   },
   substack: {
     loginUrl: "https://substack.com/sign-in",
@@ -158,13 +158,19 @@ async function waitForLogin() {
       const navigatedAway = !isStillOnLogin && isOnPlatform;
       const timedOut = checkCount > 150;
 
+      const cookies = await ctx.cookies();
+      const hasAuth = cookies.some(c => cfg.authCookies.includes(c.name));
+
+      if (hasAuth) {
+        await doCapture();
+        break;
+      }
+
       if (navigatedAway || timedOut) {
-        const cookies = await ctx.cookies();
-        const hasAuth = cookies.some(c => cfg.authCookies.includes(c.name));
-        if (hasAuth || timedOut) {
-          if (hasAuth) await doCapture();
-          break;
+        if (timedOut) {
+          console.log(`[WAIT] Timed out. URL: ${currentUrl}`);
         }
+        break;
       }
     } catch (error) {
       console.error("[WAIT] Error checking login status:", error.message);
