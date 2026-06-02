@@ -101,24 +101,6 @@ services:
       - social-network
     restart: always
 
-  vnc-social-desktop:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: socialgrowthai-vnc-social-desktop
-    command: ["node", "vnc_social.mjs", "--desktop"]
-    ports:
-      - "6101:6100"
-      - "6083:6082"
-    volumes:
-      - cookies:/app/cookies
-    environment:
-      - VNC_PORT=5902
-      - NOVNC_PORT=6082
-    networks:
-      - social-network
-    restart: always
-
   # ── Python backend ────────────────────────────────────────
   python-backend:
     build:
