@@ -10,7 +10,7 @@ from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 logger = logging.getLogger("SkyvernAdapter")
 
 SKYVERN_BASE_URL = os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
-SKYVERN_API_KEY = os.getenv("SKYVERN_API_KEY", "")
+INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "90"))
 
 # Minimum seconds between consecutive Skyvern tasks to avoid 429 rate limits
 INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "90"))
@@ -41,7 +41,8 @@ class SkyvernAdapter(PlatformAdapter):
         from skyvern import Skyvern
         import asyncio
         await self._inter_task_wait()
-        skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=SKYVERN_API_KEY)
+        api_key = os.getenv("SKYVERN_API_KEY", "")
+        skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
         kwargs = {"prompt": prompt}
         if url:
             kwargs["url"] = url
