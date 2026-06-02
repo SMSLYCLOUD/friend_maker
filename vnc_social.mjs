@@ -128,12 +128,15 @@ async function doCapture() {
   try {
     const cookies = await ctx.cookies();
     const platformDomain = platform === "gmail" ? "google" : platform;
-    const filtered = cookies.filter(c => c.domain?.includes(platformDomain) || c.name === platform);
+    const filtered = cookies.filter(c => {
+      const d = (c.domain || "").toLowerCase();
+      return d.includes(platformDomain) || d.includes(`${platformDomain}.com`) || d.includes(`.${platformDomain}.`);
+    });
     const file = getCookieFile();
-    fs.writeFileSync(file, JSON.stringify(filtered, null, 2));
+    fs.writeFileSync(file, JSON.stringify(filtered.length ? filtered : cookies, null, 2));
     loginDetected = true;
-    console.log(`[AUTO] ${platform} login detected! Captured ${filtered.length} cookies -> ${file}`);
-    return filtered.length;
+    console.log(`[AUTO] ${platform} login detected! Captured ${filtered.length || cookies.length} cookies -> ${file}`);
+    return filtered.length || cookies.length;
   } catch (error) {
     console.error("[ERROR] Failed to capture cookies:", error.message);
     return null;
@@ -159,7 +162,11 @@ async function waitForLogin() {
       const timedOut = checkCount > 150;
 
       const cookies = await ctx.cookies();
-      const hasAuth = cookies.some(c => cfg.authCookies.includes(c.name));
+      const platformDomain = platform === "gmail" ? "google" : platform;
+      const hasAuth = cookies.some(c => {
+        const d = (c.domain || "").toLowerCase();
+        return cfg.authCookies.includes(c.name) || d.includes(platformDomain);
+      });
 
       if (hasAuth) {
         await doCapture();
