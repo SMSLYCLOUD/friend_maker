@@ -622,6 +622,110 @@ def update_global_settings(
         repo.update_setting(key, str(value))
     return {"status": "success"}
 
+
+# Whitelist of env vars the user is allowed to update from the UI.
+# Anything else in the request is silently dropped.
+EDITABLE_ENV_VARS = {
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+    "SKYVERN_INTER_TASK_DELAY",
+}
+
+ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", ".env")
+ENV_FILE_PATH = os.path.normpath(ENV_FILE_PATH)
+
+
+def _read_env_file() -> Dict[str, str]:
+    if not os.path.exists(ENV_FILE_PATH):
+        return {}
+    result: Dict[str, str] = {}
+    with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line.strip() or line.strip().startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            result[k.strip()] = v
+    return result
+
+
+def _write_env_file(env: Dict[str, str]) -> None:
+    with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    updated: Dict[str, str] = {}
+    new_lines: List[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("#") or "=" not in stripped or not stripped.strip():
+            new_lines.append(line)
+            continue
+        key = stripped.split("=", 1)[0].strip()
+        if key in EDITABLE_ENV_VARS and key in env:
+            new_lines.append(f"{key}={env[key]}\n")
+            updated[key] = env[key]
+        else:
+            new_lines.append(line)
+            if key:
+                updated[key] = stripped.split("=", 1)[1].rstrip("\n")
+    for key, value in env.items():
+        if key in EDITABLE_ENV_VARS and key not in updated:
+            new_lines.append(f"{key}={value}\n")
+    with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+
+def _restart_self() -> None:
+    """Restart the python-backend container so the new .env takes effect."""
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["docker", "compose", "restart", "python-backend"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as e:
+        logger.warning(f"Could not restart container: {e}")
+
+
+@app.post("/api/settings/env")
+def update_env(
+    data: Dict[str, Any],
+    user: dict = Depends(get_current_user),
+):
+    """Update editable env vars in .env, then restart python-backend."""
+    if not data:
+        raise HTTPException(status_code=400, detail="No data provided")
+    rejected = [k for k in data.keys() if k not in EDITABLE_ENV_VARS]
+    if rejected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only these env vars can be updated: {sorted(EDITABLE_ENV_VARS)}. Rejected: {rejected}",
+        )
+    current = _read_env_file()
+    current.update({k: str(v) for k, v in data.items()})
+    _write_env_file(current)
+    _restart_self()
+    return {"status": "ok", "updated": list(data.keys()), "restarting": True}
+
+
+@app.get("/api/settings/env")
+def get_env(
+    user: dict = Depends(get_current_user),
+):
+    """Return the editable env vars (masks the API key)."""
+    current = _read_env_file()
+    out: Dict[str, str] = {}
+    for k in EDITABLE_ENV_VARS:
+        v = current.get(k, "")
+        if k == "OPENROUTER_API_KEY" and v and v not in ("YOUR_OPENROUTER_KEY_HERE", ""):
+            out[k] = v[:8] + "..." + v[-4:] if len(v) > 12 else "***"
+        else:
+            out[k] = v
+    return out
+
 BOT_IMAGES_DIR = "uploads/bot_images"
 
 @app.post("/api/settings/upload-image")

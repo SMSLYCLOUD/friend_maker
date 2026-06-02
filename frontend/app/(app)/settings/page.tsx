@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { fetchSettings, updateSettings, fetchGlobalSettings, updateGlobalSettings, fetchBotImages, uploadBotImage, deleteBotImage, getImageUrl } from "@/lib/api";
+import { fetchSettings, updateSettings, fetchGlobalSettings, updateGlobalSettings, fetchBotImages, uploadBotImage, deleteBotImage, getImageUrl, updateEnvVars, fetchEnvVars } from "@/lib/api";
 import { Save, Smartphone, Shield, Globe, Loader2, MessageCircle, ArrowLeft, ImagePlus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [botImages, setBotImages] = useState<{filename: string; url: string}[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [envVars, setEnvVars] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadSettings();
@@ -23,10 +24,11 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const [userData, globalData, imgData] = await Promise.all([
+      const [userData, globalData, imgData, envData] = await Promise.all([
         fetchSettings(),
         fetchGlobalSettings().catch(() => ({})),
-        fetchBotImages().catch(() => ({ images: [] }))
+        fetchBotImages().catch(() => ({ images: [] })),
+        fetchEnvVars().catch(() => ({}))
       ]);
       if (Object.keys(userData).length > 0) {
         setSettings((prev: any) => ({ ...prev, ...userData }));
@@ -34,6 +36,10 @@ export default function SettingsPage() {
       if (Object.keys(globalData).length > 0) {
         setGlobalSettings(globalData);
         setSettings((prev: any) => ({ ...prev, ...globalData }));
+      }
+      if (envData) {
+        setSettings((prev: any) => ({ ...prev, ...envData }));
+        setEnvVars(envData);
       }
       if (imgData.images) setBotImages(imgData.images);
     } catch (err) {
@@ -59,8 +65,16 @@ export default function SettingsPage() {
           BOT_INSTRUCTIONS: settings.BOT_INSTRUCTIONS || ""
         })
       ]);
-      setMessage("Settings synchronized successfully.");
-      setTimeout(() => setMessage(""), 3000);
+      const envUpdate: Record<string, string> = {};
+      if (settings.OPENROUTER_API_KEY) envUpdate.OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY;
+      if (settings.OPENROUTER_MODEL) envUpdate.OPENROUTER_MODEL = settings.OPENROUTER_MODEL;
+      if (Object.keys(envUpdate).length) {
+        await updateEnvVars(envUpdate);
+        setMessage("Settings saved. Backend is restarting to apply env changes (~10s)...");
+      } else {
+        setMessage("Settings synchronized successfully.");
+      }
+      setTimeout(() => setMessage(""), 5000);
     } catch (err) {
       setMessage("Failed to save settings.");
     } finally {
@@ -173,6 +187,9 @@ export default function SettingsPage() {
                   className="w-full rounded-lg border border-gray-800 bg-black px-3 py-3 text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all touch-manipulation"
                   placeholder="sk-or-v1-..."
                 />
+                {envVars.OPENROUTER_API_KEY && (
+                  <p className="mt-1 text-[10px] text-emerald-400 font-mono">● active: {envVars.OPENROUTER_API_KEY}</p>
+                )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider">Default Timezone</label>

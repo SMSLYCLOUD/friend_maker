@@ -166,6 +166,27 @@ export async function updateSettings(data: any) {
   return res.json();
 }
 
+export async function updateEnvVars(data: Record<string, string>) {
+  const res = await fetch(`${API_URL}/api/settings/env`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to update env vars");
+  }
+  return res.json();
+}
+
+export async function fetchEnvVars() {
+  const res = await fetch(`${API_URL}/api/settings/env`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to fetch env vars");
+  return res.json();
+}
+
 export async function fetchGlobalSettings() {
   const res = await fetch(`${API_URL}/api/settings/admin`, {
     headers: authHeaders(),

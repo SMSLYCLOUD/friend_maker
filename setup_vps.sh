@@ -80,6 +80,11 @@ done
 SKYVERN_HEALTH=$(curl -s http://localhost:8000/api/v1/heartbeat 2>/dev/null || echo "down")
 echo "Skyvern heartbeat: $SKYVERN_HEALTH"
 
+# 8b. Auto-generate SKYVERN_API_KEY and write to .env
+echo "🔑 Auto-generating Skyvern API key..."
+chmod +x init_skyvern_key.sh
+sudo bash init_skyvern_key.sh || echo "⚠️  init_skyvern_key.sh failed (you may need to set SKYVERN_API_KEY manually)"
+
 # 9. Wait for backend
 echo "⏳ Waiting for backend..."
 MAX_RETRIES=30
