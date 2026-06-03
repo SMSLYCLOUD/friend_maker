@@ -146,6 +146,23 @@ class CampaignExecutor:
                 error = None
 
                 if action_type == "growth":
+                    # Classify before following
+                    if self.classifier:
+                        profile_data = {"username": handle, "bio": ""}
+                        try:
+                            profile_data = await self.adapter.get_user_profile(handle)
+                        except: pass
+                        analysis = await self.classifier.classify(
+                            profile_data, bot_instructions=self.bot_instructions,
+                            ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
+                        )
+                        if analysis.get("should_skip"):
+                            self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
+                            continue
+                        if analysis.get("match_score", 0) < 0.5:
+                            self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
+                            continue
+
                     res = await self.adapter.follow(handle)
                     success = res.success
                     error = res.error
@@ -156,6 +173,19 @@ class CampaignExecutor:
                         profile_data = await self.adapter.get_user_profile(handle)
                     except Exception as e:
                         self.logger.warning(f"Failed to scrape profile: {e}")
+
+                    # Classify before DMing
+                    if self.classifier:
+                        analysis = await self.classifier.classify(
+                            profile_data, bot_instructions=self.bot_instructions,
+                            ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
+                        )
+                        if analysis.get("should_skip"):
+                            self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
+                            continue
+                        if analysis.get("match_score", 0) < 0.5:
+                            self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
+                            continue
 
                     # Generate and send DM
                     msg = "Hello!"
@@ -178,6 +208,19 @@ class CampaignExecutor:
                         profile_data = await self.adapter.get_user_profile(handle)
                     except Exception as e:
                         self.logger.warning(f"Failed to scrape profile: {e}")
+
+                    # Classify before commenting
+                    if self.classifier:
+                        analysis = await self.classifier.classify(
+                            profile_data, bot_instructions=self.bot_instructions,
+                            ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
+                        )
+                        if analysis.get("should_skip"):
+                            self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
+                            continue
+                        if analysis.get("match_score", 0) < 0.5:
+                            self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
+                            continue
 
                     comment_text = "Great post!"
                     if self.generator:
@@ -430,7 +473,13 @@ class CampaignExecutor:
 
         # 1. Analyze (AI)
         if self.classifier:
-            analysis = await self.classifier.classify(profile_data, image_base64=image_base64, bot_instructions=self.bot_instructions, ref_images=ref_images)
+            analysis = await self.classifier.classify(
+                profile_data,
+                image_base64=image_base64,
+                bot_instructions=self.bot_instructions,
+                ref_images=ref_images,
+                campaign_instructions=campaign.ai_instructions or ""
+            )
             score = analysis.get("match_score", 0.0)
             should_skip = analysis.get("should_skip", False)
             skip_reason = analysis.get("skip_reason", "")
