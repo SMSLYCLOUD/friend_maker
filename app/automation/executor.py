@@ -149,6 +149,7 @@ class CampaignExecutor:
         ref_images = self.load_reference_images()
         
         PLATFORM_NAMES = {"tiktok", "instagram", "twitter", "x", "facebook", "linkedin", "youtube", "reddit"}
+        mined_sources = set(targeting.get("mined_sources", []))
         existing_sources = targeting.get("sources", [])
         real_sources = [s for s in existing_sources if s.lower().strip("@") not in PLATFORM_NAMES]
         
@@ -169,13 +170,13 @@ class CampaignExecutor:
             
             if target_accounts:
                 strategy = "follower_mining"
-                sources = target_accounts
+                sources = [s for s in target_accounts if s.lower().strip("@") not in PLATFORM_NAMES]
             elif group_types:
                 strategy = "group_combing"
-                sources = group_types
+                sources = [s for s in group_types if s.lower().strip("@") not in PLATFORM_NAMES]
             else:
                 strategy = "search"
-                sources = keywords
+                sources = [s for s in keywords if s.lower() not in PLATFORM_NAMES]
             
             # Update campaign targeting for persistence
             targeting["sources"] = sources
@@ -194,7 +195,14 @@ class CampaignExecutor:
         if not sources and "tags" in targeting:
             sources = targeting.get("tags", [])
 
-        self.logger.info(f"Executing discovery strategy: {strategy} across {len(sources)} sources")
+        # Skip sources that have already been mined
+        sources = [s for s in sources if s not in mined_sources]
+        
+        if not sources:
+            self.logger.info("All sources have been mined already. Campaign discovery complete.")
+            return
+
+        self.logger.info(f"Executing discovery strategy: {strategy} across {len(sources)} sources (skipped {len(mined_sources)} already mined)")
 
         users = []
         post_url_for_source = {}
@@ -221,6 +229,13 @@ class CampaignExecutor:
                 users.extend(new_users)
             except Exception as e:
                 self.logger.error(f"Failed to comb {source}: {e}")
+            
+            # Mark source as mined
+            mined_sources.add(source)
+            targeting["mined_sources"] = list(mined_sources)
+            import json
+            campaign.targeting_json = json.dumps(targeting)
+            self.repo.update_campaign(campaign)
 
         for u in users:
             source_post = post_url_for_source.get(u.platform_id, None)
