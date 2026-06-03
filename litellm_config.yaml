@@ -38,8 +38,9 @@ model_list:
   # ── Fallback 4: NVIDIA NIM (free tier) ──
   - model_name: skyvern-llm
     litellm_params:
-      model: nvidia/meta/llama-4-maverick-17b-128e-instruct
+      model: openai/meta/llama-4-maverick-17b-128e-instruct
       api_key: "os.environ/NVIDIA_API_KEY"
+      api_base: https://integrate.api.nvidia.com/v1
       rpm: 40
     model_info:
       id: nvidia-fallback
