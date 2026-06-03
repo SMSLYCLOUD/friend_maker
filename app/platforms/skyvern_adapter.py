@@ -121,14 +121,13 @@ class SkyvernAdapter(PlatformAdapter):
     ) -> bool:
         try:
             home_url = f"https://www.{self.platform}.com"
-            prompt = f"Navigate to {home_url}"
-            if session_data:
-                cookies = json.loads(session_data)
-                if isinstance(cookies, list):
-                    prompt += f" and inject these cookies: {json.dumps(cookies)}"
-                else:
-                    prompt += f" and inject this cookie: {json.dumps(cookies)}"
-            prompt += ". Check if I am already logged in by looking for a profile icon or avatar."
+            prompt = (
+                f"Navigate to {home_url} and check if I am logged in. "
+                f"Look for a profile icon, avatar, or username in the navigation bar. "
+                f"Do NOT click any login or sign-up buttons. "
+                f"Do NOT terminate early. "
+                f"Report whether I am logged in or not."
+            )
 
             task = await self._run_task(prompt=prompt, url=home_url)
             status = task.get("status") if isinstance(task, dict) else getattr(task, "status", "")
