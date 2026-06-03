@@ -88,7 +88,7 @@ export default function SettingsPage() {
         }
       }
       // Proxy env vars
-      const proxyKeys = ["SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD", "SKYVERN_LLM_KEY"];
+      const proxyKeys = ["SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD"];
       for (const key of proxyKeys) {
         if (settings[key] !== undefined && settings[key] !== "") {
           envUpdate[key] = settings[key];
@@ -447,21 +447,9 @@ export default function SettingsPage() {
               <span className="text-[10px] text-emerald-400 font-mono bg-emerald-400/10 px-2 py-0.5 rounded-full">ACTIVE</span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mb-4">Route Skyvern browser traffic through a residential proxy to bypass Cloudflare and anti-bot detection. Required for TikTok automation.</p>
+          <p className="text-xs text-gray-500 mb-4">Route Skyvern browser traffic through a residential proxy to bypass Cloudflare and anti-bot detection. Required for TikTok automation. LLM fallback is handled automatically via LiteLLM (Groq → OpenRouter → Google → SambaNova → NVIDIA).</p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Skyvern LLM Provider</label>
-              <select
-                value={settings.SKYVERN_LLM_KEY || "OPENROUTER"}
-                onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_KEY: e.target.value })}
-                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all"
-              >
-                <option value="OPENROUTER">OpenRouter (higher limits, recommended)</option>
-                <option value="GROQ">Groq (faster, lower limits)</option>
-              </select>
-              <p className="mt-1 text-[10px] text-gray-600">Provider Skyvern uses for browser automation LLM calls</p>
-            </div>
             <div>
               <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Proxy URL</label>
               <input

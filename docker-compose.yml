@@ -1,5 +1,29 @@
 services:
   # ── Skyvern AI Browser Automation ──────────────────────────
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: socialgrowthai-litellm
+    restart: on-failure
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-${OPENROUTER_API_KEY:-}}
+      - OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-${OPENROUTER_API_KEY:-}}
+      - GEMINI_API_KEY=${SKYVERN_LLM_GOOGLE_API_KEY:-}
+      - SAMBANOVA_API_KEY=${SKYVERN_LLM_SAMBANOVA_API_KEY:-}
+      - NVIDIA_API_KEY=${SKYVERN_LLM_NVIDIA_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:4000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - social-network
+
   skyvern-postgres:
     image: postgres:14-alpine
     container_name: socialgrowthai-skyvern-db
@@ -41,14 +65,13 @@ services:
       - BROWSER_STREAMING_MODE=cdp
       - BROWSER_TYPE=chromium-headful
       - ENABLE_CODE_BLOCK=true
-      # LLM providers — configurable via SKYVERN_LLM_KEY
-      - ENABLE_GROQ=true
-      - ENABLE_OPENROUTER=true
-      - LLM_KEY=${SKYVERN_LLM_KEY:-OPENROUTER}
-      - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-${OPENROUTER_API_KEY:-}}
-      - GROQ_MODEL=${SKYVERN_LLM_GROQ_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
-      - OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-${OPENROUTER_API_KEY:-}}
-      - OPENROUTER_MODEL=${SKYVERN_LLM_OPENROUTER_MODEL:-meta-llama/llama-4-maverick:free}
+      # LLM via LiteLLM proxy — dynamic fallback Groq→OpenRouter→Google→SambaNova→NVIDIA
+      - ENABLE_OPENAI_COMPATIBLE=true
+      - OPENAI_COMPATIBLE_MODEL_NAME=skyvern-llm
+      - OPENAI_COMPATIBLE_API_KEY=sk-dummy
+      - OPENAI_COMPATIBLE_API_BASE=http://litellm-proxy:4000/v1
+      - OPENAI_COMPATIBLE_SUPPORTS_VISION=true
+      - LLM_KEY=OPENAI_COMPATIBLE
       # Cap LLM-driven steps to avoid free-tier 429s
       - MAX_STEPS_PER_RUN=2
       - MAX_RETRIES_PER_STEP=0
@@ -57,6 +80,8 @@ services:
       - PORT=8000
     depends_on:
       skyvern-postgres:
+        condition: service_healthy
+      litellm-proxy:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8000/api/v1/heartbeat || (python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/heartbeat', timeout=5)\") || (python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/heartbeat', timeout=5)\")"]
