@@ -345,6 +345,54 @@ class Repository:
         self.session.execute(query, {"id": account_id, "user_id": user_id})
         self.session.commit()
 
+    # --- Contact Registry (cross-campaign dedup) ---
+
+    def has_been_contacted(self, user_id: str, platform: str, platform_user_id: str, action_type: str) -> bool:
+        """Check if a user has already been contacted for this action type on this platform."""
+        query = text("""
+            SELECT 1 FROM contact_registry 
+            WHERE user_id = :user_id AND platform = :platform 
+            AND platform_user_id = :platform_user_id AND action_type = :action_type 
+            LIMIT 1
+        """)
+        result = self.session.execute(query, {
+            "user_id": user_id, "platform": platform,
+            "platform_user_id": platform_user_id, "action_type": action_type
+        })
+        return result.fetchone() is not None
+
+    def register_contact(self, user_id: str, platform: str, platform_user_id: str, 
+                         username: str, action_type: str, campaign_id: str = None):
+        """Record that a user has been contacted for this action type."""
+        import time
+        query = text("""
+            INSERT OR IGNORE INTO contact_registry (id, user_id, platform, platform_user_id, username, action_type, campaign_id, contacted_at)
+            VALUES (:id, :user_id, :platform, :platform_user_id, :username, :action_type, :campaign_id, :contacted_at)
+        """)
+        self.session.execute(query, {
+            "id": f"cr_{user_id}_{platform}_{platform_user_id}_{action_type}",
+            "user_id": user_id, "platform": platform, "platform_user_id": platform_user_id,
+            "username": username, "action_type": action_type, "campaign_id": campaign_id,
+            "contacted_at": int(time.time())
+        })
+        self.session.commit()
+
+    def get_contacted_users(self, user_id: str, platform: str, action_type: str = None) -> list:
+        """Get all users who have been contacted for a given action type (or all actions if None)."""
+        if action_type:
+            query = text("""
+                SELECT platform_user_id, username, action_type, contacted_at FROM contact_registry 
+                WHERE user_id = :user_id AND platform = :platform AND action_type = :action_type
+            """)
+            result = self.session.execute(query, {"user_id": user_id, "platform": platform, "action_type": action_type})
+        else:
+            query = text("""
+                SELECT platform_user_id, username, action_type, contacted_at FROM contact_registry 
+                WHERE user_id = :user_id AND platform = :platform
+            """)
+            result = self.session.execute(query, {"user_id": user_id, "platform": platform})
+        return [dict(row._mapping) for row in result.fetchall()]
+
     def get_activity_feed(self, user_id: str, limit: int = 10):
         query = text("""
         SELECT action_logs.*, accounts.platform FROM action_logs

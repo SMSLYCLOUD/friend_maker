@@ -121,6 +121,15 @@ class CampaignExecutor:
                 fetch_retries = 0
 
             target = pending[0]
+            
+            # Check if already contacted (cross-campaign dedup)
+            action_type = campaign.campaign_type
+            handle = target.platform_user_id.lstrip("@")
+            if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, handle, action_type):
+                self.logger.info(f"Skipping @{handle}: already contacted ({action_type}) in a previous campaign")
+                self.repo.update_target_status(target.id, "skipped_already_contacted")
+                continue
+            
             try:
                 await self._process_target(target, campaign)
                 actions_today += 1
@@ -437,6 +446,19 @@ class CampaignExecutor:
         self.repo.update_target_status(target.id, "completed" if success else "failed")
         self.anti_detect.record_action()
 
+        # Register in cross-campaign dedup registry
+        if success:
+            handle = target.platform_user_id.lstrip("@")
+            self.repo.register_contact(
+                user_id=self.user_id,
+                platform=self.adapter.platform_name,
+                platform_user_id=handle,
+                username=target.username,
+                action_type=action_type,
+                campaign_id=campaign.id
+            )
+            self.logger.info(f"Registered @{handle} in contact registry ({action_type})")
+
     async def _monitor_responses(self, campaign: Campaign):
         """Background task: check inbox for responses and send follow-ups."""
         self.logger.info("Response monitor started. Checking inbox every 120s.")
@@ -530,6 +552,15 @@ class CampaignExecutor:
                             target_user=username,
                             interaction_type="follow_up",
                             metadata={"campaign_id": campaign.id, "their_message": their_message[:200]}
+                        )
+                        # Register follow-up in dedup registry
+                        self.repo.register_contact(
+                            user_id=self.user_id,
+                            platform=self.adapter.platform_name,
+                            platform_user_id=username,
+                            username=username,
+                            action_type="follow_up",
+                            campaign_id=campaign.id
                         )
                         self.logger.info(f"Follow-up sent to @{username} successfully.")
                     else:

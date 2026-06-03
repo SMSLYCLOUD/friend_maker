@@ -106,4 +106,16 @@ CREATE TABLE IF NOT EXISTS scheduled_actions (
     created_at INTEGER,
     last_run_at INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS contact_registry (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    platform_user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    campaign_id TEXT,
+    contacted_at INTEGER,
+    UNIQUE(user_id, platform, platform_user_id, action_type)
+);
 """

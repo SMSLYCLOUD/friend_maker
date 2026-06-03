@@ -93,6 +93,24 @@ def init_db():
                         logging.info("Migration: Added user_id column to action_logs.")
                     conn.commit()
 
+                # --- contact_registry table (cross-campaign dedup) ---
+                if 'contact_registry' not in tables:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS contact_registry (
+                            id TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL,
+                            platform TEXT NOT NULL,
+                            platform_user_id TEXT NOT NULL,
+                            username TEXT NOT NULL,
+                            action_type TEXT NOT NULL,
+                            campaign_id TEXT,
+                            contacted_at INTEGER,
+                            UNIQUE(user_id, platform, platform_user_id, action_type)
+                        )
+                    """))
+                    logging.info("Migration: Created contact_registry table.")
+                    conn.commit()
+
         except Exception as e:
             logging.error(f"Database initialization failed: {e}")
             raise
