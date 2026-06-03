@@ -8,7 +8,7 @@ model_list:
     model_info:
       id: groq-primary
 
-  # ── Fallback 1: OpenRouter (higher limits, free) ──
+  # ── Fallback 1: OpenRouter (free tier) ──
   - model_name: skyvern-llm
     litellm_params:
       model: openrouter/meta-llama/llama-3.3-70b-instruct:free
@@ -26,20 +26,10 @@ model_list:
     model_info:
       id: google-fallback
 
-  # ── Fallback 3: SambaNova (free tier) ──
-  - model_name: skyvern-llm
-    litellm_params:
-      model: openai/Llama-4-Maverick-17B-128E-Instruct
-      api_key: "os.environ/SAMBANOVA_API_KEY"
-      api_base: "https://api.sambanova.ai/v1"
-      rpm: 30
-    model_info:
-      id: sambanova-fallback
-
 litellm_settings:
   num_retries: 2
   request_timeout: 60
   fallbacks:
-    - skyvern-llm: [openrouter-fallback, google-fallback, sambanova-fallback]
+    - skyvern-llm: [openrouter-fallback, google-fallback]
   cooldown_time: 30
   allowed_fails: 2
