@@ -21,13 +21,17 @@ class MessageGenerator:
 
 Target Profile:
 Username: {profile.get('username')}
-Bio: {profile.get('bio')}
-Niche: {profile.get('niche', 'General')}
+Display Name: {profile.get('display_name', '')}
+Bio: {profile.get('bio', 'Not available')}
+Follower Count: {profile.get('follower_count', 'Not available')}
+Recent Posts: {', '.join(profile.get('recent_posts', [])[:3]) if profile.get('recent_posts') else 'Not available'}
 
 {"(I have attached a screenshot of the user's profile for you to analyze visual elements like their profile picture, aesthetic, and recent posts.)" if image_base64 else ""}
 
 Context/Goal:
 {template if template else "Introduce myself as a software developer building cool tools."}
+
+Write a message that references something specific from their bio or recent posts to make it feel personal and genuine. Do NOT use hashtags. Do NOT sound like a bot or salesperson.
 
 Message:
 """

@@ -433,6 +433,48 @@ class SkyvernAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="reply_comment", error=str(e))
 
+    async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
+        """Scrape a user's profile page for bio, recent posts, and screenshot."""
+        handle = user_id.lstrip("@")
+        url = f"https://www.{self.platform}.com/@{handle}"
+        try:
+            task = await self._run_task(
+                prompt=(
+                    f"Go to {url} and extract the following from this user's profile:\n"
+                    f"1. Their bio/description text\n"
+                    f"2. Their display name\n"
+                    f"3. Their follower count\n"
+                    f"4. Their 3 most recent post captions\n"
+                    f"Return all of this information."
+                ),
+                url=url,
+                extraction_schema={
+                    "type": "object",
+                    "properties": {
+                        "bio": {"type": "string"},
+                        "display_name": {"type": "string"},
+                        "follower_count": {"type": "string"},
+                        "recent_posts": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                },
+            )
+            data = task.get("output", {})
+            if not isinstance(data, dict):
+                data = {}
+            return {
+                "username": handle,
+                "bio": data.get("bio", ""),
+                "display_name": data.get("display_name", ""),
+                "follower_count": data.get("follower_count", ""),
+                "recent_posts": data.get("recent_posts", []),
+            }
+        except Exception as e:
+            logger.error(f"Get user profile on {self.platform} failed: {e}")
+            return {"username": handle, "bio": "", "display_name": "", "follower_count": "", "recent_posts": []}
+
     async def get_user_recent_posts(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         try:
             task = await self._run_task(
@@ -482,4 +524,5 @@ class SkyvernAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="comment", error=str(e))
 
     async def capture_screenshot(self) -> Optional[str]:
+        """Screenshot not supported via Skyvern task API. Returns None."""
         return None

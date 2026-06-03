@@ -167,13 +167,14 @@ class CampaignExecutor:
             target_accounts = plan.get("target_accounts", [])
             keywords = plan.get("keywords", [])
             group_types = plan.get("group_types", [])
+            fetch_limit = plan.get("limit", 20)
             
             if target_accounts:
                 strategy = "follower_mining"
-                sources = [s for s in target_accounts if s.lower().strip("@") not in PLATFORM_NAMES]
+                sources = [s.lstrip("@") for s in target_accounts if s.lower().strip("@") not in PLATFORM_NAMES]
             elif group_types:
                 strategy = "group_combing"
-                sources = [s for s in group_types if s.lower().strip("@") not in PLATFORM_NAMES]
+                sources = [s.lstrip("@") for s in group_types if s.lower().strip("@") not in PLATFORM_NAMES]
             else:
                 strategy = "search"
                 sources = [s for s in keywords if s.lower() not in PLATFORM_NAMES]
@@ -181,19 +182,25 @@ class CampaignExecutor:
             # Update campaign targeting for persistence
             targeting["sources"] = sources
             targeting["strategy"] = strategy
+            targeting["fetch_limit"] = fetch_limit
+            targeting["mined_sources"] = []
             import json
             campaign.targeting_json = json.dumps(targeting)
             self.repo.update_campaign(campaign)
             
-            self.logger.info(f"AI Plan Generated: {len(sources)} strategic sources identified.")
+            self.logger.info(f"AI Plan Generated: {len(sources)} sources, limit={fetch_limit}")
         else:
             self.logger.info(f"No AI planning needed: has_planner={self.planner is not None}, has_instructions={bool(campaign.ai_instructions)}")
 
         strategy = targeting.get("strategy", "search")
         sources = targeting.get("sources", [])
+        fetch_limit = targeting.get("fetch_limit", 20)
         
         if not sources and "tags" in targeting:
             sources = targeting.get("tags", [])
+
+        # Strip any leftover @ from sources
+        sources = [s.lstrip("@") for s in sources]
 
         # Skip sources that have already been mined
         sources = [s for s in sources if s not in mined_sources]
@@ -202,7 +209,7 @@ class CampaignExecutor:
             self.logger.info("All sources have been mined already. Campaign discovery complete.")
             return
 
-        self.logger.info(f"Executing discovery strategy: {strategy} across {len(sources)} sources (skipped {len(mined_sources)} already mined)")
+        self.logger.info(f"Executing discovery strategy: {strategy} across {len(sources)} sources, limit={fetch_limit} (skipped {len(mined_sources)} already mined)")
 
         users = []
         post_url_for_source = {}
@@ -214,14 +221,14 @@ class CampaignExecutor:
             
             try:
                 if strategy == "search":
-                    new_users = await self.adapter.search_users(source, limit=10, context=context)
+                    new_users = await self.adapter.search_users(source, limit=fetch_limit, context=context)
                 elif strategy == "group_combing":
-                    new_users = await self.adapter.get_group_members(source, limit=20)
+                    new_users = await self.adapter.get_group_members(source, limit=fetch_limit)
                 elif strategy == "post_auditing":
-                    new_users = await self.adapter.get_post_commenters(source, limit=20)
+                    new_users = await self.adapter.get_post_commenters(source, limit=fetch_limit)
                     post_url_for_source[source] = source
                 elif strategy == "follower_mining":
-                    new_users = await self.adapter.get_followers(source, limit=20)
+                    new_users = await self.adapter.get_followers(source, limit=fetch_limit)
                 else:
                     self.logger.warning(f"Unknown discovery strategy: {strategy}")
                     new_users = []
@@ -252,13 +259,20 @@ class CampaignExecutor:
 
     async def _process_target(self, target: Target, campaign: Campaign):
         self.logger.info(f"Processing target: {target.username}")
+        handle = target.platform_user_id.lstrip("@")
 
-        # 0. Capture Vision (Optional but recommended for 'eyes')
-        image_base64 = await self.adapter.capture_screenshot()
+        # 0. Scrape user's profile for bio, posts
+        profile_data = {"username": target.username, "bio": ""}
+        try:
+            profile_data = await self.adapter.get_user_profile(handle)
+            self.logger.info(f"Scraped profile for {target.username}: bio={profile_data.get('bio', '')[:80]}")
+        except Exception as e:
+            self.logger.warning(f"Failed to scrape profile for {target.username}: {e}")
+
+        image_base64 = None
 
         # 1. Analyze (AI)
         if self.classifier:
-            profile_data = {"username": target.username, "bio": "Fetched bio..."}
             analysis = await self.classifier.classify(profile_data, image_base64=image_base64, bot_instructions=self.bot_instructions, ref_images=ref_images)
             score = analysis.get("match_score", 0.0)
             should_skip = analysis.get("should_skip", False)
@@ -276,49 +290,45 @@ class CampaignExecutor:
             self.repo.update_target_status(target.id, "analyzed", ai_score=score)
 
         # 2. Action (Follow/DM/Comment/Reply)
-        action_type = campaign.campaign_type # e.g. "outreach", "growth", "engagement", "comment"
+        action_type = campaign.campaign_type
 
         success = False
         error = None
 
         if action_type == "growth":
-            res = await self.adapter.follow(target.platform_user_id)
+            res = await self.adapter.follow(handle)
             success = res.success
             error = res.error
         elif action_type == "outreach":
             msg = "Hello!"
             if self.generator:
                 msg = await self.generator.generate_dm(
-                    {"username": target.username},
+                    profile_data,
                     campaign.message_template,
                     campaign.ai_instructions,
                     image_base64=image_base64,
                     bot_instructions=self.bot_instructions,
                     ref_images=ref_images
                 )
-            res = await self.adapter.send_dm(target.platform_user_id, msg)
+            res = await self.adapter.send_dm(handle, msg)
             success = res.success
             error = res.error
         elif action_type == "comment":
-            # Comment on a user's recent post
             comment_text = "Great post!"
             if self.generator:
-                # Generate contextual comment based on user's profile/posts
                 comment_text = await self.generator.generate_comment(
-                    {"username": target.username, "bio": "Fetched bio..."},
+                    profile_data,
                     campaign.message_template,
                     campaign.ai_instructions,
                     image_base64=image_base64,
                     bot_instructions=self.bot_instructions,
                     ref_images=ref_images
                 )
-            # Get user's recent posts first (this would need to be implemented in adapter)
-            # For now, we'll skip if we can't get posts
-            res = await self.adapter.comment_on_recent_post(target.platform_user_id, comment_text)
+            res = await self.adapter.comment_on_recent_post(handle, comment_text)
             success = res.success
             error = res.error
         elif action_type == "reply_comment":
-            comment_id = getattr(target, 'comment_id', None) or target.platform_user_id
+            comment_id = getattr(target, 'comment_id', None) or handle
             post_url = getattr(target, 'source_post_url', None) or getattr(target, 'post_url', None)
             if not comment_id:
                 self.logger.warning("No comment_id specified for reply_comment action")
@@ -328,7 +338,7 @@ class CampaignExecutor:
                 reply_text = "Thanks!"
                 if self.generator:
                     reply_text = await self.generator.generate_reply(
-                        {"username": target.username},
+                        profile_data,
                         campaign.message_template,
                         campaign.ai_instructions,
                         image_base64=image_base64,

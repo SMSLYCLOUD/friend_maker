@@ -53,44 +53,55 @@ class CampaignPlanner:
 
     async def generate_discovery_plan(self, persona_instructions: str, platform: str, bot_instructions: str = "", ref_images: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Brainstorms the best groups, channels, and keywords to find a specific target audience.
+        Extract the specific targets and strategy from the user's instruction.
+        Do NOT invent extra accounts — only use what is explicitly mentioned.
         """
         constraints = ""
         if bot_instructions:
-            constraints = f"\n\nCONSTRAINTS (must follow):\n{bot_instructions}\n\nOnly suggest sources that comply with these constraints."
+            constraints = f"\n\nCONSTRAINTS (must follow):\n{bot_instructions}"
+
         prompt = f"""
-        ACT AS A SOCIAL MEDIA STRATEGIST AND LEAD GENERATION EXPERT.
-        
-        YOUR GOAL: Create a strategic "Discovery Map" to find this specific audience on {platform.upper()}:
-        "{persona_instructions}"{constraints}
-        
-        TASKS:
-        1. Identify 5-10 specific keywords this audience would use or follow.
-        2. Identify types of groups or communities they would belong to.
-        3. Identify potential "competitor" or "influencer" accounts they would follow.
-        
-        RETURN THE DATA IN JSON FORMAT:
+        Analyze this instruction and extract the discovery targets:
+
+        INSTRUCTION: "{persona_instructions}"
+        PLATFORM: {platform}{constraints}
+
+        RULES:
+        - ONLY extract accounts, keywords, or groups EXPLICITLY mentioned in the instruction.
+        - Do NOT invent, suggest, or hallucinate additional accounts.
+        - If the instruction says "followers of X", then X is the ONLY target_account.
+        - If the instruction says "people interested in Y", then Y is a keyword.
+        - Extract any numeric limits mentioned (e.g. "20 followers" → limit: 20).
+
+        RETURN JSON:
         {{
-            "keywords": ["kw1", "kw2"],
-            "group_types": ["type1", "type2"],
-            "target_accounts": ["handle1", "handle2"],
-            "discovery_reasoning": "Brief explanation of why this plan will work."
+            "target_accounts": ["only_accounts_explicitly_mentioned"],
+            "keywords": ["only_keywords_explicitly_mentioned"],
+            "group_types": ["only_groups_explicitly_mentioned"],
+            "limit": 20,
+            "reasoning": "Brief explanation of what was extracted and why."
         }}
         """
-        
+
         try:
             response = await self._generate_with_provider(prompt)
-            # Find JSON in response
             import json
             import re
             if response:
                 match = re.search(r'\{.*\}', response, re.DOTALL)
                 if match:
-                    return json.loads(match.group())
+                    plan = json.loads(match.group())
+                    # Sanitize: strip @ from accounts, filter empty
+                    plan["target_accounts"] = [a.lstrip("@") for a in plan.get("target_accounts", []) if a.strip()]
+                    plan["keywords"] = [k for k in plan.get("keywords", []) if k.strip()]
+                    plan["group_types"] = [g for g in plan.get("group_types", []) if g.strip()]
+                    plan.setdefault("limit", 20)
+                    self.logger.info(f"Planner extracted: accounts={plan['target_accounts']}, keywords={plan['keywords']}, limit={plan['limit']}")
+                    return plan
             self.logger.error(f"Planner returned no valid JSON. Response: {response!r}")
-            return {"keywords": [], "group_types": [], "target_accounts": [], "discovery_reasoning": "AI returned no valid plan"}
+            return {"keywords": [], "group_types": [], "target_accounts": [], "limit": 20, "reasoning": "AI returned no valid plan"}
         except Exception as e:
             self.logger.error(f"Failed to generate discovery plan: {e}")
-            return {"keywords": [], "group_types": [], "target_accounts": [], "discovery_reasoning": f"Error: {e}"}
+            return {"keywords": [], "group_types": [], "target_accounts": [], "limit": 20, "reasoning": f"Error: {e}"}
 
 
