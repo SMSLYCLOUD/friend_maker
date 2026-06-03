@@ -70,6 +70,40 @@ class ProviderManager:
         self._current_index: int = 0
         self._init_from_env()
 
+    # Default config per provider — only API_KEY required, rest auto-filled
+    PROVIDER_DEFAULTS: dict[str, dict] = {
+        "Groq": {
+            "model": "llama-4-scout-17b-16e-instruct",
+            "base_url": "https://api.groq.com/openai/v1",
+            "rpm_limit": 30,
+            "rpd_limit": 14400,
+        },
+        "OpenRouter": {
+            "model": "meta-llama/llama-4-scout:free",
+            "base_url": "https://openrouter.ai/api/v1",
+            "rpm_limit": 20,
+            "rpd_limit": 50,
+        },
+        "Google": {
+            "model": "gemini-2.5-flash",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "rpm_limit": 10,
+            "rpd_limit": 250,
+        },
+        "SambaNova": {
+            "model": "Meta-Llama-4-Scout-17B-16E-Instruct",
+            "base_url": "https://api.sambanova.ai/v1",
+            "rpm_limit": 30,
+            "rpd_limit": 1000,
+        },
+        "NVIDIA": {
+            "model": "meta/llama-4-scout-17b-16e-instruct",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+            "rpm_limit": 40,
+            "rpd_limit": 1000,
+        },
+    }
+
     def _init_from_env(self):
         """Parse provider configs from environment variables."""
         provider_names = [
@@ -80,17 +114,17 @@ class ProviderManager:
 
         for name in provider_names:
             prefix = f"SKYVERN_LLM_{name.upper().replace(' ', '_')}_"
+            defaults = self.PROVIDER_DEFAULTS.get(name, {})
+
             api_key = os.getenv(f"{prefix}API_KEY", "")
-            model = os.getenv(f"{prefix}MODEL", "")
-            base_url = os.getenv(f"{prefix}BASE_URL", "")
-            rpm_limit = int(os.getenv(f"{prefix}RPM_LIMIT", "30"))
-            rpd_limit = int(os.getenv(f"{prefix}RPD_LIMIT", "14400"))
+            model = os.getenv(f"{prefix}MODEL", "") or defaults.get("model", "")
+            base_url = os.getenv(f"{prefix}BASE_URL", "") or defaults.get("base_url", "")
+            rpm_limit = int(os.getenv(f"{prefix}RPM_LIMIT", "") or defaults.get("rpm_limit", 30))
+            rpd_limit = int(os.getenv(f"{prefix}RPD_LIMIT", "") or defaults.get("rpd_limit", 14400))
             vision = os.getenv(f"{prefix}VISION", "true").lower() == "true"
 
-            if not api_key or not model:
-                logger.warning(
-                    f"Provider '{name}' skipped: missing API_KEY or MODEL"
-                )
+            if not api_key:
+                logger.warning(f"Provider '{name}' skipped: missing API_KEY")
                 continue
 
             config = ProviderConfig(
