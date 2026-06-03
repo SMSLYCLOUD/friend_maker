@@ -704,17 +704,18 @@ def _write_env_file(env: Dict[str, str]) -> None:
 
 
 def _restart_self() -> None:
-    """Restart the python-backend container so the new .env takes effect."""
+    """Restart python-backend and litellm-proxy containers so the new .env takes effect."""
     import subprocess
-    try:
-        subprocess.Popen(
-            ["docker", "compose", "restart", "python-backend"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except Exception as e:
-        logger.warning(f"Could not restart container: {e}")
+    for service in ("python-backend", "litellm-proxy"):
+        try:
+            subprocess.Popen(
+                ["docker", "compose", "restart", service],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception as e:
+            logger.warning(f"Could not restart {service}: {e}")
 
 
 @app.post("/api/settings/env")

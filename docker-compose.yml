@@ -9,6 +9,8 @@ services:
     volumes:
       - ./litellm_config.yaml:/app/config.yaml
     command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file:
+      - ./.env
     environment:
       - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-${OPENROUTER_API_KEY:-}}
       - OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-${OPENROUTER_API_KEY:-}}
