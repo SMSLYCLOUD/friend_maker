@@ -8,19 +8,19 @@ model_list:
     model_info:
       id: groq-primary
 
-  # ── Fallback 1: OpenRouter (free tier) ──
+  # ── Fallback 1: OpenRouter (Google Gemini Flash - paid, vision) ──
   - model_name: skyvern-llm
     litellm_params:
-      model: openrouter/meta-llama/llama-3.3-70b-instruct:free
+      model: openrouter/google/gemini-3.5-flash
       api_key: "os.environ/OPENROUTER_API_KEY"
-      rpm: 20
+      rpm: 30
     model_info:
       id: openrouter-fallback
 
-  # ── Fallback 2: Google Gemini (free tier) ──
+  # ── Fallback 2: Google Gemini (free tier, vision) ──
   - model_name: skyvern-llm
     litellm_params:
-      model: gemini/gemini-2.5-flash
+      model: gemini/gemini-3.5-flash
       api_key: "os.environ/GEMINI_API_KEY"
       rpm: 10
     model_info:
