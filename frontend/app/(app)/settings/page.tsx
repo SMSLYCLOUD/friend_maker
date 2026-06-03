@@ -70,28 +70,21 @@ export default function SettingsPage() {
         })
       ]);
       const envUpdate: Record<string, string> = {};
-      if (settings.OPENROUTER_API_KEY) envUpdate.OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY;
-      if (settings.OPENROUTER_MODEL) envUpdate.OPENROUTER_MODEL = settings.OPENROUTER_MODEL;
-      if (settings.SKYVERN_INTER_TASK_DELAY) envUpdate.SKYVERN_INTER_TASK_DELAY = settings.SKYVERN_INTER_TASK_DELAY;
-      // Provider env vars
-      const providerKeys = [
+      const isMasked = (v: string) => v && v.includes("...");
+      const envKeys = [
+        "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYVERN_INTER_TASK_DELAY",
         "SKYVERN_LLM_PROVIDERS",
         "SKYVERN_LLM_GROQ_API_KEY", "SKYVERN_LLM_GROQ_MODEL", "SKYVERN_LLM_GROQ_BASE_URL", "SKYVERN_LLM_GROQ_RPM_LIMIT",
         "SKYVERN_LLM_OPENROUTER_API_KEY", "SKYVERN_LLM_OPENROUTER_MODEL", "SKYVERN_LLM_OPENROUTER_BASE_URL", "SKYVERN_LLM_OPENROUTER_RPM_LIMIT",
         "SKYVERN_LLM_GOOGLE_API_KEY", "SKYVERN_LLM_GOOGLE_MODEL", "SKYVERN_LLM_GOOGLE_BASE_URL", "SKYVERN_LLM_GOOGLE_RPM_LIMIT",
         "SKYVERN_LLM_SAMBANOVA_API_KEY", "SKYVERN_LLM_SAMBANOVA_MODEL", "SKYVERN_LLM_SAMBANOVA_BASE_URL", "SKYVERN_LLM_SAMBANOVA_RPM_LIMIT",
         "SKYVERN_LLM_NVIDIA_API_KEY", "SKYVERN_LLM_NVIDIA_MODEL", "SKYVERN_LLM_NVIDIA_BASE_URL", "SKYVERN_LLM_NVIDIA_RPM_LIMIT",
+        "SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD",
       ];
-      for (const key of providerKeys) {
-        if (settings[key] !== undefined && settings[key] !== "") {
-          envUpdate[key] = settings[key];
-        }
-      }
-      // Proxy env vars
-      const proxyKeys = ["SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD"];
-      for (const key of proxyKeys) {
-        if (settings[key] !== undefined && settings[key] !== "") {
-          envUpdate[key] = settings[key];
+      for (const key of envKeys) {
+        const val = settings[key];
+        if (val !== undefined && val !== "" && !isMasked(val)) {
+          envUpdate[key] = val;
         }
       }
       if (Object.keys(envUpdate).length) {
