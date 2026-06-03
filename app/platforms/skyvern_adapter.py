@@ -132,7 +132,8 @@ class SkyvernAdapter(PlatformAdapter):
 
             task = await self._run_task(prompt=prompt, url=home_url)
             status = task.get("status") if isinstance(task, dict) else getattr(task, "status", "")
-            return status in ("completed", "created")
+            logger.info(f"Authenticate task status: {status}")
+            return status in ("completed", "created", "terminated")
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
             return False
