@@ -29,6 +29,36 @@ class SkyvernAdapter(PlatformAdapter):
     def __init__(self, platform: str, **kwargs):
         self.platform = platform.lower()
         self.platform_name = platform.lower()
+        self._browser_session_id: Optional[str] = None
+
+    async def _ensure_browser_session(self, session_data: Optional[str] = None):
+        """Create a browser session with cookies injected, or reuse existing one."""
+        if self._browser_session_id:
+            logger.info(f"Reusing browser session: {self._browser_session_id}")
+            return
+
+        from skyvern import Skyvern
+        api_key = os.getenv("SKYVERN_API_KEY", "")
+        skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
+
+        try:
+            browser = await skyvern.launch_cloud_browser()
+            page = await browser.get_working_page()
+            self._browser_session_id = browser.browser_session_id
+            logger.info(f"Created browser session: {self._browser_session_id}")
+
+            if session_data:
+                cookies = json.loads(session_data)
+                if isinstance(cookies, list) and cookies:
+                    await page.goto(f"https://www.{self.platform}.com")
+                    await page.context.add_cookies(cookies)
+                    logger.info(f"Injected {len(cookies)} cookies into browser session")
+                    await page.reload()
+
+            await browser.close()
+        except Exception as e:
+            logger.warning(f"Failed to create browser session with cookies: {e}")
+            self._browser_session_id = None
 
     async def _inter_task_wait(self):
         """Wait the minimum interval between tasks to stay under rate limits."""
@@ -65,6 +95,9 @@ class SkyvernAdapter(PlatformAdapter):
             kwargs["url"] = url
         if extraction_schema:
             kwargs["data_extraction_schema"] = extraction_schema
+        if self._browser_session_id:
+            kwargs["browser_session_id"] = self._browser_session_id
+            logger.info(f"Using browser session: {self._browser_session_id}")
 
         max_retries = min(6, 2 + pm.provider_count)
         last_error = None
@@ -120,6 +153,8 @@ class SkyvernAdapter(PlatformAdapter):
         password: Optional[str] = None,
     ) -> bool:
         try:
+            await self._ensure_browser_session(session_data)
+
             home_url = f"https://www.{self.platform}.com"
             prompt = (
                 f"Navigate to {home_url} and check if I am logged in. "
