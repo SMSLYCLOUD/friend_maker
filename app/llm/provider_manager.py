@@ -73,7 +73,7 @@ class ProviderManager:
     # Default config per provider — only API_KEY required, rest auto-filled
     PROVIDER_DEFAULTS: dict[str, dict] = {
         "Groq": {
-            "model": "llama-4-scout-17b-16e-instruct",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "base_url": "https://api.groq.com/openai/v1",
             "rpm_limit": 30,
             "rpd_limit": 14400,
