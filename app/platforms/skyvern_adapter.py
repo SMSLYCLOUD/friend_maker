@@ -327,6 +327,83 @@ class SkyvernAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="dm", error=str(e))
 
+    async def check_inbox(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Check DM inbox for unread messages. Returns list of conversations with new messages."""
+        try:
+            task = await self._run_task(
+                prompt=(
+                    f"Go to your DM inbox on {self.platform}. "
+                    f"Find conversations that have UNREAD messages (new messages from others that you haven't opened yet). "
+                    f"For each unread conversation, extract: "
+                    f"1. The username of the person who messaged you "
+                    f"2. The content of their latest message "
+                    f"3. How many unread messages there are "
+                    f"Return up to {limit} unread conversations."
+                ),
+                url=f"https://www.{self.platform}.com/direct/inbox",
+                extraction_schema={
+                    "type": "object",
+                    "properties": {
+                        "unread_conversations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "username": {"type": "string"},
+                                    "latest_message": {"type": "string"},
+                                    "unread_count": {"type": "integer"},
+                                },
+                            },
+                        }
+                    },
+                },
+            )
+            data = task.get("output", {})
+            convos = data.get("unread_conversations", []) if isinstance(data, dict) else []
+            logger.info(f"Inbox check: found {len(convos)} unread conversations")
+            return convos[:limit]
+        except Exception as e:
+            logger.error(f"Inbox check failed: {e}")
+            return []
+
+    async def read_conversation(self, user_id: str, limit: int = 10) -> List[Dict[str, str]]:
+        """Read the last N messages in a DM conversation with a specific user."""
+        handle = user_id.lstrip("@")
+        try:
+            task = await self._run_task(
+                prompt=(
+                    f"Go to your DM conversation with @{handle} on {self.platform}. "
+                    f"Read the last {limit} messages in the conversation. "
+                    f"For each message, extract: "
+                    f"1. Who sent it (\"me\" or \"{handle}\") "
+                    f"2. The message content "
+                    f"Return the messages in chronological order (oldest first)."
+                ),
+                url=f"https://www.{self.platform}.com/direct/t/{handle}",
+                extraction_schema={
+                    "type": "object",
+                    "properties": {
+                        "messages": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "sender": {"type": "string"},
+                                    "content": {"type": "string"},
+                                },
+                            },
+                        }
+                    },
+                },
+            )
+            data = task.get("output", {})
+            messages = data.get("messages", []) if isinstance(data, dict) else []
+            logger.info(f"Read conversation with @{handle}: {len(messages)} messages")
+            return messages[:limit]
+        except Exception as e:
+            logger.error(f"Read conversation with @{handle} failed: {e}")
+            return []
+
     async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
         results = []
         try:

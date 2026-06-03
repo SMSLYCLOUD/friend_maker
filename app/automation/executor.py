@@ -82,11 +82,14 @@ class CampaignExecutor:
                 await self.adapter.cleanup()
             return
 
-        self.logger.info("Authentication successful. Starting main loop.")
+        self.logger.info("Authentication successful. Starting main loop and response monitor.")
         actions_today = 0
         limit = campaign.daily_limit or 50
         fetch_retries = 0
         max_fetch_retries = 3
+
+        # Start background response monitor
+        response_monitor_task = asyncio.create_task(self._monitor_responses(campaign))
 
         while self.running:
             if actions_today >= limit:
@@ -143,6 +146,14 @@ class CampaignExecutor:
                 await self.anti_detect.trigger_cooldown(lambda: self.running)
 
         self.logger.info("Campaign execution stopped.")
+
+        # Cancel response monitor
+        if 'response_monitor_task' in dir() and not response_monitor_task.done():
+            response_monitor_task.cancel()
+            try:
+                await response_monitor_task
+            except asyncio.CancelledError:
+                pass
 
         # Only close browser if campaign was actively stopped (not if we just ran out of targets)
         if not self.running:
@@ -435,6 +446,109 @@ class CampaignExecutor:
 
         self.repo.update_target_status(target.id, "completed" if success else "failed")
         self.anti_detect.record_action()
+
+    async def _monitor_responses(self, campaign: Campaign):
+        """Background task: check inbox for responses and send follow-ups."""
+        self.logger.info("Response monitor started. Checking inbox every 120s.")
+        check_interval = 120
+
+        while self.running:
+            await asyncio.sleep(check_interval)
+            if not self.running:
+                break
+
+            try:
+                self.logger.info("Checking inbox for responses...")
+                unread = await self.adapter.check_inbox(limit=5)
+
+                if not unread:
+                    self.logger.info("No unread messages found.")
+                    continue
+
+                for convo in unread:
+                    if not self.running:
+                        break
+
+                    username = convo.get("username", "")
+                    their_message = convo.get("latest_message", "")
+                    if not username or not their_message:
+                        continue
+
+                    self.logger.info(f"Response from @{username}: {their_message[:80]}...")
+
+                    # Read full conversation history
+                    history_messages = await self.adapter.read_conversation(username, limit=10)
+                    conversation_history = "\n".join(
+                        f"{'Me' if m.get('sender') == 'me' else m.get('sender', username)}: {m.get('content', '')}"
+                        for m in history_messages
+                    )
+
+                    # Get stored context from our side
+                    stored_context = await self.conversation_memory.get_context_for_target(
+                        user_id=self.user_id,
+                        platform=self.adapter.platform_name,
+                        target_user=username
+                    )
+
+                    # Scrape their profile for personalization
+                    profile_data = {"username": username, "bio": ""}
+                    try:
+                        profile_data = await self.adapter.get_user_profile(username)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to scrape profile for @{username}: {e}")
+
+                    # Generate reply
+                    reply_text = ""
+                    if self.generator:
+                        full_history = ""
+                        if stored_context:
+                            full_history += stored_context + "\n"
+                        if conversation_history:
+                            full_history += conversation_history
+
+                        reply_text = await self.generator.generate_reply(
+                            profile_data,
+                            campaign.message_template,
+                            campaign.ai_instructions,
+                            bot_instructions=self.bot_instructions,
+                            conversation_history=full_history,
+                            their_message=their_message
+                        )
+                    else:
+                        reply_text = f"Thanks for your message! I'll get back to you soon."
+
+                    if not reply_text:
+                        continue
+
+                    # Send reply
+                    self.logger.info(f"Sending follow-up to @{username}: {reply_text[:80]}...")
+                    res = await self.adapter.send_dm(username, reply_text)
+
+                    if res.success:
+                        # Store conversation memory
+                        await self.conversation_memory.store_conversation(
+                            user_id=self.user_id,
+                            platform=self.adapter.platform_name,
+                            target_user=username,
+                            message=reply_text,
+                            response=f"Replied to: {their_message[:100]}",
+                            metadata={"action_type": "follow_up", "campaign_id": campaign.id}
+                        )
+                        await self.relationship_tracker.track_interaction(
+                            user_id=self.user_id,
+                            platform=self.adapter.platform_name,
+                            target_user=username,
+                            interaction_type="follow_up",
+                            metadata={"campaign_id": campaign.id, "their_message": their_message[:200]}
+                        )
+                        self.logger.info(f"Follow-up sent to @{username} successfully.")
+                    else:
+                        self.logger.error(f"Failed to send follow-up to @{username}: {res.error}")
+
+            except Exception as e:
+                self.logger.error(f"Response monitor error: {e}")
+
+        self.logger.info("Response monitor stopped.")
 
     def stop(self):
         self.running = False
