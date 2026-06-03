@@ -79,7 +79,7 @@ class ProviderManager:
             "rpd_limit": 14400,
         },
         "OpenRouter": {
-            "model": "meta-llama/llama-4-scout:free",
+            "model": "nvidia/nemotron-nano-12b-v2-vl:free",
             "base_url": "https://openrouter.ai/api/v1",
             "rpm_limit": 20,
             "rpd_limit": 50,
@@ -91,13 +91,13 @@ class ProviderManager:
             "rpd_limit": 250,
         },
         "SambaNova": {
-            "model": "Meta-Llama-4-Scout-17B-16E-Instruct",
+            "model": "Llama-4-Maverick-17B-128E-Instruct",
             "base_url": "https://api.sambanova.ai/v1",
             "rpm_limit": 30,
             "rpd_limit": 1000,
         },
         "NVIDIA": {
-            "model": "meta/llama-4-scout-17b-16e-instruct",
+            "model": "meta/llama-4-maverick-17b-128e-instruct",
             "base_url": "https://integrate.api.nvidia.com/v1",
             "rpm_limit": 40,
             "rpd_limit": 1000,
