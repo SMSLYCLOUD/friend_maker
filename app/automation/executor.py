@@ -151,7 +151,23 @@ class CampaignExecutor:
         PLATFORM_NAMES = {"tiktok", "instagram", "twitter", "x", "facebook", "linkedin", "youtube", "reddit"}
         mined_sources = set(targeting.get("mined_sources", []))
         existing_sources = targeting.get("sources", [])
-        real_sources = [s for s in existing_sources if s.lower().strip("@") not in PLATFORM_NAMES]
+        
+        # Clean stale sources: strip @, filter platform names and empty strings
+        clean_sources = []
+        for s in existing_sources:
+            s_clean = s.lstrip("@").strip().lower()
+            if s_clean and s_clean not in PLATFORM_NAMES:
+                clean_sources.append(s.lstrip("@"))
+        
+        # If we cleaned sources, update targeting
+        if clean_sources != existing_sources:
+            targeting["sources"] = clean_sources
+            import json
+            campaign.targeting_json = json.dumps(targeting)
+            self.repo.update_campaign(campaign)
+            self.logger.info(f"Cleaned stale sources: {existing_sources} -> {clean_sources}")
+        
+        real_sources = clean_sources
         
         # 1. Check if we need AI Strategic Planning
         if not real_sources and self.planner and campaign.ai_instructions:

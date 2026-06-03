@@ -146,10 +146,16 @@ class SkyvernAdapter(PlatformAdapter):
                 logger.info(f"Running Skyvern task with provider '{provider_name}': {prompt[:80]}...")
                 result = await skyvern.run_task(**kwargs)
                 result = self._to_dict(result)
-                logger.info(f"Skyvern task completed: status={result.get('status')}, run_id={result.get('run_id')}")
+                status = result.get("status", "unknown")
+                logger.info(f"Skyvern task completed: status={status}, run_id={result.get('run_id')}")
 
                 _last_task_time = time.monotonic()
                 pm.mark_success(provider_name)
+
+                if status == "failed":
+                    error_msg = result.get("error", "Skyvern task failed")
+                    raise Exception(f"Skyvern task failed: {error_msg}")
+
                 return result
 
             except Exception as e:
