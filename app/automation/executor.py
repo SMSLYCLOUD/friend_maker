@@ -37,6 +37,45 @@ class CampaignExecutor:
 
     def load_bot_instructions(self):
         self.bot_instructions = self.repo.get_global_setting("BOT_INSTRUCTIONS", "")
+        
+        # Build rules from structured filters
+        filter_rules = []
+        min_f = self.repo.get_global_setting("FILTER_MIN_FOLLOWERS", "")
+        max_f = self.repo.get_global_setting("FILTER_MAX_FOLLOWERS", "")
+        bio_kw = self.repo.get_global_setting("FILTER_BIO_KEYWORDS", "")
+        no_pic = self.repo.get_global_setting("FILTER_NO_PROFILE_PIC", "")
+        no_bio = self.repo.get_global_setting("FILTER_NO_BIO", "")
+        bots = self.repo.get_global_setting("FILTER_BOTS", "")
+        verified = self.repo.get_global_setting("FILTER_VERIFIED", "")
+        private = self.repo.get_global_setting("FILTER_PRIVATE", "")
+        
+        if min_f:
+            filter_rules.append(f"- Skip accounts with less than {min_f} followers")
+        if max_f:
+            filter_rules.append(f"- Skip accounts with more than {max_f} followers")
+        if bio_kw:
+            keywords = [k.strip() for k in bio_kw.split(",") if k.strip()]
+            if keywords:
+                filter_rules.append(f"- Skip accounts with bio containing: {', '.join(keywords)}")
+        if no_pic:
+            filter_rules.append("- Skip accounts with no profile photo")
+        if no_bio:
+            filter_rules.append("- Skip accounts with empty or no bio")
+        if bots:
+            filter_rules.append("- Skip bot or automated accounts")
+        if verified:
+            filter_rules.append("- Skip verified/blue-check accounts")
+        if private:
+            filter_rules.append("- Skip private accounts")
+        
+        # Merge structured filters with raw instructions
+        if filter_rules:
+            structured = "\n".join(filter_rules)
+            if self.bot_instructions:
+                self.bot_instructions = structured + "\n\n" + self.bot_instructions
+            else:
+                self.bot_instructions = structured
+        
         if self.bot_instructions:
             self.logger.info(f"Loaded bot instructions ({len(self.bot_instructions)} chars)")
 

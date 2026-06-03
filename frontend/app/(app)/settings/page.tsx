@@ -481,7 +481,75 @@ export default function SettingsPage() {
             <MessageCircle className="w-5 h-5 text-amber-500" />
             <h2 className="text-xl font-bold text-white">Bot Instructions</h2>
           </div>
-          <p className="text-xs text-gray-500 mb-4">Global behavioral rules for all AI agents — like OpenClaw skills. Example: "Never follow users with empty profiles. Always reply in Spanish. Skip accounts with less than 10 posts."</p>
+
+          {/* Programmatic Pre-Filters */}
+          <div className="mb-6 p-4 rounded-xl bg-black/40 border border-white/5">
+            <h3 className="text-sm font-bold text-white mb-3">Quick Filters</h3>
+            <p className="text-xs text-gray-500 mb-4">Fast programmatic checks — skip profiles before AI analysis. These are automatically converted to rules.</p>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              {/* Min Followers */}
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Min Followers</label>
+                <input
+                  type="number"
+                  value={settings.FILTER_MIN_FOLLOWERS || ""}
+                  onChange={(e) => setSettings({ ...settings, FILTER_MIN_FOLLOWERS: e.target.value })}
+                  className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-amber-600 transition-all"
+                  placeholder="e.g. 100"
+                />
+              </div>
+              {/* Max Followers */}
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Max Followers</label>
+                <input
+                  type="number"
+                  value={settings.FILTER_MAX_FOLLOWERS || ""}
+                  onChange={(e) => setSettings({ ...settings, FILTER_MAX_FOLLOWERS: e.target.value })}
+                  className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-amber-600 transition-all"
+                  placeholder="e.g. 50000"
+                />
+              </div>
+              {/* Bio Keywords to Avoid */}
+              <div className="col-span-2 sm:col-span-1">
+                <label className="text-xs text-gray-400 mb-1 block">Avoid Bio Keywords</label>
+                <input
+                  type="text"
+                  value={settings.FILTER_BIO_KEYWORDS || ""}
+                  onChange={(e) => setSettings({ ...settings, FILTER_BIO_KEYWORDS: e.target.value })}
+                  className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-amber-600 transition-all"
+                  placeholder="e.g. crypto, NFT, scam (comma separated)"
+                />
+              </div>
+            </div>
+
+            {/* Toggle Filters */}
+            <div className="flex flex-wrap gap-3">
+              {[
+                { key: "FILTER_NO_PROFILE_PIC", label: "Skip No Profile Pic", icon: "📷" },
+                { key: "FILTER_NO_BIO", label: "Skip Empty Bio", icon: "📝" },
+                { key: "FILTER_BOTS", label: "Skip Bots", icon: "🤖" },
+                { key: "FILTER_VERIFIED", label: "Skip Verified", icon: "✓" },
+                { key: "FILTER_PRIVATE", label: "Skip Private", icon: "🔒" },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setSettings({ ...settings, [f.key]: settings[f.key] ? "" : "true" })}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all touch-manipulation ${
+                    settings[f.key]
+                      ? "bg-amber-600/20 text-amber-400 border border-amber-600/40"
+                      : "bg-white/5 text-gray-500 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  <span>{f.icon}</span>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Raw Instructions Textarea */}
+          <p className="text-xs text-gray-500 mb-4">Advanced: Add custom behavioral rules as natural language. These are enforced by the AI classifier alongside the quick filters above.</p>
           <textarea
             value={settings.BOT_INSTRUCTIONS || ""}
             onChange={(e) => setSettings({ ...settings, BOT_INSTRUCTIONS: e.target.value })}
