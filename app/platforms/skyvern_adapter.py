@@ -30,6 +30,7 @@ class SkyvernAdapter(PlatformAdapter):
         self.platform = platform.lower()
         self.platform_name = platform.lower()
         self._browser_session_id: Optional[str] = None
+        self._cookie_header: Optional[str] = None
 
     async def _ensure_browser_session(self, session_data: Optional[str] = None):
         """Ensure we have a browser session ID for task reuse.
@@ -58,35 +59,53 @@ class SkyvernAdapter(PlatformAdapter):
             logger.warning(f"Failed to create browser session: {e}")
             self._browser_session_id = None
 
-    def _get_cookie_js(self, session_data: str) -> str:
-        """Generate JavaScript to inject cookies via document.cookie."""
+    def _get_cookie_header(self, session_data: str) -> str:
+        """Build a Cookie HTTP header string from session data."""
         try:
             cookies = json.loads(session_data)
             if not isinstance(cookies, list):
                 return ""
-            js_lines = []
+            parts = []
             for c in cookies:
                 name = c.get("name", "")
                 value = c.get("value", "")
-                domain = c.get("domain", "")
-                path = c.get("path", "/")
                 if name and value:
-                    js_lines.append(f'document.cookie = "{name}={value}; domain={domain}; path={path}";')
-            return "\n".join(js_lines)
+                    parts.append(f"{name}={value}")
+            return "; ".join(parts)
         except Exception:
             return ""
 
-    async def cleanup(self):
-        """Close the browser session when the campaign is truly done."""
+    async def _ensure_browser_session(self, session_data: Optional[str] = None):
+        """Ensure we have a browser session ID for task reuse.
+        
+        For self-hosted Skyvern, run_task() creates its own browser internally.
+        We create a persistent session via the API and pass browser_session_id 
+        to run_task() so all tasks in this campaign share the same browser.
+        Cookies persist in the browser's profile across tasks.
+        
+        Each adapter instance = one isolated browser session per account.
+        """
         if self._browser_session_id:
-            logger.info(f"Cleaning up browser session: {self._browser_session_id}")
-            try:
-                from skyvern import Skyvern
-                api_key = os.getenv("SKYVERN_API_KEY", "")
-                skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
-                await skyvern.close_browser_session(self._browser_session_id)
-            except Exception as e:
-                logger.warning(f"Failed to close browser session: {e}")
+            logger.info(f"Reusing browser session: {self._browser_session_id}")
+            return
+
+        # Build cookie header from session data for extra_http_headers
+        if session_data:
+            self._cookie_header = self._get_cookie_header(session_data)
+            if self._cookie_header:
+                logger.info(f"Built cookie header ({len(self._cookie_header)} chars)")
+
+        from skyvern import Skyvern
+        api_key = os.getenv("SKYVERN_API_KEY", "")
+        skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
+
+        try:
+            session = await skyvern.create_browser_session(timeout=60)
+            session_dict = self._to_dict(session)
+            self._browser_session_id = session_dict.get("browser_session_id") or session_dict.get("id")
+            logger.info(f"Created browser session: {self._browser_session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to create browser session: {e}")
             self._browser_session_id = None
 
     async def _inter_task_wait(self):
@@ -129,6 +148,9 @@ class SkyvernAdapter(PlatformAdapter):
             logger.info(f"Using browser session: {self._browser_session_id}")
         else:
             logger.warning("No browser session ID set - task will use fresh browser (may fail for logged-in pages)")
+        if self._cookie_header:
+            kwargs["extra_http_headers"] = {"Cookie": self._cookie_header}
+            logger.info(f"Passing cookie header ({len(self._cookie_header)} chars)")
 
         max_retries = min(6, 2 + pm.provider_count)
         last_error = None
@@ -162,8 +184,9 @@ class SkyvernAdapter(PlatformAdapter):
                     raise Exception(f"Skyvern task failed: {error_msg}")
 
                 if status == "terminated" and not output:
-                    logger.warning(f"Skyvern task terminated with empty output: run_id={result.get('run_id')}")
-                    raise Exception(f"Skyvern task terminated with no output")
+                    failure_reason = result.get("failure_reason", "")
+                    logger.warning(f"Skyvern task terminated: run_id={result.get('run_id')}, reason={failure_reason}")
+                    # Don't raise — terminated is a valid end state for some tasks (e.g. auth check)
 
                 return result
 
@@ -201,31 +224,18 @@ class SkyvernAdapter(PlatformAdapter):
 
             home_url = f"https://www.{self.platform}.com"
 
-            cookie_js = self._get_cookie_js(session_data) if session_data else ""
-
-            if cookie_js:
-                prompt = (
-                    f"Go to {home_url}. "
-                    f"Open the browser developer console (press F12, click Console tab) "
-                    f"and paste this JavaScript code, then press Enter to execute it:\n\n"
-                    f"{cookie_js}\n\n"
-                    f"After executing the code, reload the page. "
-                    f"Then check if I am logged in by looking for a profile icon, avatar, or username. "
-                    f"Do NOT click any login or sign-up buttons. "
-                    f"Do NOT terminate early."
-                )
-            else:
-                prompt = (
-                    f"Navigate to {home_url} and check if I am logged in. "
-                    f"Look for a profile icon, avatar, or username in the navigation bar. "
-                    f"Do NOT click any login or sign-up buttons. "
-                    f"Do NOT terminate early. "
-                    f"Report whether I am logged in or not."
-                )
+            prompt = (
+                f"Navigate to {home_url} and check if I am logged in. "
+                f"Look for a profile icon, avatar, or username in the navigation bar. "
+                f"Do NOT click any login or sign-up buttons. "
+                f"Do NOT terminate early. "
+                f"Report whether I am logged in or not."
+            )
 
             task = await self._run_task(prompt=prompt, url=home_url)
             status = task.get("status") if isinstance(task, dict) else getattr(task, "status", "")
-            logger.info(f"Authenticate task status: {status}")
+            output = task.get("output") if isinstance(task, dict) else getattr(task, "output", None)
+            logger.info(f"Authenticate task status: {status}, output: {output}")
             return status in ("completed", "created", "terminated")
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
