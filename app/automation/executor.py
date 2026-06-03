@@ -163,9 +163,19 @@ class CampaignExecutor:
             )
             
             # Enrich targeting with AI-generated plan
-            # We map target_accounts to 'follower_mining' sources and keywords to 'search'
-            sources = plan.get("keywords", []) + plan.get("target_accounts", [])
-            strategy = "follower_mining" if plan.get("target_accounts") else "search"
+            target_accounts = plan.get("target_accounts", [])
+            keywords = plan.get("keywords", [])
+            group_types = plan.get("group_types", [])
+            
+            if target_accounts:
+                strategy = "follower_mining"
+                sources = target_accounts
+            elif group_types:
+                strategy = "group_combing"
+                sources = group_types
+            else:
+                strategy = "search"
+                sources = keywords
             
             # Update campaign targeting for persistence
             targeting["sources"] = sources
