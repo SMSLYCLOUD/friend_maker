@@ -75,10 +75,12 @@ class CampaignExecutor:
             self.logger.error("Account not found")
             return
 
-        if not await self.adapter.authenticate(account.session_data, account.username, account.password):
+        auth_result = await self.adapter.authenticate(account.session_data, account.username, account.password)
+        if not auth_result:
             self.logger.error("Authentication failed. Aborting.")
             return
 
+        self.logger.info("Authentication successful. Starting main loop.")
         actions_today = 0
         limit = campaign.daily_limit or 50
 
@@ -136,6 +138,8 @@ class CampaignExecutor:
         """Search for or discover users based on campaign targeting settings."""
         targeting = campaign.targeting
         
+        self.logger.info(f"_fetch_new_targets: targeting={targeting}, ai_instructions={campaign.ai_instructions!r}")
+        
         ref_images = self.load_reference_images()
         
         # 1. Check if we need AI Strategic Planning
@@ -161,6 +165,8 @@ class CampaignExecutor:
             self.repo.update_campaign(campaign)
             
             self.logger.info(f"AI Plan Generated: {len(sources)} strategic sources identified.")
+        else:
+            self.logger.info(f"No AI planning needed: sources={sources}, has_planner={self.planner is not None}, has_instructions={bool(campaign.ai_instructions)}")
 
         strategy = targeting.get("strategy", "search")
         sources = targeting.get("sources", [])

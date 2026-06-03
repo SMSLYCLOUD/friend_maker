@@ -81,7 +81,8 @@ class SkyvernAdapter(PlatformAdapter):
                     status = getattr(result, "status", "")
 
                 if status not in ("completed", "failed", "error"):
-                    for _ in range(120):
+                    logger.info(f"Task {run_id} has status '{status}', polling for completion...")
+                    for poll_i in range(120):
                         await asyncio.sleep(5)
                         try:
                             latest = await skyvern.get_task(run_id)
@@ -94,7 +95,10 @@ class SkyvernAdapter(PlatformAdapter):
                                         latest = fn()
                                         break
                                 status = latest.get("status", "") if isinstance(latest, dict) else getattr(latest, "status", "")
+                            if poll_i % 6 == 0:
+                                logger.info(f"Polling task {run_id}: status={status} (poll #{poll_i})")
                             if status in ("completed", "failed", "error"):
+                                logger.info(f"Task {run_id} reached terminal status: {status}")
                                 if isinstance(latest, dict):
                                     result = latest
                                 else:
@@ -106,8 +110,8 @@ class SkyvernAdapter(PlatformAdapter):
                                     if not isinstance(result, dict):
                                         result = vars(latest)
                                 break
-                        except Exception:
-                            pass
+                        except Exception as poll_err:
+                            logger.warning(f"Poll error for task {run_id} (attempt {poll_i}): {poll_err}")
 
                 _last_task_time = time.monotonic()
                 pm.mark_success(provider_name)
