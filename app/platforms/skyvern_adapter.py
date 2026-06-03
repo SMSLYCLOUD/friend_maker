@@ -32,11 +32,14 @@ class SkyvernAdapter(PlatformAdapter):
         self._browser_session_id: Optional[str] = None
 
     async def _ensure_browser_session(self, session_data: Optional[str] = None):
-        """Create a browser session with cookies injected, or reuse existing one.
+        """Ensure we have a browser session ID for task reuse.
         
-        The browser stays open for the lifetime of this adapter (campaign).
+        For self-hosted Skyvern, run_task() creates its own browser internally.
+        We create a persistent session via the API and pass browser_session_id 
+        to run_task() so all tasks in this campaign share the same browser.
+        Cookies persist in the browser's profile across tasks.
+        
         Each adapter instance = one isolated browser session per account.
-        Sessions auto-timeout on the Skyvern server after inactivity.
         """
         if self._browser_session_id:
             logger.info(f"Reusing browser session: {self._browser_session_id}")
@@ -47,24 +50,31 @@ class SkyvernAdapter(PlatformAdapter):
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
 
         try:
-            browser = await skyvern.launch_cloud_browser()
-            page = await browser.get_working_page()
-            self._browser_session_id = browser.browser_session_id
+            session = await skyvern.create_browser_session(timeout=60)
+            session_dict = self._to_dict(session)
+            self._browser_session_id = session_dict.get("browser_session_id") or session_dict.get("id")
             logger.info(f"Created browser session: {self._browser_session_id}")
-
-            if session_data:
-                cookies = json.loads(session_data)
-                if isinstance(cookies, list) and cookies:
-                    await page.goto(f"https://www.{self.platform}.com")
-                    await page.context.add_cookies(cookies)
-                    logger.info(f"Injected {len(cookies)} cookies into browser session")
-                    await page.reload()
-                    # Keep browser open — don't close!
-                    # The session persists on the server via browser_session_id.
-                    # run_task() reconnects to it each time.
         except Exception as e:
-            logger.warning(f"Failed to create browser session with cookies: {e}")
+            logger.warning(f"Failed to create browser session: {e}")
             self._browser_session_id = None
+
+    def _get_cookie_js(self, session_data: str) -> str:
+        """Generate JavaScript to inject cookies via document.cookie."""
+        try:
+            cookies = json.loads(session_data)
+            if not isinstance(cookies, list):
+                return ""
+            js_lines = []
+            for c in cookies:
+                name = c.get("name", "")
+                value = c.get("value", "")
+                domain = c.get("domain", "")
+                path = c.get("path", "/")
+                if name and value:
+                    js_lines.append(f'document.cookie = "{name}={value}; domain={domain}; path={path}";')
+            return "\n".join(js_lines)
+        except Exception:
+            return ""
 
     async def cleanup(self):
         """Close the browser session when the campaign is truly done."""
@@ -175,13 +185,28 @@ class SkyvernAdapter(PlatformAdapter):
             await self._ensure_browser_session(session_data)
 
             home_url = f"https://www.{self.platform}.com"
-            prompt = (
-                f"Navigate to {home_url} and check if I am logged in. "
-                f"Look for a profile icon, avatar, or username in the navigation bar. "
-                f"Do NOT click any login or sign-up buttons. "
-                f"Do NOT terminate early. "
-                f"Report whether I am logged in or not."
-            )
+
+            cookie_js = self._get_cookie_js(session_data) if session_data else ""
+
+            if cookie_js:
+                prompt = (
+                    f"Go to {home_url}. "
+                    f"Open the browser developer console (press F12, click Console tab) "
+                    f"and paste this JavaScript code, then press Enter to execute it:\n\n"
+                    f"{cookie_js}\n\n"
+                    f"After executing the code, reload the page. "
+                    f"Then check if I am logged in by looking for a profile icon, avatar, or username. "
+                    f"Do NOT click any login or sign-up buttons. "
+                    f"Do NOT terminate early."
+                )
+            else:
+                prompt = (
+                    f"Navigate to {home_url} and check if I am logged in. "
+                    f"Look for a profile icon, avatar, or username in the navigation bar. "
+                    f"Do NOT click any login or sign-up buttons. "
+                    f"Do NOT terminate early. "
+                    f"Report whether I am logged in or not."
+                )
 
             task = await self._run_task(prompt=prompt, url=home_url)
             status = task.get("status") if isinstance(task, dict) else getattr(task, "status", "")
