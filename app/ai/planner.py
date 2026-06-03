@@ -42,11 +42,15 @@ class CampaignPlanner:
             match = re.search(r'\{.*\}', response, re.DOTALL)
             if match:
                 return json.loads(match.group())
+            # Fallback: extract keywords from the instructions themselves
+            import re as _re
+            words = [w.strip('.,!?') for w in persona_instructions.split() if len(w) > 3]
+            fallback_keywords = list(dict.fromkeys(words[:10]))
             return {
-                "keywords": [platform],
+                "keywords": fallback_keywords or [platform],
                 "group_types": [],
                 "target_accounts": [],
-                "discovery_reasoning": "Fallback due to AI parsing error."
+                "discovery_reasoning": "Fallback: extracted keywords from instructions due to AI parsing error."
             }
         except Exception as e:
             self.logger.error(f"Failed to generate discovery plan: {e}")
