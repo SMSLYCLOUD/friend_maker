@@ -1,105 +1,103 @@
 import httpx
 import logging
-import asyncio
 from typing import Optional, List
-from app.config import settings
 
 class OpenRouterManager:
+    """LLM manager that routes through ProviderManager for multi-provider fallback."""
+
     def __init__(self):
-        self.base_url = settings.OPENROUTER_BASE_URL
-        self.model = settings.OPENROUTER_MODEL
-        self.api_key = settings.OPENROUTER_API_KEY
         self.logger = logging.getLogger("OpenRouterManager")
 
-    async def health_check(self) -> bool:
-        if not self.api_key:
-            self.logger.warning("OpenRouter API key is not set.")
-            return False
+    def _get_pm(self):
+        from app.llm.provider_manager import get_provider_manager
+        return get_provider_manager()
 
-        try:
-            async with httpx.AsyncClient() as client:
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}"
-                }
-                r = await client.get(f"{self.base_url}/auth/key", headers=headers, timeout=5)
-                return r.status_code == 200
-        except Exception as e:
-            self.logger.error(f"OpenRouter health check failed: {e}")
-            return False
+    async def health_check(self) -> bool:
+        pm = self._get_pm()
+        return pm.provider_count > 0
 
     async def ensure_ready(self, progress_callback=None):
-        """
-        Verify OpenRouter API connectivity and key validity.
-        """
-        if progress_callback: progress_callback("Checking OpenRouter connection...")
-
-        if not self.api_key:
-            self.logger.error("No OpenRouter API key configured.")
-            if progress_callback: progress_callback("Error: No OpenRouter API key configured.")
-            return
-
-        if await self.health_check():
-            self.logger.info("OpenRouter is ready.")
-            if progress_callback: progress_callback("OpenRouter connection verified.")
-        else:
-            self.logger.warning("OpenRouter connection failed or key is invalid.")
-            if progress_callback: progress_callback("OpenRouter connection failed.")
+        pm = self._get_pm()
+        if progress_callback:
+            progress_callback(f"ProviderManager ready with {pm.provider_count} providers.")
 
     async def generate(self, prompt: str, image_base64: Optional[str] = None, ref_images: Optional[List[str]] = None) -> str:
-        if not self.api_key:
-            self.logger.error("Generation failed: OPENROUTER_API_KEY is not set.")
+        pm = self._get_pm()
+        provider = pm.get_next_provider()
+        if not provider:
+            self.logger.error("No LLM providers available")
             return ""
 
-        content = []
-        content.append({"type": "text", "text": prompt})
-        
+        config = provider.config
+        self.logger.info(f"Generating with provider: {config.name}")
+
+        content: list[dict] = [{"type": "text", "text": prompt}]
+
         if image_base64:
             content.append({
                 "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_base64}"
-                }
+                "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
             })
 
         if ref_images:
             for b64 in ref_images:
                 content.append({
                     "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{b64}"
-                    }
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
                 })
 
         payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "user", "content": content}
-            ]
+            "model": config.model,
+            "messages": [{"role": "user", "content": content}]
         }
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://socialgrowthai.app", # Recommended by OpenRouter
-            "X-Title": "SocialGrowthAI"
+            "Authorization": f"Bearer {config.api_key}",
+            "Content-Type": "application/json"
         }
 
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                    timeout=120
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    choices = data.get("choices", [])
-                    if choices and len(choices) > 0:
-                        return choices[0].get("message", {}).get("content", "")
-                    return ""
-                else:
-                    self.logger.error(f"OpenRouter error ({r.status_code}): {r.text}")
-                    return ""
-        except Exception as e:
-            self.logger.error(f"Generation failed: {e}")
-            return ""
+        max_retries = min(4, 1 + pm.provider_count)
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=120) as client:
+                    r = await client.post(
+                        f"{config.base_url}/chat/completions",
+                        json=payload,
+                        headers=headers
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        choices = data.get("choices", [])
+                        if choices:
+                            pm.mark_success(config.name)
+                            return choices[0].get("message", {}).get("content", "")
+                        return ""
+                    elif r.status_code == 429:
+                        self.logger.warning(f"Rate limited on {config.name} (attempt {attempt+1})")
+                        pm.mark_rate_limited(config.name)
+                        provider = pm.get_next_provider()
+                        if provider:
+                            config = provider.config
+                            headers["Authorization"] = f"Bearer {config.api_key}"
+                            payload["model"] = config.model
+                        continue
+                    else:
+                        self.logger.error(f"LLM error ({r.status_code}) on {config.name}: {r.text[:200]}")
+                        pm.mark_failed(config.name)
+                        provider = pm.get_next_provider()
+                        if provider:
+                            config = provider.config
+                            headers["Authorization"] = f"Bearer {config.api_key}"
+                            payload["model"] = config.model
+                        continue
+            except Exception as e:
+                self.logger.error(f"LLM failed on {config.name}: {e}")
+                pm.mark_failed(config.name)
+                provider = pm.get_next_provider()
+                if provider:
+                    config = provider.config
+                    headers["Authorization"] = f"Bearer {config.api_key}"
+                    payload["model"] = config.model
+                continue
+
+        self.logger.error("All providers exhausted for generate()")
+        return ""
