@@ -33,6 +33,7 @@ class CampaignExecutor:
         self.logger = logging.getLogger(f"Executor-{adapter.platform_name}")
         self.running = False
         self.bot_instructions = ""
+        self._busy = False
 
     def load_bot_instructions(self):
         self.bot_instructions = self.repo.get_global_setting("BOT_INSTRUCTIONS", "")
@@ -82,79 +83,160 @@ class CampaignExecutor:
                 await self.adapter.cleanup()
             return
 
-        self.logger.info("Authentication successful. Starting main loop and response monitor.")
+        self.logger.info("Authentication successful. Starting fetch→DM→next loop.")
         actions_today = 0
         limit = campaign.daily_limit or 50
-        fetch_retries = 0
-        max_fetch_retries = 3
 
         # Start background response monitor
         response_monitor_task = asyncio.create_task(self._monitor_responses(campaign))
 
-        while self.running:
+        # Get or generate plan
+        plan = await self._get_plan(campaign, ref_images)
+        sources = plan.get("sources", [])
+        strategy = plan.get("strategy", "follower_mining")
+        fetch_limit = plan.get("fetch_limit", 20)
+
+        if not sources:
+            self.logger.error("No sources found from plan. Stopping.")
+            self.running = False
+
+        action_type = campaign.campaign_type
+        context = campaign.ai_instructions or ""
+
+        while self.running and sources:
             if actions_today >= limit:
-                self.logger.info(f"Daily limit of {limit} reached. Pausing until tomorrow.")
-                self.running = False
+                self.logger.info(f"Daily limit of {limit} reached.")
                 break
 
             if self.anti_detect.needs_break():
                 await self.anti_detect.take_break(lambda: self.running)
-
             if not self.running: break
 
-            # 2. Get pending targets or fetch new ones
-            pending = self.repo.get_pending_targets(campaign_id, self.user_id, limit=1)
+            # Pick next source
+            source = sources[0]
+            self.logger.info(f"Fetching 1 target from source: {source}")
 
-            if not pending:
-                self.logger.info("No pending targets. Fetching new ones...")
-                await self._fetch_new_targets(campaign)
-                pending = self.repo.get_pending_targets(campaign_id, self.user_id, limit=1)
-                if not pending:
-                    fetch_retries += 1
-                    if fetch_retries >= max_fetch_retries:
-                        self.logger.info(f"Could not find new targets after {max_fetch_retries} attempts. Stopping.")
-                        break
-                    wait_time = 30 * fetch_retries
-                    self.logger.info(f"No targets found (attempt {fetch_retries}/{max_fetch_retries}). Waiting {wait_time}s before retry...")
-                    await asyncio.sleep(wait_time)
-                    continue
-                fetch_retries = 0
-
-            target = pending[0]
-            
-            # Check if already contacted (cross-campaign dedup)
-            action_type = campaign.campaign_type
-            handle = target.platform_user_id.lstrip("@")
-            if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, handle, action_type):
-                self.logger.info(f"Skipping @{handle}: already contacted ({action_type}) in a previous campaign")
-                self.repo.update_target_status(target.id, "skipped_already_contacted")
-                continue
-            
+            # Fetch 1 follower from this source
             try:
-                await self._process_target(target, campaign)
-                actions_today += 1
-                await self.anti_detect.random_delay(lambda: self.running)
-            except asyncio.CancelledError:
-                self.logger.info("Task cancelled during target processing.")
-                raise
-            except Exception as e:
-                self.logger.error(f"Error processing target {target.username}: {e}")
-                # Log failure
+                self._busy = True
+                new_users = []
+                if strategy == "follower_mining":
+                    new_users = await self.adapter.get_followers(source, limit=1)
+                elif strategy == "search":
+                    new_users = await self.adapter.search_users(source, limit=1, context=context)
+                elif strategy == "group_combing":
+                    new_users = await self.adapter.get_group_members(source, limit=1)
+
+                if not new_users:
+                    self.logger.info(f"No more users from {source}. Moving to next source.")
+                    sources.pop(0)
+                    continue
+
+                user = new_users[0]
+                handle = user.platform_id.lstrip("@")
+
+                # Skip if already contacted
+                if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, handle, action_type):
+                    self.logger.info(f"Skipping @{handle}: already contacted ({action_type})")
+                    continue
+
+                # Immediately DM/follow/comment this user
+                self.logger.info(f"Processing @{handle} ({action_type})...")
+                success = False
+                error = None
+
+                if action_type == "growth":
+                    res = await self.adapter.follow(handle)
+                    success = res.success
+                    error = res.error
+                elif action_type == "outreach":
+                    # Scrape profile for personalization
+                    profile_data = {"username": handle, "bio": ""}
+                    try:
+                        profile_data = await self.adapter.get_user_profile(handle)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to scrape profile: {e}")
+
+                    # Generate and send DM
+                    msg = "Hello!"
+                    if self.generator:
+                        msg = await self.generator.generate_dm(
+                            profile_data,
+                            campaign.message_template,
+                            campaign.ai_instructions,
+                            bot_instructions=self.bot_instructions,
+                            ref_images=ref_images
+                        )
+                    res = await self.adapter.send_dm(handle, msg)
+                    success = res.success
+                    error = res.error
+                    self.logger.info(f"DM to @{handle}: {'sent' if success else f'failed: {error}'}")
+
+                elif action_type == "comment":
+                    profile_data = {"username": handle, "bio": ""}
+                    try:
+                        profile_data = await self.adapter.get_user_profile(handle)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to scrape profile: {e}")
+
+                    comment_text = "Great post!"
+                    if self.generator:
+                        comment_text = await self.generator.generate_comment(
+                            profile_data,
+                            campaign.message_template,
+                            campaign.ai_instructions,
+                            bot_instructions=self.bot_instructions,
+                            ref_images=ref_images
+                        )
+                    res = await self.adapter.comment_on_recent_post(handle, comment_text)
+                    success = res.success
+                    error = res.error
+
+                # Log and register
                 self.repo.log_action(ActionLog(
-                    id=f"log_fail_{target.id}_{int(asyncio.get_event_loop().time())}",
+                    id=f"log_{campaign.id}_{handle}_{int(asyncio.get_event_loop().time())}",
                     account_id=campaign.account_id,
                     campaign_id=campaign.id,
-                    action_type="unknown",
-                    target_user=target.username,
-                    success=False,
-                    error=str(e)
+                    action_type=action_type,
+                    target_user=handle,
+                    success=success,
+                    error=error
                 ))
-                self.repo.update_target_status(target.id, "failed")
 
-                # Trigger cooldown
+                if success:
+                    self.repo.register_contact(
+                        user_id=self.user_id,
+                        platform=self.adapter.platform_name,
+                        platform_user_id=handle,
+                        username=handle,
+                        action_type=action_type,
+                        campaign_id=campaign.id
+                    )
+                    await self.conversation_memory.store_conversation(
+                        user_id=self.user_id,
+                        platform=self.adapter.platform_name,
+                        target_user=handle,
+                        message=f"Sent {action_type} to @{handle}",
+                        response="Success",
+                        metadata={"action_type": action_type, "campaign_id": campaign.id}
+                    )
+                    actions_today += 1
+                    self.logger.info(f"✓ @{handle} ({action_type}) - {actions_today}/{limit} today")
+                else:
+                    self.logger.warning(f"✗ @{handle} ({action_type}) failed: {error}")
+
+                await self.anti_detect.random_delay(lambda: self.running)
+
+            except asyncio.CancelledError:
+                self.logger.info("Task cancelled.")
+                raise
+            except Exception as e:
+                self.logger.error(f"Error processing source {source}: {e}")
                 await self.anti_detect.trigger_cooldown(lambda: self.running)
+            finally:
+                self._busy = False
 
-        self.logger.info("Campaign execution stopped.")
+        self.logger.info("Campaign execution finished.")
 
         # Cancel response monitor
         if 'response_monitor_task' in dir() and not response_monitor_task.done():
@@ -164,13 +246,50 @@ class CampaignExecutor:
             except asyncio.CancelledError:
                 pass
 
-        # Only close browser if campaign was actively stopped (not if we just ran out of targets)
         if not self.running:
             self.logger.info("Campaign stopped by user. Closing browser session.")
             if hasattr(self.adapter, 'cleanup'):
                 await self.adapter.cleanup()
         else:
             self.logger.info("Campaign ended but browser session kept alive for next run.")
+
+    async def _get_plan(self, campaign: Campaign, ref_images: list) -> dict:
+        """Run planner and return sources, strategy, limit."""
+        PLATFORM_NAMES = {"tiktok", "instagram", "twitter", "x", "facebook", "linkedin", "youtube", "reddit"}
+
+        if self.planner and campaign.ai_instructions:
+            self.logger.info("Running AI Strategic Planning...")
+            plan = await self.planner.generate_discovery_plan(
+                campaign.ai_instructions,
+                self.adapter.platform_name,
+                bot_instructions=self.bot_instructions,
+                ref_images=ref_images
+            )
+
+            target_accounts = plan.get("target_accounts", [])
+            keywords = plan.get("keywords", [])
+            group_types = plan.get("group_types", [])
+            fetch_limit = plan.get("limit", 20)
+
+            if target_accounts:
+                strategy = "follower_mining"
+                sources = [s.lstrip("@") for s in target_accounts if s.lower().strip("@") not in PLATFORM_NAMES]
+            elif group_types:
+                strategy = "group_combing"
+                sources = [s.lstrip("@") for s in group_types if s.lower().strip("@") not in PLATFORM_NAMES]
+            else:
+                strategy = "search"
+                sources = [s for s in keywords if s.lower() not in PLATFORM_NAMES]
+
+            self.logger.info(f"Plan: {len(sources)} sources ({sources}), strategy={strategy}, limit={fetch_limit}")
+            return {"sources": sources, "strategy": strategy, "fetch_limit": fetch_limit}
+
+        self.logger.info("No planner available. Using campaign targeting.")
+        targeting = campaign.targeting
+        sources = [s.lstrip("@") for s in targeting.get("sources", []) if s.lstrip("@").lower() not in PLATFORM_NAMES]
+        strategy = targeting.get("strategy", "search")
+        fetch_limit = targeting.get("fetch_limit", 20)
+        return {"sources": sources, "strategy": strategy, "fetch_limit": fetch_limit}
 
     async def _fetch_new_targets(self, campaign: Campaign):
         """Search for or discover users based on campaign targeting settings."""
@@ -468,6 +587,11 @@ class CampaignExecutor:
             await asyncio.sleep(check_interval)
             if not self.running:
                 break
+
+            # Skip if main loop is busy (don't compete for browser session)
+            if self._busy:
+                self.logger.info("Response monitor: main loop busy, skipping inbox check.")
+                continue
 
             try:
                 self.logger.info("Checking inbox for responses...")

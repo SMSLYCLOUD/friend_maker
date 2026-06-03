@@ -127,6 +127,8 @@ class SkyvernAdapter(PlatformAdapter):
         if self._browser_session_id:
             kwargs["browser_session_id"] = self._browser_session_id
             logger.info(f"Using browser session: {self._browser_session_id}")
+        else:
+            logger.warning("No browser session ID set - task will use fresh browser (may fail for logged-in pages)")
 
         max_retries = min(6, 2 + pm.provider_count)
         last_error = None
@@ -147,7 +149,8 @@ class SkyvernAdapter(PlatformAdapter):
                 result = await skyvern.run_task(**kwargs)
                 result = self._to_dict(result)
                 status = result.get("status", "unknown")
-                logger.info(f"Skyvern task completed: status={status}, run_id={result.get('run_id')}")
+                output = result.get("output", {})
+                logger.info(f"Skyvern task completed: status={status}, run_id={result.get('run_id')}, output_keys={list(output.keys()) if isinstance(output, dict) else 'N/A'}")
 
                 _last_task_time = time.monotonic()
                 pm.mark_success(provider_name)
@@ -157,6 +160,10 @@ class SkyvernAdapter(PlatformAdapter):
                     logger.error(f"Skyvern task FAILED: status={status}, run_id={result.get('run_id')}, error={error_msg}")
                     logger.error(f"Full result: {json.dumps(result, default=str)[:500]}")
                     raise Exception(f"Skyvern task failed: {error_msg}")
+
+                if status == "terminated" and not output:
+                    logger.warning(f"Skyvern task terminated with empty output: run_id={result.get('run_id')}")
+                    raise Exception(f"Skyvern task terminated with no output")
 
                 return result
 
