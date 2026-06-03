@@ -10,10 +10,10 @@ from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 logger = logging.getLogger("SkyvernAdapter")
 
 SKYVERN_BASE_URL = os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
-INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "90"))
+INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "300"))
 
 # Minimum seconds between consecutive Skyvern tasks to avoid 429 rate limits
-INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "90"))
+INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "300"))
 
 # Timestamp of last completed Skyvern task (module-level for adapter instances)
 _last_task_time: float = 0.0
