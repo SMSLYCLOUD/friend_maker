@@ -32,7 +32,12 @@ class SkyvernAdapter(PlatformAdapter):
         self._browser_session_id: Optional[str] = None
 
     async def _ensure_browser_session(self, session_data: Optional[str] = None):
-        """Create a browser session with cookies injected, or reuse existing one."""
+        """Create a browser session with cookies injected, or reuse existing one.
+        
+        The browser stays open for the lifetime of this adapter (campaign).
+        Each adapter instance = one isolated browser session per account.
+        Sessions auto-timeout on the Skyvern server after inactivity.
+        """
         if self._browser_session_id:
             logger.info(f"Reusing browser session: {self._browser_session_id}")
             return
@@ -54,10 +59,24 @@ class SkyvernAdapter(PlatformAdapter):
                     await page.context.add_cookies(cookies)
                     logger.info(f"Injected {len(cookies)} cookies into browser session")
                     await page.reload()
-
-            await browser.close()
+                    # Keep browser open — don't close!
+                    # The session persists on the server via browser_session_id.
+                    # run_task() reconnects to it each time.
         except Exception as e:
             logger.warning(f"Failed to create browser session with cookies: {e}")
+            self._browser_session_id = None
+
+    async def cleanup(self):
+        """Close the browser session when the campaign is truly done."""
+        if self._browser_session_id:
+            logger.info(f"Cleaning up browser session: {self._browser_session_id}")
+            try:
+                from skyvern import Skyvern
+                api_key = os.getenv("SKYVERN_API_KEY", "")
+                skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
+                await skyvern.close_browser_session(self._browser_session_id)
+            except Exception as e:
+                logger.warning(f"Failed to close browser session: {e}")
             self._browser_session_id = None
 
     async def _inter_task_wait(self):

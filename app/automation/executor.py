@@ -78,6 +78,8 @@ class CampaignExecutor:
         auth_result = await self.adapter.authenticate(account.session_data, account.username, account.password)
         if not auth_result:
             self.logger.error("Authentication failed. Aborting.")
+            if hasattr(self.adapter, 'cleanup'):
+                await self.adapter.cleanup()
             return
 
         self.logger.info("Authentication successful. Starting main loop.")
@@ -133,6 +135,10 @@ class CampaignExecutor:
                 await self.anti_detect.trigger_cooldown(lambda: self.running)
 
         self.logger.info("Campaign execution stopped.")
+
+        # Cleanup browser session when campaign is truly done
+        if hasattr(self.adapter, 'cleanup'):
+            await self.adapter.cleanup()
 
     async def _fetch_new_targets(self, campaign: Campaign):
         """Search for or discover users based on campaign targeting settings."""
