@@ -79,6 +79,7 @@ export default function SettingsPage() {
         "SKYVERN_LLM_GOOGLE_API_KEY", "SKYVERN_LLM_GOOGLE_MODEL", "SKYVERN_LLM_GOOGLE_BASE_URL", "SKYVERN_LLM_GOOGLE_RPM_LIMIT",
         "SKYVERN_LLM_SAMBANOVA_API_KEY", "SKYVERN_LLM_SAMBANOVA_MODEL", "SKYVERN_LLM_SAMBANOVA_BASE_URL", "SKYVERN_LLM_SAMBANOVA_RPM_LIMIT",
         "SKYVERN_LLM_NVIDIA_API_KEY", "SKYVERN_LLM_NVIDIA_MODEL", "SKYVERN_LLM_NVIDIA_BASE_URL", "SKYVERN_LLM_NVIDIA_RPM_LIMIT",
+        "SKYVERN_LLM_XIAOMI_MIMO_API_KEY", "SKYVERN_LLM_XIAOMI_MIMO_MODEL", "SKYVERN_LLM_XIAOMI_MIMO_BASE_URL", "SKYVERN_LLM_XIAOMI_MIMO_RPM_LIMIT",
         "SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD",
       ];
       for (const key of envKeys) {
@@ -416,15 +417,45 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* Xiaomi MiMo */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-orange-500" />
+                <h3 className="text-sm font-bold text-white">Xiaomi MiMo V2.5</h3>
+                <span className="text-[10px] text-orange-400 font-mono">100 RPM</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_XIAOMI_MIMO_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_XIAOMI_MIMO_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-orange-600 transition-all"
+                    placeholder="tp-..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_XIAOMI_MIMO_MODEL || "mimo-v2.5"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_XIAOMI_MIMO_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-orange-600 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Provider Order */}
             <div>
               <label className="mb-1 block text-xs font-semibold text-amber-400 uppercase tracking-wider">Provider Order (comma-separated)</label>
               <input
                 type="text"
-                value={settings.SKYVERN_LLM_PROVIDERS || "Groq,OpenRouter,Google,SambaNova,NVIDIA"}
+                value={settings.SKYVERN_LLM_PROVIDERS || "Groq,XiaomiMiMo,OpenRouter,Google,SambaNova,NVIDIA"}
                 onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_PROVIDERS: e.target.value })}
                 className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm font-mono outline-none focus:ring-2 focus:ring-amber-600 transition-all"
-                placeholder="Groq,OpenRouter,Google,SambaNova,NVIDIA"
+                placeholder="Groq,XiaomiMiMo,OpenRouter,Google,SambaNova,NVIDIA"
               />
               <p className="mt-1 text-[10px] text-gray-600">Providers are tried in this order. Remove one to skip it.</p>
             </div>
