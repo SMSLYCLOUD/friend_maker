@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { fetchSettings, updateSettings, fetchGlobalSettings, updateGlobalSettings, fetchBotImages, uploadBotImage, deleteBotImage, getImageUrl, updateEnvVars, fetchEnvVars, fetchProviderStatus, rotateProvider } from "@/lib/api";
-import { Save, Smartphone, Shield, Globe, Loader2, MessageCircle, ArrowLeft, ImagePlus, Trash2, X, Zap } from "lucide-react";
+import { Save, Smartphone, Shield, Globe, Loader2, MessageCircle, ArrowLeft, ImagePlus, Trash2, X, Zap, Wifi } from "lucide-react";
 import Link from "next/link";
 
 export default function SettingsPage() {
@@ -83,6 +83,13 @@ export default function SettingsPage() {
         "SKYVERN_LLM_NVIDIA_API_KEY", "SKYVERN_LLM_NVIDIA_MODEL", "SKYVERN_LLM_NVIDIA_BASE_URL", "SKYVERN_LLM_NVIDIA_RPM_LIMIT",
       ];
       for (const key of providerKeys) {
+        if (settings[key] !== undefined && settings[key] !== "") {
+          envUpdate[key] = settings[key];
+        }
+      }
+      // Proxy env vars
+      const proxyKeys = ["SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD"];
+      for (const key of proxyKeys) {
         if (settings[key] !== undefined && settings[key] !== "") {
           envUpdate[key] = settings[key];
         }
@@ -429,6 +436,54 @@ export default function SettingsPage() {
               <p className="mt-1 text-[10px] text-gray-600">Providers are tried in this order. Remove one to skip it.</p>
             </div>
           </div>
+        </div>
+
+        {/* Proxy Configuration */}
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6 backdrop-blur-sm">
+          <div className="flex items-center gap-2 mb-6">
+            <Wifi className="w-5 h-5 text-cyan-500" />
+            <h2 className="text-xl font-bold text-white">Residential Proxy</h2>
+            {settings.SKYVERN_PROXY_URL && (
+              <span className="text-[10px] text-emerald-400 font-mono bg-emerald-400/10 px-2 py-0.5 rounded-full">ACTIVE</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mb-4">Route Skyvern browser traffic through a residential proxy to bypass Cloudflare and anti-bot detection. Required for TikTok automation.</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Proxy URL</label>
+              <input
+                type="text"
+                value={settings.SKYVERN_PROXY_URL || ""}
+                onChange={(e) => setSettings({ ...settings, SKYVERN_PROXY_URL: e.target.value })}
+                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all font-mono"
+                placeholder="gate.decodo.com:7000"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Username</label>
+              <input
+                type="text"
+                value={settings.SKYVERN_PROXY_USERNAME || ""}
+                onChange={(e) => setSettings({ ...settings, SKYVERN_PROXY_USERNAME: e.target.value })}
+                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all font-mono"
+                placeholder="user-yourname-country-us"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Password</label>
+              <input
+                type="password"
+                value={settings.SKYVERN_PROXY_PASSWORD || ""}
+                onChange={(e) => setSettings({ ...settings, SKYVERN_PROXY_PASSWORD: e.target.value })}
+                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all font-mono"
+                placeholder="yourpassword"
+              />
+            </div>
+          </div>
+          {envVars.SKYVERN_PROXY_URL && (
+            <p className="mt-2 text-[10px] text-emerald-400 font-mono">● active: {envVars.SKYVERN_PROXY_URL}</p>
+          )}
         </div>
 
         {/* Telegram Bot */}

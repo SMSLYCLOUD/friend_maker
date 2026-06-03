@@ -139,6 +139,10 @@ class SkyvernAdapter(PlatformAdapter):
             payload["browser_session_id"] = self._browser_session_id
         if self._cookie_header:
             payload["extra_http_headers"] = {"Cookie": self._cookie_header}
+        proxy_config = self._get_proxy_config()
+        if proxy_config:
+            payload["proxy"] = proxy_config
+            logger.info(f"Using proxy for extraction: {proxy_config['url'][:30]}...")
 
         headers = {}
         if api_key:
@@ -175,6 +179,21 @@ class SkyvernAdapter(PlatformAdapter):
                 return fn()
         return vars(obj)
 
+    @staticmethod
+    def _get_proxy_config() -> Optional[dict]:
+        """Build proxy config from environment variables for Skyvern."""
+        url = os.getenv("SKYVERN_PROXY_URL", "").strip()
+        if not url:
+            return None
+        username = os.getenv("SKYVERN_PROXY_USERNAME", "").strip()
+        password = os.getenv("SKYVERN_PROXY_PASSWORD", "").strip()
+        proxy: dict[str, str] = {"url": url}
+        if username:
+            proxy["username"] = username
+        if password:
+            proxy["password"] = password
+        return proxy
+
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
         import asyncio
@@ -199,6 +218,10 @@ class SkyvernAdapter(PlatformAdapter):
         if self._cookie_header:
             kwargs["extra_http_headers"] = {"Cookie": self._cookie_header}
             logger.info(f"Passing cookie header ({len(self._cookie_header)} chars)")
+        proxy_config = self._get_proxy_config()
+        if proxy_config:
+            kwargs["proxy"] = proxy_config
+            logger.info(f"Using proxy: {proxy_config['url'][:30]}...")
 
         max_retries = min(6, 2 + pm.provider_count)
         last_error = None

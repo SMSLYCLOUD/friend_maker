@@ -629,6 +629,9 @@ EDITABLE_ENV_VARS = {
     "OPENROUTER_API_KEY",
     "OPENROUTER_MODEL",
     "SKYVERN_INTER_TASK_DELAY",
+    "SKYVERN_PROXY_URL",
+    "SKYVERN_PROXY_USERNAME",
+    "SKYVERN_PROXY_PASSWORD",
     "SKYVERN_LLM_PROVIDERS",
     "SKYVERN_LLM_GROQ_API_KEY",
     "SKYVERN_LLM_GROQ_MODEL",
@@ -653,7 +656,7 @@ EDITABLE_ENV_VARS = {
 }
 
 # API keys that should be masked in GET responses
-_SENSITIVE_KEYS = {k for k in EDITABLE_ENV_VARS if "API_KEY" in k}
+_SENSITIVE_KEYS = {k for k in EDITABLE_ENV_VARS if "API_KEY" in k or "PASSWORD" in k}
 
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
 ENV_FILE_PATH = os.path.normpath(ENV_FILE_PATH)
