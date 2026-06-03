@@ -182,19 +182,10 @@ class CampaignExecutor:
             if s_clean and s_clean not in PLATFORM_NAMES:
                 clean_sources.append(s.lstrip("@"))
         
-        # If we cleaned sources, update targeting
-        if clean_sources != existing_sources:
-            targeting["sources"] = clean_sources
-            import json
-            campaign.targeting_json = json.dumps(targeting)
-            self.repo.update_campaign(campaign)
-            self.logger.info(f"Cleaned stale sources: {existing_sources} -> {clean_sources}")
-        
-        real_sources = clean_sources
-        
-        # 1. Check if we need AI Strategic Planning
-        if not real_sources and self.planner and campaign.ai_instructions:
-            self.logger.info("No sources defined. Triggering AI Strategic Planning...")
+        # Always re-plan if instruction is set and planner is available
+        # This ensures the strict planner prompt is applied every time
+        if self.planner and campaign.ai_instructions:
+            self.logger.info("Re-running AI Strategic Planning with current instruction...")
             plan = await self.planner.generate_discovery_plan(
                 campaign.ai_instructions,
                 self.adapter.platform_name,
@@ -202,7 +193,6 @@ class CampaignExecutor:
                 ref_images=ref_images
             )
             
-            # Enrich targeting with AI-generated plan
             target_accounts = plan.get("target_accounts", [])
             keywords = plan.get("keywords", [])
             group_types = plan.get("group_types", [])
@@ -218,7 +208,7 @@ class CampaignExecutor:
                 strategy = "search"
                 sources = [s for s in keywords if s.lower() not in PLATFORM_NAMES]
             
-            # Update campaign targeting for persistence
+            # Update targeting with fresh plan
             targeting["sources"] = sources
             targeting["strategy"] = strategy
             targeting["fetch_limit"] = fetch_limit
@@ -227,9 +217,9 @@ class CampaignExecutor:
             campaign.targeting_json = json.dumps(targeting)
             self.repo.update_campaign(campaign)
             
-            self.logger.info(f"AI Plan Generated: {len(sources)} sources, limit={fetch_limit}")
+            self.logger.info(f"AI Plan: {len(sources)} sources, strategy={strategy}, limit={fetch_limit}")
         else:
-            self.logger.info(f"No AI planning needed: has_planner={self.planner is not None}, has_instructions={bool(campaign.ai_instructions)}")
+            self.logger.info(f"No planner available: has_planner={self.planner is not None}, has_instructions={bool(campaign.ai_instructions)}")
 
         strategy = targeting.get("strategy", "search")
         sources = targeting.get("sources", [])

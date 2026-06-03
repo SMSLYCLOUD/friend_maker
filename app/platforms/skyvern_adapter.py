@@ -154,6 +154,8 @@ class SkyvernAdapter(PlatformAdapter):
 
                 if status == "failed":
                     error_msg = result.get("error", "Skyvern task failed")
+                    logger.error(f"Skyvern task FAILED: status={status}, run_id={result.get('run_id')}, error={error_msg}")
+                    logger.error(f"Full result: {json.dumps(result, default=str)[:500]}")
                     raise Exception(f"Skyvern task failed: {error_msg}")
 
                 return result
