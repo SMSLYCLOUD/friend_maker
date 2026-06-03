@@ -117,6 +117,53 @@ class SkyvernAdapter(PlatformAdapter):
             logger.info(f"Rate-limit guard: sleeping {wait:.0f}s before next task")
             await asyncio.sleep(wait)
 
+    async def _run_task_with_extraction(
+        self, prompt: str, url: str, extraction_goal: str, extraction_schema: dict,
+        poll_interval: float = 5.0, timeout: float = 600.0
+    ) -> dict:
+        """Run a Skyvern task via httpx directly, passing data_extraction_goal + schema."""
+        import httpx as httpx_mod
+
+        await self._inter_task_wait()
+        api_key = os.getenv("SKYVERN_API_KEY", "")
+
+        payload = {
+            "prompt": prompt,
+            "url": url,
+            "data_extraction_goal": extraction_goal,
+            "data_extraction_schema": extraction_schema,
+            "wait_for_completion": False,
+        }
+        if self._browser_session_id:
+            payload["browser_session_id"] = self._browser_session_id
+        if self._cookie_header:
+            payload["extra_http_headers"] = {"Cookie": self._cookie_header}
+
+        headers = {}
+        if api_key:
+            headers["x-api-key"] = api_key
+
+        async with httpx_mod.AsyncClient(timeout=30) as client:
+            resp = await client.post(f"{SKYVERN_BASE_URL}/v1/run/tasks", json=payload, headers=headers)
+            resp.raise_for_status()
+            result = resp.json()
+            run_id = result.get("run_id")
+            logger.info(f"Extraction task created: {run_id}")
+
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                await asyncio.sleep(poll_interval)
+                poll_resp = await client.get(f"{SKYVERN_BASE_URL}/v1/runs/{run_id}", headers=headers)
+                poll_resp.raise_for_status()
+                result = poll_resp.json()
+                status = result.get("status", "unknown")
+                if status in ("completed", "failed", "terminated", "timed_out", "canceled"):
+                    break
+
+        _last_task_time = time.monotonic()
+        logger.info(f"Extraction task done: status={status}, output={'present' if result.get('output') else 'null'}")
+        return result
+
     def _to_dict(self, obj) -> dict:
         """Convert an SDK response object to a plain dict."""
         if isinstance(obj, dict):
@@ -283,9 +330,11 @@ class SkyvernAdapter(PlatformAdapter):
         results = []
         try:
             handle = user_id.lstrip("@")
-            task = await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{handle}/followers and get the first {limit} followers. Return their usernames and display names.",
-                url=f"https://www.{self.platform}.com/@{handle}/followers",
+            url = f"https://www.{self.platform}.com/@{handle}/followers"
+            task = await self._run_task_with_extraction(
+                prompt=f"Navigate to {url}. Scroll down to load the followers list. Then extract the usernames and display names of the first {limit} followers visible on the page.",
+                url=url,
+                extraction_goal=f"Extract the usernames and display names of the first {limit} followers from the followers list",
                 extraction_schema={
                     "type": "object",
                     "properties": {
