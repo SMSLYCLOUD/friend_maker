@@ -167,6 +167,32 @@ class SkyvernAdapter(PlatformAdapter):
 
         _last_task_time = time.monotonic()
         logger.info(f"Extraction task done: status={status}, output={'present' if result.get('output') else 'null'}")
+
+        # Retry once if output is null (likely Groq 413 — screenshots too large)
+        if not result.get("output") and status == "completed":
+            logger.warning("Extraction returned null output — retrying once after 10s (suspected LLM provider failure)")
+            await asyncio.sleep(10)
+            async with httpx_mod.AsyncClient(timeout=30) as retry_client:
+                retry_resp = await retry_client.post(f"{SKYVERN_BASE_URL}/v1/run/tasks", json=payload, headers=headers)
+                retry_resp.raise_for_status()
+                retry_result = retry_resp.json()
+                retry_run_id = retry_result.get("run_id")
+                logger.info(f"Retry extraction task created: {retry_run_id}")
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    await asyncio.sleep(poll_interval)
+                    poll_resp = await retry_client.get(f"{SKYVERN_BASE_URL}/v1/runs/{retry_run_id}", headers=headers)
+                    poll_resp.raise_for_status()
+                    retry_result = poll_resp.json()
+                    retry_status = retry_result.get("status", "unknown")
+                    if retry_status in ("completed", "failed", "terminated", "timed_out", "canceled"):
+                        break
+                _last_task_time = time.monotonic()
+                if retry_result.get("output"):
+                    logger.info(f"Retry extraction succeeded: status={retry_status}")
+                    return retry_result
+                logger.warning(f"Retry extraction also null: status={retry_status}")
+
         return result
 
     def _to_dict(self, obj) -> dict:

@@ -41,11 +41,14 @@ services:
       - BROWSER_STREAMING_MODE=cdp
       - BROWSER_TYPE=chromium-headful
       - ENABLE_CODE_BLOCK=true
-      # LLM via Groq (best free tier for vision: 30 RPM, 14,400 RPD)
+      # LLM providers — configurable via SKYVERN_LLM_KEY
       - ENABLE_GROQ=true
-      - LLM_KEY=GROQ
+      - ENABLE_OPENROUTER=true
+      - LLM_KEY=${SKYVERN_LLM_KEY:-OPENROUTER}
       - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-${OPENROUTER_API_KEY:-}}
       - GROQ_MODEL=${SKYVERN_LLM_GROQ_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+      - OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-${OPENROUTER_API_KEY:-}}
+      - OPENROUTER_MODEL=${SKYVERN_LLM_OPENROUTER_MODEL:-meta-llama/llama-4-maverick:free}
       # Cap LLM-driven steps to avoid free-tier 429s
       - MAX_STEPS_PER_RUN=2
       - MAX_RETRIES_PER_STEP=0
