@@ -166,7 +166,7 @@ class CampaignExecutor:
             
             self.logger.info(f"AI Plan Generated: {len(sources)} strategic sources identified.")
         else:
-            self.logger.info(f"No AI planning needed: sources={sources}, has_planner={self.planner is not None}, has_instructions={bool(campaign.ai_instructions)}")
+            self.logger.info(f"No AI planning needed: has_planner={self.planner is not None}, has_instructions={bool(campaign.ai_instructions)}")
 
         strategy = targeting.get("strategy", "search")
         sources = targeting.get("sources", [])
