@@ -175,6 +175,7 @@ export default function SettingsPage() {
                     <option value="nvidia/nemotron-3-super:free">Nemotron 3 Super (Free) - 1M ctx</option>
                     <option value="openai/gpt-oss-120b:free">GPT-OSS 120B (Free) - 131K</option>
                     <option value="zhipu-ai/glm-4.5-air:free">GLM 4.5 Air (Free) - 131K</option>
+                    <option value="nvidia/nemotron-nano-12b-v2-vl:free">Nemotron Nano 12B VL (Free) - vision</option>
                     <option value="openrouter/free">Auto: Best Free Model (Router)</option>
                   </optgroup>
                   <optgroup label="— Paid Models —">
@@ -317,7 +318,7 @@ export default function SettingsPage() {
                   <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
                   <input
                     type="text"
-                    value={settings.SKYVERN_LLM_OPENROUTER_MODEL || "meta-llama/llama-4-scout:free"}
+                    value={settings.SKYVERN_LLM_OPENROUTER_MODEL || "nvidia/nemotron-nano-12b-v2-vl:free"}
                     onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_OPENROUTER_MODEL: e.target.value })}
                     className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-600 transition-all"
                   />
@@ -377,7 +378,7 @@ export default function SettingsPage() {
                   <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
                   <input
                     type="text"
-                    value={settings.SKYVERN_LLM_SAMBANOVA_MODEL || "Meta-Llama-4-Scout-17B-16E-Instruct"}
+                    value={settings.SKYVERN_LLM_SAMBANOVA_MODEL || "Llama-4-Maverick-17B-128E-Instruct"}
                     onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_SAMBANOVA_MODEL: e.target.value })}
                     className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all"
                   />
@@ -407,7 +408,7 @@ export default function SettingsPage() {
                   <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
                   <input
                     type="text"
-                    value={settings.SKYVERN_LLM_NVIDIA_MODEL || "meta/llama-4-scout-17b-16e-instruct"}
+                    value={settings.SKYVERN_LLM_NVIDIA_MODEL || "meta/llama-4-maverick-17b-128e-instruct"}
                     onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_NVIDIA_MODEL: e.target.value })}
                     className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-green-600 transition-all"
                   />
