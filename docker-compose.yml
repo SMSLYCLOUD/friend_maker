@@ -41,10 +41,12 @@ services:
       - BROWSER_STREAMING_MODE=cdp
       - BROWSER_TYPE=chromium-headful
       - ENABLE_CODE_BLOCK=true
-      # LLM via OpenRouter
-      - ENABLE_OPENROUTER=true
-      - LLM_KEY=OPENROUTER
-      # Cap LLM-driven steps to avoid OpenRouter free-tier 429s
+      # LLM via Groq (best free tier for vision: 30 RPM, 14,400 RPD)
+      - ENABLE_GROQ=true
+      - LLM_KEY=GROQ
+      - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-${OPENROUTER_API_KEY:-}}
+      - GROQ_MODEL=${SKYVERN_LLM_GROQ_MODEL:-llama-4-scout-17b-16e-instruct}
+      # Cap LLM-driven steps to avoid free-tier 429s
       - MAX_STEPS_PER_RUN=2
       - MAX_RETRIES_PER_STEP=0
       - MAX_SCRAPING_RETRIES=0
@@ -124,6 +126,28 @@ services:
     environment:
       - DATABASE_URL=sqlite:///data/social_growth.db
       - SKYVERN_API_URL=http://skyvern:8000
+      # Multi-provider LLM config (read by ProviderManager)
+      - SKYVERN_LLM_PROVIDERS=${SKYVERN_LLM_PROVIDERS:-Groq,OpenRouter,Google}
+      - SKYVERN_LLM_GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-}
+      - SKYVERN_LLM_GROQ_MODEL=${SKYVERN_LLM_GROQ_MODEL:-llama-4-scout-17b-16e-instruct}
+      - SKYVERN_LLM_GROQ_BASE_URL=${SKYVERN_LLM_GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      - SKYVERN_LLM_GROQ_RPM_LIMIT=${SKYVERN_LLM_GROQ_RPM_LIMIT:-30}
+      - SKYVERN_LLM_OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-}
+      - SKYVERN_LLM_OPENROUTER_MODEL=${SKYVERN_LLM_OPENROUTER_MODEL:-meta-llama/llama-4-scout:free}
+      - SKYVERN_LLM_OPENROUTER_BASE_URL=${SKYVERN_LLM_OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - SKYVERN_LLM_OPENROUTER_RPM_LIMIT=${SKYVERN_LLM_OPENROUTER_RPM_LIMIT:-20}
+      - SKYVERN_LLM_GOOGLE_API_KEY=${SKYVERN_LLM_GOOGLE_API_KEY:-}
+      - SKYVERN_LLM_GOOGLE_MODEL=${SKYVERN_LLM_GOOGLE_MODEL:-gemini-2.5-flash}
+      - SKYVERN_LLM_GOOGLE_BASE_URL=${SKYVERN_LLM_GOOGLE_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
+      - SKYVERN_LLM_GOOGLE_RPM_LIMIT=${SKYVERN_LLM_GOOGLE_RPM_LIMIT:-10}
+      - SKYVERN_LLM_SAMBANOVA_API_KEY=${SKYVERN_LLM_SAMBANOVA_API_KEY:-}
+      - SKYVERN_LLM_SAMBANOVA_MODEL=${SKYVERN_LLM_SAMBANOVA_MODEL:-Meta-Llama-4-Scout-17B-16E-Instruct}
+      - SKYVERN_LLM_SAMBANOVA_BASE_URL=${SKYVERN_LLM_SAMBANOVA_BASE_URL:-https://api.sambanova.ai/v1}
+      - SKYVERN_LLM_SAMBANOVA_RPM_LIMIT=${SKYVERN_LLM_SAMBANOVA_RPM_LIMIT:-30}
+      - SKYVERN_LLM_NVIDIA_API_KEY=${SKYVERN_LLM_NVIDIA_API_KEY:-}
+      - SKYVERN_LLM_NVIDIA_MODEL=${SKYVERN_LLM_NVIDIA_MODEL:-meta/llama-4-scout-17b-16e-instruct}
+      - SKYVERN_LLM_NVIDIA_BASE_URL=${SKYVERN_LLM_NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      - SKYVERN_LLM_NVIDIA_RPM_LIMIT=${SKYVERN_LLM_NVIDIA_RPM_LIMIT:-40}
     networks:
       - social-network
     restart: always

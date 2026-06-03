@@ -629,7 +629,31 @@ EDITABLE_ENV_VARS = {
     "OPENROUTER_API_KEY",
     "OPENROUTER_MODEL",
     "SKYVERN_INTER_TASK_DELAY",
+    "SKYVERN_LLM_PROVIDERS",
+    "SKYVERN_LLM_GROQ_API_KEY",
+    "SKYVERN_LLM_GROQ_MODEL",
+    "SKYVERN_LLM_GROQ_BASE_URL",
+    "SKYVERN_LLM_GROQ_RPM_LIMIT",
+    "SKYVERN_LLM_OPENROUTER_API_KEY",
+    "SKYVERN_LLM_OPENROUTER_MODEL",
+    "SKYVERN_LLM_OPENROUTER_BASE_URL",
+    "SKYVERN_LLM_OPENROUTER_RPM_LIMIT",
+    "SKYVERN_LLM_GOOGLE_API_KEY",
+    "SKYVERN_LLM_GOOGLE_MODEL",
+    "SKYVERN_LLM_GOOGLE_BASE_URL",
+    "SKYVERN_LLM_GOOGLE_RPM_LIMIT",
+    "SKYVERN_LLM_SAMBANOVA_API_KEY",
+    "SKYVERN_LLM_SAMBANOVA_MODEL",
+    "SKYVERN_LLM_SAMBANOVA_BASE_URL",
+    "SKYVERN_LLM_SAMBANOVA_RPM_LIMIT",
+    "SKYVERN_LLM_NVIDIA_API_KEY",
+    "SKYVERN_LLM_NVIDIA_MODEL",
+    "SKYVERN_LLM_NVIDIA_BASE_URL",
+    "SKYVERN_LLM_NVIDIA_RPM_LIMIT",
 }
+
+# API keys that should be masked in GET responses
+_SENSITIVE_KEYS = {k for k in EDITABLE_ENV_VARS if "API_KEY" in k}
 
 ENV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
 ENV_FILE_PATH = os.path.normpath(ENV_FILE_PATH)
@@ -715,12 +739,12 @@ def update_env(
 def get_env(
     user: dict = Depends(get_current_user),
 ):
-    """Return the editable env vars (masks the API key)."""
+    """Return the editable env vars (masks API keys)."""
     current = _read_env_file()
     out: Dict[str, str] = {}
     for k in EDITABLE_ENV_VARS:
         v = current.get(k, "")
-        if k == "OPENROUTER_API_KEY" and v and v not in ("YOUR_OPENROUTER_KEY_HERE", ""):
+        if k in _SENSITIVE_KEYS and v and v not in ("YOUR_OPENROUTER_KEY_HERE", ""):
             out[k] = v[:8] + "..." + v[-4:] if len(v) > 12 else "***"
         else:
             out[k] = v
@@ -796,6 +820,53 @@ def register(request: LoginRequest, repo: Repository = Depends(get_repository)):
     user_id = repo.create_user(request.username, hashed)
     token = create_token(user_id, request.username)
     return LoginResponse(username=request.username, token=token, user_id=user_id)
+
+
+@app.get("/api/providers/status")
+def get_provider_status(
+    user: dict = Depends(get_current_user),
+):
+    """Return LLM provider rotation status with cooldowns and stats."""
+    from app.llm.provider_manager import get_provider_manager
+    pm = get_provider_manager()
+    return {
+        "providers": pm.get_stats(),
+        "total_providers": pm.provider_count,
+        "available_providers": pm.available_count,
+    }
+
+
+@app.post("/api/providers/rotate")
+def rotate_provider(
+    data: Dict[str, str],
+    user: dict = Depends(get_current_user),
+):
+    """Manually set the primary provider for Skyvern (updates .env and restarts Skyvern)."""
+    provider = data.get("provider", "")
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider required")
+    provider = provider.upper()
+    current = _read_env_file()
+    # Update Skyvern's LLM provider
+    current["ENABLE_GROQ"] = "true" if provider == "GROQ" else "false"
+    current["ENABLE_OPENROUTER"] = "true" if provider == "OPENROUTER" else "false"
+    current["ENABLE_GOOGLE"] = "true" if provider == "GOOGLE" else "false"
+    current["ENABLE_SAMBANOVA"] = "true" if provider == "SAMBANOVA" else "false"
+    current["ENABLE_NVIDIA"] = "true" if provider == "NVIDIA" else "false"
+    current["LLM_KEY"] = provider
+    _write_env_file(current)
+    # Restart Skyvern container
+    import subprocess
+    try:
+        subprocess.Popen(
+            ["docker", "compose", "restart", "skyvern"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as e:
+        logger.warning(f"Could not restart Skyvern: {e}")
+    return {"status": "ok", "provider": provider, "restarting": True}
 
 if __name__ == '__main__':
     import uvicorn

@@ -12,11 +12,13 @@ logger = logging.getLogger("SkyvernAdapter")
 SKYVERN_BASE_URL = os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
 INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "300"))
 
-# Minimum seconds between consecutive Skyvern tasks to avoid 429 rate limits
-INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "300"))
-
 # Timestamp of last completed Skyvern task (module-level for adapter instances)
 _last_task_time: float = 0.0
+
+
+def _get_provider_manager():
+    from app.llm.provider_manager import get_provider_manager
+    return get_provider_manager()
 
 
 class SkyvernAdapter(PlatformAdapter):
@@ -40,6 +42,11 @@ class SkyvernAdapter(PlatformAdapter):
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
         import asyncio
+
+        pm = _get_provider_manager()
+        provider = pm.get_next_provider()
+        provider_name = provider.config.name if provider else "default"
+
         await self._inter_task_wait()
         api_key = os.getenv("SKYVERN_API_KEY", "")
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
@@ -48,20 +55,31 @@ class SkyvernAdapter(PlatformAdapter):
             kwargs["url"] = url
         if extraction_schema:
             kwargs["data_extraction_schema"] = extraction_schema
+
+        max_retries = min(6, 2 + pm.provider_count)
         last_error = None
-        for attempt in range(6):
+
+        for attempt in range(max_retries):
             try:
                 if attempt > 0:
                     delay = min(60 * (2 ** (attempt - 1)), 600)
-                    logger.info(f"Retry attempt {attempt} after {delay}s delay")
+                    provider = pm.get_next_provider()
+                    provider_name = provider.config.name if provider else "default"
+                    logger.info(
+                        f"Retry attempt {attempt}/{max_retries} with provider '{provider_name}' "
+                        f"after {delay}s delay"
+                    )
                     await asyncio.sleep(delay)
+
                 result = await skyvern.run_task(**kwargs)
+
                 if isinstance(result, dict):
                     run_id = result.get("run_id") or result.get("id")
                     status = result.get("status", "")
                 else:
                     run_id = getattr(result, "run_id", None) or getattr(result, "id", None)
                     status = getattr(result, "status", "")
+
                 if status not in ("completed", "failed", "error"):
                     for _ in range(120):
                         await asyncio.sleep(5)
@@ -90,7 +108,10 @@ class SkyvernAdapter(PlatformAdapter):
                                 break
                         except Exception:
                             pass
+
                 _last_task_time = time.monotonic()
+                pm.mark_success(provider_name)
+
                 if isinstance(result, dict):
                     return result
                 for method in ("model_dump", "dict"):
@@ -98,13 +119,28 @@ class SkyvernAdapter(PlatformAdapter):
                     if fn:
                         return fn()
                 return vars(result)
+
             except Exception as e:
                 last_error = e
-                error_str = str(e)
-                if "429" in error_str or "rate" in error_str.lower() or "RateLimit" in error_str:
-                    logger.warning(f"Rate limited on attempt {attempt + 1}, backing off")
+                error_str = str(e).lower()
+                is_rate_limit = (
+                    "429" in error_str
+                    or "rate" in error_str
+                    or "ratelimit" in error_str
+                    or "too many requests" in error_str
+                    or "quota" in error_str
+                )
+                if is_rate_limit:
+                    logger.warning(
+                        f"Rate limited on attempt {attempt + 1} "
+                        f"(provider: {provider_name})"
+                    )
+                    pm.mark_rate_limited(provider_name)
                     continue
+
+                pm.mark_failed(provider_name)
                 raise
+
         raise last_error or Exception("All retry attempts exhausted")
 
     async def authenticate(
