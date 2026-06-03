@@ -39,6 +39,16 @@ class SkyvernAdapter(PlatformAdapter):
             logger.info(f"Rate-limit guard: sleeping {wait:.0f}s before next task")
             await asyncio.sleep(wait)
 
+    def _to_dict(self, obj) -> dict:
+        """Convert an SDK response object to a plain dict."""
+        if isinstance(obj, dict):
+            return obj
+        for method in ("model_dump", "dict"):
+            fn = getattr(obj, method, None)
+            if fn:
+                return fn()
+        return vars(obj)
+
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
         from skyvern import Skyvern
         import asyncio
@@ -50,7 +60,7 @@ class SkyvernAdapter(PlatformAdapter):
         await self._inter_task_wait()
         api_key = os.getenv("SKYVERN_API_KEY", "")
         skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
-        kwargs = {"prompt": prompt}
+        kwargs: dict[str, Any] = {"prompt": prompt, "wait_for_completion": True, "timeout": 600.0}
         if url:
             kwargs["url"] = url
         if extraction_schema:
@@ -71,58 +81,14 @@ class SkyvernAdapter(PlatformAdapter):
                     )
                     await asyncio.sleep(delay)
 
+                logger.info(f"Running Skyvern task with provider '{provider_name}': {prompt[:80]}...")
                 result = await skyvern.run_task(**kwargs)
-
-                if isinstance(result, dict):
-                    run_id = result.get("run_id") or result.get("id")
-                    status = result.get("status", "")
-                else:
-                    run_id = getattr(result, "run_id", None) or getattr(result, "id", None)
-                    status = getattr(result, "status", "")
-
-                if status not in ("completed", "failed", "error"):
-                    logger.info(f"Task {run_id} has status '{status}', polling for completion...")
-                    for poll_i in range(120):
-                        await asyncio.sleep(5)
-                        try:
-                            latest = await skyvern.get_task(run_id)
-                            if isinstance(latest, dict):
-                                status = latest.get("status", "")
-                            else:
-                                for method in ("model_dump", "dict"):
-                                    fn = getattr(latest, method, None)
-                                    if fn:
-                                        latest = fn()
-                                        break
-                                status = latest.get("status", "") if isinstance(latest, dict) else getattr(latest, "status", "")
-                            if poll_i % 6 == 0:
-                                logger.info(f"Polling task {run_id}: status={status} (poll #{poll_i})")
-                            if status in ("completed", "failed", "error"):
-                                logger.info(f"Task {run_id} reached terminal status: {status}")
-                                if isinstance(latest, dict):
-                                    result = latest
-                                else:
-                                    for method in ("model_dump", "dict"):
-                                        fn = getattr(latest, method, None)
-                                        if fn:
-                                            result = fn()
-                                            break
-                                    if not isinstance(result, dict):
-                                        result = vars(latest)
-                                break
-                        except Exception as poll_err:
-                            logger.warning(f"Poll error for task {run_id} (attempt {poll_i}): {poll_err}")
+                result = self._to_dict(result)
+                logger.info(f"Skyvern task completed: status={result.get('status')}, run_id={result.get('run_id')}")
 
                 _last_task_time = time.monotonic()
                 pm.mark_success(provider_name)
-
-                if isinstance(result, dict):
-                    return result
-                for method in ("model_dump", "dict"):
-                    fn = getattr(result, method, None)
-                    if fn:
-                        return fn()
-                return vars(result)
+                return result
 
             except Exception as e:
                 last_error = e
