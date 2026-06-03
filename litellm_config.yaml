@@ -26,10 +26,28 @@ model_list:
     model_info:
       id: google-fallback
 
+  # ── Fallback 3: SambaNova (free tier) ──
+  - model_name: skyvern-llm
+    litellm_params:
+      model: sambanova/Llama-4-Maverick-17B-128E-Instruct
+      api_key: "os.environ/SAMBANOVA_API_KEY"
+      rpm: 30
+    model_info:
+      id: sambanova-fallback
+
+  # ── Fallback 4: NVIDIA NIM (free tier) ──
+  - model_name: skyvern-llm
+    litellm_params:
+      model: nvidia/meta/llama-4-maverick-17b-128e-instruct
+      api_key: "os.environ/NVIDIA_API_KEY"
+      rpm: 40
+    model_info:
+      id: nvidia-fallback
+
 litellm_settings:
   num_retries: 2
   request_timeout: 60
   fallbacks:
-    - skyvern-llm: [openrouter-fallback, google-fallback]
+    - skyvern-llm: [openrouter-fallback, google-fallback, sambanova-fallback, nvidia-fallback]
   cooldown_time: 30
   allowed_fails: 2

@@ -13,6 +13,8 @@ services:
       - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-}
       - OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-}
       - GEMINI_API_KEY=${SKYVERN_LLM_GOOGLE_API_KEY:-}
+      - SAMBANOVA_API_KEY=${SKYVERN_LLM_SAMBANOVA_API_KEY:-}
+      - NVIDIA_API_KEY=${SKYVERN_LLM_NVIDIA_API_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health', timeout=5)\" || python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health', timeout=5)\""]
       interval: 15s
