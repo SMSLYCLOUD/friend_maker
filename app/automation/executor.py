@@ -142,8 +142,12 @@ class CampaignExecutor:
         
         ref_images = self.load_reference_images()
         
+        PLATFORM_NAMES = {"tiktok", "instagram", "twitter", "x", "facebook", "linkedin", "youtube", "reddit"}
+        existing_sources = targeting.get("sources", [])
+        real_sources = [s for s in existing_sources if s.lower().strip("@") not in PLATFORM_NAMES]
+        
         # 1. Check if we need AI Strategic Planning
-        if not targeting.get("sources") and self.planner and campaign.ai_instructions:
+        if not real_sources and self.planner and campaign.ai_instructions:
             self.logger.info("No sources defined. Triggering AI Strategic Planning...")
             plan = await self.planner.generate_discovery_plan(
                 campaign.ai_instructions,
