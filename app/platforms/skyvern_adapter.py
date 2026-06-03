@@ -131,11 +131,13 @@ class SkyvernAdapter(PlatformAdapter):
             logger.error(f"Authentication failed: {e}")
             return False
 
-    async def search_users(self, query: str, limit: int = 20) -> List[UserProfile]:
+    async def search_users(self, query: str, limit: int = 20, context: str = "") -> List[UserProfile]:
         results = []
         try:
+            context_line = f"\n\nTARGET AUDIENCE: {context}" if context else ""
+            prompt = f"Go to https://www.{self.platform}.com/search?q={query} and find the first {limit} user profiles that match the target audience. Return their usernames and display names.{context_line}"
             task = await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/search?q={query} and find the first {limit} user profiles. Return their usernames and display names.",
+                prompt=prompt,
                 url=f"https://www.{self.platform}.com/search?q={query}",
                 extraction_schema={
                     "type": "object",

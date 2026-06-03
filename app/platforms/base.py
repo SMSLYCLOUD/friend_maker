@@ -29,7 +29,7 @@ class PlatformAdapter(ABC):
         pass
 
     @abstractmethod
-    async def search_users(self, query: str, limit: int = 20) -> List[UserProfile]:
+    async def search_users(self, query: str, limit: int = 20, context: str = "") -> List[UserProfile]:
         """Search for users"""
         pass
 

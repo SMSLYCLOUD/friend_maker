@@ -172,6 +172,7 @@ class CampaignExecutor:
 
         users = []
         post_url_for_source = {}
+        context = campaign.ai_instructions or ""
         for source in sources:
             if not self.running: break
             
@@ -179,7 +180,7 @@ class CampaignExecutor:
             
             try:
                 if strategy == "search":
-                    new_users = await self.adapter.search_users(source, limit=10)
+                    new_users = await self.adapter.search_users(source, limit=10, context=context)
                 elif strategy == "group_combing":
                     new_users = await self.adapter.get_group_members(source, limit=20)
                 elif strategy == "post_auditing":
