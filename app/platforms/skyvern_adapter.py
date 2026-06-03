@@ -133,6 +133,7 @@ class SkyvernAdapter(PlatformAdapter):
             "data_extraction_goal": extraction_goal,
             "data_extraction_schema": extraction_schema,
             "wait_for_completion": False,
+            "max_screenshot_scrolls": 2,
         }
         if self._browser_session_id:
             payload["browser_session_id"] = self._browser_session_id

@@ -50,6 +50,7 @@ services:
       - MAX_STEPS_PER_RUN=2
       - MAX_RETRIES_PER_STEP=0
       - MAX_SCRAPING_RETRIES=0
+      - MAX_SCREENSHOT_SCROLLS=2
       - PORT=8000
     depends_on:
       skyvern-postgres:
