@@ -85,11 +85,12 @@ class CampaignExecutor:
         self.logger.info("Authentication successful. Starting main loop.")
         actions_today = 0
         limit = campaign.daily_limit or 50
+        fetch_retries = 0
+        max_fetch_retries = 3
 
         while self.running:
             if actions_today >= limit:
                 self.logger.info(f"Daily limit of {limit} reached. Pausing until tomorrow.")
-                # Basic implementation: stop execution. A real task queue would reschedule for tomorrow.
                 self.running = False
                 break
 
@@ -106,8 +107,15 @@ class CampaignExecutor:
                 await self._fetch_new_targets(campaign)
                 pending = self.repo.get_pending_targets(campaign_id, self.user_id, limit=1)
                 if not pending:
-                    self.logger.info("Could not find new targets. Stopping.")
-                    break
+                    fetch_retries += 1
+                    if fetch_retries >= max_fetch_retries:
+                        self.logger.info(f"Could not find new targets after {max_fetch_retries} attempts. Stopping.")
+                        break
+                    wait_time = 30 * fetch_retries
+                    self.logger.info(f"No targets found (attempt {fetch_retries}/{max_fetch_retries}). Waiting {wait_time}s before retry...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                fetch_retries = 0
 
             target = pending[0]
             try:
@@ -136,9 +144,13 @@ class CampaignExecutor:
 
         self.logger.info("Campaign execution stopped.")
 
-        # Cleanup browser session when campaign is truly done
-        if hasattr(self.adapter, 'cleanup'):
-            await self.adapter.cleanup()
+        # Only close browser if campaign was actively stopped (not if we just ran out of targets)
+        if not self.running:
+            self.logger.info("Campaign stopped by user. Closing browser session.")
+            if hasattr(self.adapter, 'cleanup'):
+                await self.adapter.cleanup()
+        else:
+            self.logger.info("Campaign ended but browser session kept alive for next run.")
 
     async def _fetch_new_targets(self, campaign: Campaign):
         """Search for or discover users based on campaign targeting settings."""
