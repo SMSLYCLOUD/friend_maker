@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { fetchSettings, updateSettings, fetchGlobalSettings, updateGlobalSettings, fetchBotImages, uploadBotImage, deleteBotImage, getImageUrl, updateEnvVars, fetchEnvVars } from "@/lib/api";
-import { Save, Smartphone, Shield, Globe, Loader2, MessageCircle, ArrowLeft, ImagePlus, Trash2, X } from "lucide-react";
+import { fetchSettings, updateSettings, fetchGlobalSettings, updateGlobalSettings, fetchBotImages, uploadBotImage, deleteBotImage, getImageUrl, updateEnvVars, fetchEnvVars, fetchProviderStatus, rotateProvider } from "@/lib/api";
+import { Save, Smartphone, Shield, Globe, Loader2, MessageCircle, ArrowLeft, ImagePlus, Trash2, X, Zap } from "lucide-react";
 import Link from "next/link";
 
 export default function SettingsPage() {
@@ -17,6 +17,8 @@ export default function SettingsPage() {
   const [botImages, setBotImages] = useState<{filename: string; url: string}[]>([]);
   const [uploading, setUploading] = useState(false);
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [providerStatus, setProviderStatus] = useState<any>(null);
+  const [rotating, setRotating] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -24,11 +26,12 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const [userData, globalData, imgData, envData] = await Promise.all([
+      const [userData, globalData, imgData, envData, provData] = await Promise.all([
         fetchSettings(),
         fetchGlobalSettings().catch(() => ({})),
         fetchBotImages().catch(() => ({ images: [] })),
-        fetchEnvVars().catch(() => ({}))
+        fetchEnvVars().catch(() => ({})),
+        fetchProviderStatus().catch(() => null)
       ]);
       if (Object.keys(userData).length > 0) {
         setSettings((prev: any) => ({ ...prev, ...userData }));
@@ -42,6 +45,7 @@ export default function SettingsPage() {
         setEnvVars(envData);
       }
       if (imgData.images) setBotImages(imgData.images);
+      if (provData) setProviderStatus(provData);
     } catch (err) {
       console.error("Failed to load settings", err);
     } finally {
@@ -68,6 +72,21 @@ export default function SettingsPage() {
       const envUpdate: Record<string, string> = {};
       if (settings.OPENROUTER_API_KEY) envUpdate.OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY;
       if (settings.OPENROUTER_MODEL) envUpdate.OPENROUTER_MODEL = settings.OPENROUTER_MODEL;
+      if (settings.SKYVERN_INTER_TASK_DELAY) envUpdate.SKYVERN_INTER_TASK_DELAY = settings.SKYVERN_INTER_TASK_DELAY;
+      // Provider env vars
+      const providerKeys = [
+        "SKYVERN_LLM_PROVIDERS",
+        "SKYVERN_LLM_GROQ_API_KEY", "SKYVERN_LLM_GROQ_MODEL", "SKYVERN_LLM_GROQ_BASE_URL", "SKYVERN_LLM_GROQ_RPM_LIMIT",
+        "SKYVERN_LLM_OPENROUTER_API_KEY", "SKYVERN_LLM_OPENROUTER_MODEL", "SKYVERN_LLM_OPENROUTER_BASE_URL", "SKYVERN_LLM_OPENROUTER_RPM_LIMIT",
+        "SKYVERN_LLM_GOOGLE_API_KEY", "SKYVERN_LLM_GOOGLE_MODEL", "SKYVERN_LLM_GOOGLE_BASE_URL", "SKYVERN_LLM_GOOGLE_RPM_LIMIT",
+        "SKYVERN_LLM_SAMBANOVA_API_KEY", "SKYVERN_LLM_SAMBANOVA_MODEL", "SKYVERN_LLM_SAMBANOVA_BASE_URL", "SKYVERN_LLM_SAMBANOVA_RPM_LIMIT",
+        "SKYVERN_LLM_NVIDIA_API_KEY", "SKYVERN_LLM_NVIDIA_MODEL", "SKYVERN_LLM_NVIDIA_BASE_URL", "SKYVERN_LLM_NVIDIA_RPM_LIMIT",
+      ];
+      for (const key of providerKeys) {
+        if (settings[key] !== undefined && settings[key] !== "") {
+          envUpdate[key] = settings[key];
+        }
+      }
       if (Object.keys(envUpdate).length) {
         await updateEnvVars(envUpdate);
         setMessage("Settings saved. Backend is restarting to apply env changes (~10s)...");
@@ -202,6 +221,211 @@ export default function SettingsPage() {
                 <option value="America/New_York">New York (EST)</option>
                 <option value="Europe/London">London (GMT)</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        {/* LLM Providers Section */}
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6 backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-amber-500" />
+              <h2 className="text-xl font-bold text-white">LLM Providers</h2>
+            </div>
+            {providerStatus && (
+              <span className="text-xs text-gray-500 font-mono">
+                {providerStatus.available_providers}/{providerStatus.total_providers} available
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mb-4">Configure multiple free LLM providers for Skyvern. When one hits rate limits, the system automatically rotates to the next available provider.</p>
+
+          {/* Provider Status Grid */}
+          {providerStatus?.providers && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+              {Object.entries(providerStatus.providers).map(([name, info]: [string, any]) => (
+                <div key={name} className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-gray-800">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2 w-2 rounded-full ${info.available ? "bg-emerald-500 shadow-[0_0_8px_#10b981]" : "bg-red-500"}`} />
+                    <div>
+                      <p className="text-xs font-bold text-white">{name}</p>
+                      <p className="text-[10px] text-gray-500 font-mono">{info.model}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-[10px] font-bold ${info.available ? "text-emerald-400" : "text-red-400"}`}>
+                      {info.available ? "READY" : `${info.cooldown_remaining}s`}
+                    </p>
+                    <p className="text-[10px] text-gray-600">{info.total_tasks} tasks</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Provider Config Inputs */}
+          <div className="space-y-4">
+            {/* Groq */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                <h3 className="text-sm font-bold text-white">Groq</h3>
+                <span className="text-[10px] text-emerald-400 font-mono">30 RPM, 14,400 RPD</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_GROQ_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_GROQ_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                    placeholder="gsk_..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_GROQ_MODEL || "llama-4-scout-17b-16e-instruct"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_GROQ_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* OpenRouter */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-blue-500" />
+                <h3 className="text-sm font-bold text-white">OpenRouter</h3>
+                <span className="text-[10px] text-blue-400 font-mono">20 RPM, 50 RPD</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_OPENROUTER_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_OPENROUTER_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                    placeholder="sk-or-..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_OPENROUTER_MODEL || "meta-llama/llama-4-scout:free"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_OPENROUTER_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Google AI Studio */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-purple-500" />
+                <h3 className="text-sm font-bold text-white">Google AI Studio</h3>
+                <span className="text-[10px] text-purple-400 font-mono">10 RPM, 250 RPD</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_GOOGLE_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_GOOGLE_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-purple-600 transition-all"
+                    placeholder="AIza..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_GOOGLE_MODEL || "gemini-2.5-flash"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_GOOGLE_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-purple-600 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* SambaNova */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-cyan-500" />
+                <h3 className="text-sm font-bold text-white">SambaNova</h3>
+                <span className="text-[10px] text-cyan-400 font-mono">30 RPM</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_SAMBANOVA_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_SAMBANOVA_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all"
+                    placeholder="..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_SAMBANOVA_MODEL || "Meta-Llama-4-Scout-17B-16E-Instruct"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_SAMBANOVA_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* NVIDIA NIM */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-green-500" />
+                <h3 className="text-sm font-bold text-white">NVIDIA NIM</h3>
+                <span className="text-[10px] text-green-400 font-mono">40 RPM</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_NVIDIA_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_NVIDIA_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-green-600 transition-all"
+                    placeholder="..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_NVIDIA_MODEL || "meta/llama-4-scout-17b-16e-instruct"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_NVIDIA_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-green-600 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Provider Order */}
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-amber-400 uppercase tracking-wider">Provider Order (comma-separated)</label>
+              <input
+                type="text"
+                value={settings.SKYVERN_LLM_PROVIDERS || "Groq,OpenRouter,Google,SambaNova,NVIDIA"}
+                onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_PROVIDERS: e.target.value })}
+                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm font-mono outline-none focus:ring-2 focus:ring-amber-600 transition-all"
+                placeholder="Groq,OpenRouter,Google,SambaNova,NVIDIA"
+              />
+              <p className="mt-1 text-[10px] text-gray-600">Providers are tried in this order. Remove one to skip it.</p>
             </div>
           </div>
         </div>

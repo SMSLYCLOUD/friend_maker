@@ -297,3 +297,22 @@ export async function deleteBotImage(filename: string) {
 export function getImageUrl(filename: string) {
   return `${API_URL}/api/settings/images/${filename}`;
 }
+
+export async function fetchProviderStatus() {
+  const res = await fetch(`${API_URL}/api/providers/status`, {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch provider status");
+  return res.json();
+}
+
+export async function rotateProvider(provider: string) {
+  const res = await fetch(`${API_URL}/api/providers/rotate`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ provider }),
+  });
+  if (!res.ok) throw new Error("Failed to rotate provider");
+  return res.json();
+}
