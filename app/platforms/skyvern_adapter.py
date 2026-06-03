@@ -332,7 +332,7 @@ class SkyvernAdapter(PlatformAdapter):
             handle = user_id.lstrip("@")
             url = f"https://www.{self.platform}.com/@{handle}/followers"
             task = await self._run_task_with_extraction(
-                prompt=f"Navigate to {url}. Scroll down to load the followers list. Then extract the usernames and display names of the first {limit} followers visible on the page.",
+                prompt=f"You are already on the followers page. Do NOT use the search bar. Do NOT click any search buttons. Simply scroll down to load more followers, then extract the usernames and display names of the first {limit} followers visible on the page.",
                 url=url,
                 extraction_goal=f"Extract the usernames and display names of the first {limit} followers from the followers list",
                 extraction_schema={
