@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  fetchCampaigns, createCampaign, startCampaign, stopCampaign, fetchAccounts,
+  fetchCampaigns, createCampaign, startCampaign, stopCampaign, deleteCampaign, fetchAccounts,
   triggerEmailCampaign, triggerPlatform, triggerAllPlatforms, fetchPlatforms,
 } from "@/lib/api";
-import { Plus, Play, Square, Loader2, Sparkles, Send, Mail, Globe, Boxes, FileText, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, FileText as FileTextIcon } from "lucide-react";
+import { Plus, Play, Square, Loader2, Sparkles, Send, Mail, Globe, Boxes, FileText, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 const ICONS: Record<string, any> = {
@@ -112,6 +112,16 @@ export default function CampaignsPage() {
       loadData();
     } catch (err) {
       setError("Failed to update status.");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this campaign?")) return;
+    try {
+      await deleteCampaign(id);
+      loadData();
+    } catch (err) {
+      setError("Failed to delete campaign.");
     }
   };
 
@@ -297,19 +307,25 @@ export default function CampaignsPage() {
                            <span>{c.daily_limit} actions/day</span>
                          </div>
                       </div>
-                       <div className="flex items-center gap-1">
-                         {(c.ai_instructions || c.message_template) && (
-                           <button onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)} className="p-3 sm:p-2 rounded-xl sm:rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors touch-manipulation">
-                             {expandedCampaign === c.id ? <ChevronUp className="w-5 h-5 sm:w-4 sm:h-4" /> : <FileTextIcon className="w-5 h-5 sm:w-4 sm:h-4" />}
-                           </button>
-                         )}
-                         <button
-                           onClick={() => handleToggleStatus(c.id, c.status)}
-                           className={`p-4 sm:p-3 rounded-xl sm:rounded-full transition-all touch-manipulation ${c.status === 'active' ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-green-500/10 text-green-500 hover:bg-green-500/20'}`}
-                         >
-                           {c.status === 'active' ? <Square className="w-5 h-5 sm:w-4 sm:h-4" /> : <Play className="w-5 h-5 sm:w-4 sm:h-4" />}
-                         </button>
-                       </div>
+                        <div className="flex items-center gap-1">
+                          {(c.ai_instructions || c.message_template) && (
+                            <button onClick={() => setExpandedCampaign(expandedCampaign === c.id ? null : c.id)} className="p-3 sm:p-2 rounded-xl sm:rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors touch-manipulation">
+                              {expandedCampaign === c.id ? <ChevronUp className="w-5 h-5 sm:w-4 sm:h-4" /> : <ChevronUp className="w-5 h-5 sm:w-4 sm:h-4" />}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(c.id)}
+                            className="p-4 sm:p-3 rounded-xl sm:rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all touch-manipulation"
+                          >
+                            <Trash2 className="w-5 h-5 sm:w-4 sm:h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(c.id, c.status)}
+                            className={`p-4 sm:p-3 rounded-xl sm:rounded-full transition-all touch-manipulation ${c.status === 'active' ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-green-500/10 text-green-500 hover:bg-green-500/20'}`}
+                          >
+                            {c.status === 'active' ? <Square className="w-5 h-5 sm:w-4 sm:h-4" /> : <Play className="w-5 h-5 sm:w-4 sm:h-4" />}
+                          </button>
+                        </div>
                     </div>
                      {expandedCampaign === c.id && (
                        <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0 border-t border-gray-800/50 space-y-2">

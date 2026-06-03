@@ -257,9 +257,10 @@ class SkyvernAdapter(PlatformAdapter):
     async def get_followers(self, user_id: str, limit: int = 100) -> List[UserProfile]:
         results = []
         try:
+            handle = user_id.lstrip("@")
             task = await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{user_id}/followers and get the first {limit} followers. Return their usernames and display names.",
-                url=f"https://www.{self.platform}.com/@{user_id}/followers",
+                prompt=f"Go to https://www.{self.platform}.com/@{handle}/followers and get the first {limit} followers. Return their usernames and display names.",
+                url=f"https://www.{self.platform}.com/@{handle}/followers",
                 extraction_schema={
                     "type": "object",
                     "properties": {
@@ -293,8 +294,8 @@ class SkyvernAdapter(PlatformAdapter):
     async def follow(self, user_id: str) -> ActionResult:
         try:
             await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{user_id} and click the Follow button.",
-                url=f"https://www.{self.platform}.com/@{user_id}",
+                prompt=f"Go to https://www.{self.platform}.com/@{user_id.lstrip("@")} and click the Follow button.",
+                url=f"https://www.{self.platform}.com/@{user_id.lstrip("@")}",
             )
             return ActionResult(success=True, action_type="follow")
         except Exception as e:
@@ -303,8 +304,8 @@ class SkyvernAdapter(PlatformAdapter):
     async def unfollow(self, user_id: str) -> ActionResult:
         try:
             await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{user_id} and click the Following or Unfollow button.",
-                url=f"https://www.{self.platform}.com/@{user_id}",
+                prompt=f"Go to https://www.{self.platform}.com/@{user_id.lstrip("@")} and click the Following or Unfollow button.",
+                url=f"https://www.{self.platform}.com/@{user_id.lstrip("@")}",
             )
             return ActionResult(success=True, action_type="unfollow")
         except Exception as e:
@@ -313,8 +314,8 @@ class SkyvernAdapter(PlatformAdapter):
     async def send_dm(self, user_id: str, message: str) -> ActionResult:
         try:
             await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{user_id}, open the message or DM button, type '{message}', and send it.",
-                url=f"https://www.{self.platform}.com/@{user_id}",
+                prompt=f"Go to https://www.{self.platform}.com/@{user_id.lstrip("@")}, open the message or DM button, type '{message}', and send it.",
+                url=f"https://www.{self.platform}.com/@{user_id.lstrip("@")}",
             )
             return ActionResult(success=True, action_type="dm")
         except Exception as e:
@@ -435,8 +436,8 @@ class SkyvernAdapter(PlatformAdapter):
     async def get_user_recent_posts(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         try:
             task = await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{user_id} and get the {limit} most recent posts. Return their URLs and captions.",
-                url=f"https://www.{self.platform}.com/@{user_id}",
+                prompt=f"Go to https://www.{self.platform}.com/@{user_id.lstrip("@")} and get the {limit} most recent posts. Return their URLs and captions.",
+                url=f"https://www.{self.platform}.com/@{user_id.lstrip("@")}",
                 extraction_schema={
                     "type": "object",
                     "properties": {
@@ -473,8 +474,8 @@ class SkyvernAdapter(PlatformAdapter):
     async def comment_on_recent_post(self, user_id: str, message: str) -> ActionResult:
         try:
             await self._run_task(
-                prompt=f"Go to https://www.{self.platform}.com/@{user_id}, find the most recent post, type '{message}' in the comment box, and submit.",
-                url=f"https://www.{self.platform}.com/@{user_id}",
+                prompt=f"Go to https://www.{self.platform}.com/@{user_id.lstrip("@")}, find the most recent post, type '{message}' in the comment box, and submit.",
+                url=f"https://www.{self.platform}.com/@{user_id.lstrip("@")}",
             )
             return ActionResult(success=True, action_type="comment")
         except Exception as e:

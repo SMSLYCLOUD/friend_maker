@@ -108,6 +108,15 @@ export async function stopCampaign(id: string) {
   return res.json();
 }
 
+export async function deleteCampaign(id: string) {
+  const res = await fetch(`${API_URL}/api/campaigns/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to delete campaign");
+  return res.json();
+}
+
 export async function fetchSettings() {
   const res = await fetch(`${API_URL}/api/settings`, {
     headers: authHeaders(),
