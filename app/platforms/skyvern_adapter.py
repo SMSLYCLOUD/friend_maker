@@ -221,7 +221,7 @@ class SkyvernAdapter(PlatformAdapter):
         return proxy
 
     async def _run_task(self, prompt: str, url: Optional[str] = None, extraction_schema: Optional[dict] = None) -> dict:
-        from skyvern import Skyvern
+        import httpx as httpx_mod
         import asyncio
 
         pm = _get_provider_manager()
@@ -230,24 +230,31 @@ class SkyvernAdapter(PlatformAdapter):
 
         await self._inter_task_wait()
         api_key = os.getenv("SKYVERN_API_KEY", "")
-        skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
-        kwargs: dict[str, Any] = {"prompt": prompt, "wait_for_completion": True, "timeout": 600.0}
+        proxy_config = self._get_proxy_config()
+
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "wait_for_completion": False,
+        }
         if url:
-            kwargs["url"] = url
+            payload["url"] = url
         if extraction_schema:
-            kwargs["data_extraction_schema"] = extraction_schema
+            payload["data_extraction_schema"] = extraction_schema
         if self._browser_session_id:
-            kwargs["browser_session_id"] = self._browser_session_id
+            payload["browser_session_id"] = self._browser_session_id
             logger.info(f"Using browser session: {self._browser_session_id}")
         else:
             logger.warning("No browser session ID set - task will use fresh browser (may fail for logged-in pages)")
         if self._cookie_header:
-            kwargs["extra_http_headers"] = {"Cookie": self._cookie_header}
+            payload["extra_http_headers"] = {"Cookie": self._cookie_header}
             logger.info(f"Passing cookie header ({len(self._cookie_header)} chars)")
-        proxy_config = self._get_proxy_config()
         if proxy_config:
-            kwargs["proxy"] = proxy_config
+            payload["proxy"] = proxy_config
             logger.info(f"Using proxy: {proxy_config['url'][:30]}...")
+
+        headers = {}
+        if api_key:
+            headers["x-api-key"] = api_key
 
         max_retries = min(6, 2 + pm.provider_count)
         last_error = None
@@ -265,24 +272,38 @@ class SkyvernAdapter(PlatformAdapter):
                     await asyncio.sleep(delay)
 
                 logger.info(f"Running Skyvern task with provider '{provider_name}': {prompt[:80]}...")
-                result = await skyvern.run_task(**kwargs)
-                result = self._to_dict(result)
-                status = result.get("status", "unknown")
-                output = result.get("output", {})
-                logger.info(f"Skyvern task completed: status={status}, run_id={result.get('run_id')}, output_keys={list(output.keys()) if isinstance(output, dict) else 'N/A'}")
+
+                async with httpx_mod.AsyncClient(timeout=30) as client:
+                    resp = await client.post(f"{SKYVERN_BASE_URL}/v1/run/tasks", json=payload, headers=headers)
+                    resp.raise_for_status()
+                    result = resp.json()
+                    run_id = result.get("run_id")
+
+                    deadline = time.monotonic() + 600.0
+                    while time.monotonic() < deadline:
+                        await asyncio.sleep(5)
+                        poll_resp = await client.get(f"{SKYVERN_BASE_URL}/v1/runs/{run_id}", headers=headers)
+                        poll_resp.raise_for_status()
+                        result = poll_resp.json()
+                        status = result.get("status", "unknown")
+                        if status in ("completed", "failed", "terminated", "timed_out", "canceled"):
+                            break
 
                 _last_task_time = time.monotonic()
+                status = result.get("status", "unknown")
+                output = result.get("output", {})
+                logger.info(f"Skyvern task completed: status={status}, run_id={run_id}, output_keys={list(output.keys()) if isinstance(output, dict) else 'N/A'}")
+
                 pm.mark_success(provider_name)
 
                 if status == "failed":
                     error_msg = result.get("error", "Skyvern task failed")
-                    logger.error(f"Skyvern task FAILED: status={status}, run_id={result.get('run_id')}, error={error_msg}")
-                    logger.error(f"Full result: {json.dumps(result, default=str)[:500]}")
+                    logger.error(f"Skyvern task FAILED: status={status}, run_id={run_id}, error={error_msg}")
                     raise Exception(f"Skyvern task failed: {error_msg}")
 
                 if status == "terminated" and not output:
                     failure_reason = result.get("failure_reason", "")
-                    logger.warning(f"Skyvern task terminated: run_id={result.get('run_id')}, reason={failure_reason}")
+                    logger.warning(f"Skyvern task terminated: run_id={run_id}, reason={failure_reason}")
                     # Don't raise — terminated is a valid end state for some tasks (e.g. auth check)
 
                 return result
