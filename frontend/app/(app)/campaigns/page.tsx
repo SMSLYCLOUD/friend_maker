@@ -65,6 +65,7 @@ export default function CampaignsPage() {
     campaign_type: "outreach",
     message_template: "",
     ai_instructions: "",
+    targeting_json: "",
     daily_limit: 50,
     targeting: { tags: [] },
     schedule: { days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], start_time: "09:00", end_time: "18:00", timezone: "UTC" }
@@ -181,36 +182,49 @@ export default function CampaignsPage() {
                   onChange={(e) => setForm({ ...form, campaign_type: e.target.value })}
                   className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
                 >
-                  <option value="outreach">Personalized Outreach</option>
-                  <option value="growth">Audience Growth (Follow/Unfollow)</option>
+                  <option value="outreach">Outreach (DM + Follow + Like + Stories)</option>
+                  <option value="comment_engage">Comment Engage (DM + Follow + Reply Commenters)</option>
+                  <option value="growth">Growth (Follow/Unfollow)</option>
                 </select>
               </div>
 
-              {form.campaign_type === "outreach" && (
-                <>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> AI Instructions
-                    </label>
-                    <textarea
-                      value={form.ai_instructions}
-                      onChange={(e) => setForm({ ...form, ai_instructions: e.target.value })}
-                      className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all min-h-[100px] text-sm"
-                      placeholder="e.g. Talk like a friendly tech enthusiast."
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                      <Send className="w-3 h-3" /> Message Context
-                    </label>
-                    <textarea
-                      value={form.message_template}
-                      onChange={(e) => setForm({ ...form, message_template: e.target.value })}
-                       className="w-full rounded-lg border border-gray-800 bg-black px-3 py-3 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all min-h-[80px] text-sm touch-manipulation"
-                       placeholder="e.g. I saw your recent post about [Topic]..."
-                     />
-                  </div>
-                </>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> AI Instructions
+                </label>
+                <textarea
+                  value={form.ai_instructions}
+                  onChange={(e) => setForm({ ...form, ai_instructions: e.target.value })}
+                  className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all min-h-[100px] text-sm"
+                  placeholder="Describe what this campaign should do..."
+                />
+              </div>
+              {(form.campaign_type === "outreach" || form.campaign_type === "comment_engage") && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                    <Send className="w-3 h-3" /> Message Template
+                  </label>
+                  <textarea
+                    value={form.message_template}
+                    onChange={(e) => setForm({ ...form, message_template: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-3 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all min-h-[80px] text-sm touch-manipulation"
+                    placeholder="e.g. I saw your recent post about [Topic]..."
+                  />
+                </div>
+              )}
+              {form.campaign_type === "comment_engage" && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider">
+                    Targeting JSON
+                  </label>
+                  <input
+                    type="text"
+                    value={form.targeting_json || ""}
+                    onChange={(e) => setForm({ ...form, targeting_json: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all text-sm font-mono"
+                    placeholder='{"post_url": "https://www.tiktok.com/@user/video/123"}'
+                  />
+                </div>
               )}
 
                <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 touch-manipulation">

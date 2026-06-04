@@ -436,6 +436,85 @@ class CampaignExecutor:
                         await self.anti_detect.random_delay(lambda: self.running)
                     success = True
 
+                elif action_type == "comment_engage":
+                    post_url = campaign.targeting.get("post_url", "")
+                    if not post_url:
+                        self.logger.warning("comment_engage requires post_url in targeting")
+                        break
+                    commenters = await self.adapter.get_post_commenters(post_url, limit=fetch_limit)
+                    if not commenters:
+                        self.logger.info("No commenters found on post")
+                        break
+                    for u in commenters:
+                        h = u.platform_id.lstrip("@")
+                        if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
+                            continue
+                        self.logger.info(f"Processing commenter @{h}...")
+                        profile_data = {"username": h, "bio": ""}
+                        try:
+                            profile_data = await self.adapter.get_user_profile(h)
+                        except: pass
+
+                        # Step 1: Pre-engagement
+                        try:
+                            await self.adapter.view_stories(h)
+                            self.logger.info(f"Viewed stories for @{h}")
+                        except: pass
+                        try:
+                            posts = await self.adapter.get_user_recent_posts(h, limit=2)
+                            for p in posts[:2]:
+                                url = p.get("url", "")
+                                if url:
+                                    await self.adapter.like_post(url)
+                                    self.logger.info(f"Liked post by @{h}")
+                                    await self.anti_detect.random_delay(lambda: self.running)
+                        except: pass
+
+                        # Step 2: Follow
+                        try:
+                            res = await self.adapter.follow(h)
+                            if res.success:
+                                self.logger.info(f"Followed @{h}")
+                        except: pass
+                        await self.anti_detect.random_delay(lambda: self.running)
+
+                        # Step 3: Reply to their comment
+                        comments = await self.adapter.get_post_comments(post_url, limit=20)
+                        for c in comments:
+                            if c.get("username", "").lstrip("@") == h:
+                                reply_text = "Great point!"
+                                if self.generator:
+                                    reply_context = {"username": h, "bio": profile_data.get("bio", ""), "comment_text": c.get("text", "")}
+                                    reply_text = await self.generator.generate_dm(
+                                        reply_context, campaign.message_template, campaign.ai_instructions,
+                                        bot_instructions=self.bot_instructions, ref_images=ref_images
+                                    )
+                                try:
+                                    await self.adapter.reply_to_comment(c.get("id", ""), reply_text, post_url=post_url)
+                                    self.logger.info(f"Replied to @{h}'s comment")
+                                except: pass
+                                break
+                        await self.anti_detect.random_delay(lambda: self.running)
+
+                        # Step 4: DM
+                        msg = "Hello!"
+                        if self.generator:
+                            msg = await self.generator.generate_dm(
+                                profile_data, campaign.message_template, campaign.ai_instructions,
+                                bot_instructions=self.bot_instructions, ref_images=ref_images
+                            )
+                        try:
+                            res = await self.adapter.send_dm(h, msg)
+                            if res.success:
+                                self.logger.info(f"DM'd @{h}")
+                        except: pass
+
+                        self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                        actions_today += 1
+                        self.logger.info(f"✓ Completed engagement with @{h} ({actions_today}/{limit})")
+                        await self.anti_detect.random_delay(lambda: self.running)
+                    success = True
+
                 # Log and register
                 self.repo.log_action(ActionLog(
                     id=f"log_{campaign.id}_{handle}_{int(asyncio.get_event_loop().time())}",
