@@ -147,7 +147,7 @@ class Scheduler:
             return
 
         try:
-            adapter = SkyvernAdapter(platform=account.platform)
+            adapter = get_platform_adapter(account.platform)
             executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
             self.executors[campaign_id] = executor
             await executor.run_campaign(campaign_id, user_id)
@@ -217,9 +217,8 @@ class Scheduler:
                         
                         # Execute the campaign (single action) using Skyvern
                         from app.automation.executor import CampaignExecutor
-                        from app.platforms.skyvern_adapter import SkyvernAdapter
                         
-                        adapter = SkyvernAdapter(platform=account.platform)
+                        adapter = get_platform_adapter(account.platform)
                         executor = CampaignExecutor(repo, adapter)
                         await executor.run_campaign(temp_campaign.id, action_info['user_id'])
                             
