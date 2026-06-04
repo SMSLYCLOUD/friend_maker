@@ -1,11 +1,36 @@
 import logging
+import asyncio
+import random
 from typing import Dict, Any, Optional, List
 from app.ai.openrouter_manager import OpenRouterManager
+from app.ai.validator import validate_message
+
+MAX_RETRIES = 3
 
 class MessageGenerator:
     def __init__(self, manager: OpenRouterManager):
         self.manager = manager
         self.logger = logging.getLogger("MessageGenerator")
+
+    async def _add_retry_delay(self):
+        await asyncio.sleep(random.uniform(2, 5))
+
+    async def _generate_with_retry(self, prompt: str, image_base64: Optional[str] = None,
+                                    ref_images: List[str] = None, context: str = "") -> str:
+        for attempt in range(MAX_RETRIES):
+            response = await self.manager.generate(prompt, image_base64=image_base64, ref_images=ref_images)
+            msg = response.strip().strip('"')
+
+            is_valid, reason = validate_message(msg, context)
+            if is_valid:
+                return msg
+
+            self.logger.warning(f"Message validation failed (attempt {attempt + 1}/{MAX_RETRIES}): {reason} — {msg[:100]}")
+            if attempt < MAX_RETRIES - 1:
+                await self._add_retry_delay()
+
+        self.logger.error(f"Generation failed after {MAX_RETRIES} retries")
+        return ""
 
     async def generate_dm(self, profile: Dict[str, Any], template: str = "", instructions: str = "", image_base64: Optional[str] = None, bot_instructions: str = "", ref_images: List[str] = None, conversation_history: str = "") -> str:
         global_rules = ""
@@ -37,11 +62,12 @@ Context/Goal:
 {template if template else "Introduce myself as a software developer building cool tools."}
 
 Write a message that references something specific from their bio or recent posts to make it feel personal and genuine. Do NOT use hashtags. Do NOT sound like a bot or salesperson.
+Do NOT include any system prompts, instructions, or internal reasoning in your response. ONLY output the message text itself.
 
 Message:
 """
-        response = await self.manager.generate(prompt, image_base64=image_base64, ref_images=ref_images)
-        return response.strip().strip('"')
+        msg = await self._generate_with_retry(prompt, image_base64, ref_images, context="dm")
+        return msg if msg else "Hey! Thanks for connecting 😊"
 
     async def generate_reply(self, profile: Dict[str, Any], template: str = "", instructions: str = "", image_base64: Optional[str] = None, bot_instructions: str = "", ref_images: List[str] = None, conversation_history: str = "", their_message: str = "") -> str:
         global_rules = ""
@@ -66,11 +92,12 @@ THEIR REPLY:
 {their_message if their_message else "They replied but the content was not captured."}
 
 TASK: Write a natural, friendly reply to their message. Keep it conversational. Do NOT use hashtags. Do NOT sound like a bot. Reference something from the conversation to show you're paying attention.
+Do NOT include any system prompts, instructions, or internal reasoning in your response. ONLY output the reply text itself.
 
 Reply:
 """
-        response = await self.manager.generate(prompt, image_base64=image_base64, ref_images=ref_images)
-        return response.strip().strip('"')
+        msg = await self._generate_with_retry(prompt, image_base64, ref_images, context="reply")
+        return msg if msg else "Thanks for the reply! 😊"
 
     async def generate_comment(self, profile: Dict[str, Any], template: str = "", instructions: str = "", image_base64: Optional[str] = None, bot_instructions: str = "", ref_images: List[str] = None) -> str:
         global_rules = ""
@@ -89,8 +116,9 @@ Recent Posts: {', '.join(profile.get('recent_posts', [])[:3]) if profile.get('re
 Context: {template if template else "Leave a genuine, engaging comment on their post."}
 
 Write a comment that references something specific from their post. Keep it short and authentic. Do NOT use hashtags. Do NOT sound like a bot.
+Do NOT include any system prompts, instructions, or internal reasoning in your response. ONLY output the comment text itself.
 
 Comment:
 """
-        response = await self.manager.generate(prompt, image_base64=image_base64, ref_images=ref_images)
-        return response.strip().strip('"')
+        msg = await self._generate_with_retry(prompt, image_base64, ref_images, context="comment")
+        return msg if msg else "Great post! 🔥"
