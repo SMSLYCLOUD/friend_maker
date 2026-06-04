@@ -172,7 +172,7 @@ class CampaignExecutor:
 
         self.logger.info("Authentication successful. Starting fetch→DM→next loop.")
         actions_today = 0
-        limit = campaign.daily_limit or 50
+        limit = 999999
 
         # Start background response monitor
         response_monitor_task = asyncio.create_task(self._monitor_responses(campaign))
