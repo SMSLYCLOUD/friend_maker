@@ -394,57 +394,66 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Close any modal overlays that might block clicks
+            # Extract user_id from page source (needed for DM URL)
+            import re
+            user_id_match = None
             try:
-                await self._page.keyboard.press("Escape")
-                await self._human_delay(1, 2)
+                page_source = await self._page.content()
+                user_id_match = re.search(r'"userInfo":\{"user":\{"id":"(\d+)"', page_source)
             except: pass
 
-            # Check if Message button exists
-            msg_btn = self._page.get_by_role("button", name="Message").first
-            try:
-                await msg_btn.wait_for(state="visible", timeout=10000)
-            except:
-                logger.info(f"send_dm: No Message button found for @{handle}")
-                return ActionResult(success=False, action_type="dm", error="No Message button found")
+            if not user_id_match:
+                logger.warning(f"send_dm: Could not extract user_id for @{handle}")
+                return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
 
-            logger.info(f"send_dm: Clicking Message button for @{handle}")
-            await msg_btn.click(timeout=15000, force=True)
+            numeric_id = user_id_match.group(1)
+            logger.info(f"send_dm: Found user_id={numeric_id} for @{handle}")
+
+            # Navigate directly to DM chat using user_id
+            dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={numeric_id}"
+            logger.info(f"send_dm: Navigating to DM: {dm_url}")
+            await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Check current URL after clicking
-            current_url = self._page.url
-            logger.info(f"send_dm: After click, URL is: {current_url}")
-
-            # If navigated to inbox, try to find the chat with this user
-            if "/direct/inbox" in current_url:
-                logger.info(f"send_dm: On inbox page, looking for chat with @{handle}")
-                # Try to find and click on the user's chat in inbox
-                try:
-                    chat_link = self._page.get_by_text(handle).first
-                    await chat_link.click(timeout=10000)
-                    await self._human_delay(2, 3)
-                except:
-                    logger.warning(f"send_dm: Could not find chat with @{handle} in inbox")
-                    return ActionResult(success=False, action_type="dm", error="Chat not found in inbox")
-
-            # Now look for the textbox
-            textbox = self._page.locator("textarea, div[contenteditable='true']").first
+            # Wait for DM input box
+            dm_input = self._page.locator('div[aria-label="Send a message..."][role="textbox"]')
             try:
-                await textbox.wait_for(state="visible", timeout=10000)
+                await dm_input.wait_for(state="visible", timeout=15000)
             except:
-                logger.warning(f"send_dm: Textbox not found on {self._page.url}")
-                return ActionResult(success=False, action_type="dm", error="Textbox not found")
+                # Check for warning messages
+                page_text = await self._extract_page_text()
+                warnings = [
+                    "Only friends can send messages",
+                    "privacy settings",
+                    "This user is unable to receive",
+                    "suspended",
+                    "violated",
+                    "temporarily prevented",
+                    "Chat messages limit reached",
+                ]
+                for w in warnings:
+                    if w.lower() in page_text.lower():
+                        logger.warning(f"send_dm: DM blocked — {w}")
+                        return ActionResult(success=False, action_type="dm", error=f"DM blocked: {w}")
 
+                logger.warning(f"send_dm: DM input not found at {self._page.url}")
+                return ActionResult(success=False, action_type="dm", error="DM input not found")
+
+            # Type message
             logger.info(f"send_dm: Typing message ({len(message)} chars)")
             for char in message:
-                await textbox.type(char, delay=random.randint(50, 150))
+                await dm_input.type(char, delay=random.randint(50, 150))
             await self._human_delay(0.5, 1)
 
-            # Send
-            send_btn = self._page.get_by_role("button", name="Send").first
-            logger.info(f"send_dm: Clicking Send button")
-            await send_btn.click(timeout=15000)
+            # Click send button
+            send_btn = self._page.locator('div[data-e2e="dm-icon-send"]').first
+            try:
+                await send_btn.wait_for(state="visible", timeout=5000)
+                await send_btn.click(timeout=10000)
+            except:
+                # Fallback: try Enter key
+                await dm_input.press("Enter")
+
             await self._human_delay(1, 2)
             logger.info(f"send_dm: DM sent to @{handle}")
             return ActionResult(success=True, action_type="dm")
