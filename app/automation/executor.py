@@ -245,9 +245,11 @@ class CampaignExecutor:
                         )
                         if analysis.get("should_skip"):
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
                         if analysis.get("match_score", 0) < 0.5:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
                     res = await self.adapter.follow(handle)
@@ -271,9 +273,11 @@ class CampaignExecutor:
                         self.logger.info(f"Classification @{handle}: skip={analysis.get('should_skip')}, reason={analysis.get('skip_reason')}, score={analysis.get('match_score')}")
                         if analysis.get("should_skip"):
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
                         if analysis.get("match_score", 0) < 0.5:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
                     # Generate and send DM
@@ -307,9 +311,11 @@ class CampaignExecutor:
                         )
                         if analysis.get("should_skip"):
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
                         if analysis.get("match_score", 0) < 0.5:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
                     comment_text = "Great post!"
