@@ -74,7 +74,7 @@ class ProviderManager:
     PROVIDER_DEFAULTS: dict[str, dict] = {
         "Xiaomi MiMo": {
             "model": "mimo-v2.5",
-            "base_url": "https://token-plan-sgp.xiaomimimo.com/v1",
+            "base_url": "https://api.xiaomimimo.com/v1",
             "rpm_limit": 30,
             "rpd_limit": 1000,
         },

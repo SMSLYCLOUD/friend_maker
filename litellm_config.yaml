@@ -4,7 +4,7 @@ model_list:
     litellm_params:
       model: openai/mimo-v2.5
       api_key: "os.environ/XIAOMI_MIMO_API_KEY"
-      api_base: https://token-plan-sgp.xiaomimimo.com/v1
+      api_base: https://api.xiaomimimo.com/v1
       timeout: 15
       rpm: 30
     model_info:
