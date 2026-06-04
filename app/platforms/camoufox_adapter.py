@@ -80,9 +80,8 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             self._context = await self._camoufox.__aenter__()
         except Exception as e:
-            logger.warning(f"Camoufox launch failed with proxy, retrying without: {e}")
-            launch_kwargs.pop("proxy", None)
-            self._camoufox = AsyncCamoufox(**launch_kwargs)
+            logger.warning(f"Camoufox launch failed, retrying without proxy: {e}")
+            self._camoufox = AsyncCamoufox(headless=True, os=["windows", "macos"])
             self._context = await self._camoufox.__aenter__()
 
         # Camoufox may return Browser or BrowserContext — get the context either way
@@ -118,6 +117,9 @@ class CamoufoxAdapter(PlatformAdapter):
         url = os.getenv("SKYVERN_PROXY_URL", "").strip()
         if not url:
             return None
+        # Ensure scheme is present for Firefox
+        if not url.startswith(("http://", "https://", "socks5://")):
+            url = f"http://{url}"
         username = os.getenv("SKYVERN_PROXY_USERNAME", "").strip()
         password = os.getenv("SKYVERN_PROXY_PASSWORD", "").strip()
         config = {"url": url}
