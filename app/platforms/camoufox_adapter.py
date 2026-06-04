@@ -6,8 +6,7 @@ import random
 import time
 from typing import Optional, List, Dict, Any
 
-from camoufox.async_api import AsyncCamoufox
-from playwright.async_api import Page, BrowserContext
+from playwright.async_api import async_playwright, Page, BrowserContext
 
 from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 from app.exceptions import BlockerDetected
@@ -49,7 +48,7 @@ class CamoufoxAdapter(PlatformAdapter):
     def __init__(self, platform: str, **kwargs):
         self.platform = platform.lower()
         self.platform_name = platform.lower()
-        self._browser: Optional[AsyncCamoufox] = None
+        self._playwright = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
         self._session_data: Optional[str] = None
@@ -60,8 +59,10 @@ class CamoufoxAdapter(PlatformAdapter):
             return
 
         self._session_data = session_data
-
         proxy_config = self._get_proxy_config()
+
+        from camoufox.async_api import AsyncCamoufox
+
         launch_kwargs = {
             "headless": True,
             "os": ["windows", "macos"],
@@ -75,10 +76,9 @@ class CamoufoxAdapter(PlatformAdapter):
                 launch_kwargs["proxy"]["password"] = proxy_config.get("password", "")
 
         logger.info(f"Launching Camoufox browser for {self.platform}...")
-        self._browser = AsyncCamoufox(**launch_kwargs)
-        self._context = await self._browser.start()
+        self._camoufox = AsyncCamoufox(**launch_kwargs)
+        self._context = await self._camoufox.__aenter__()
 
-        # Load cookies if we have session data
         if session_data:
             await self._load_cookies(session_data)
 
@@ -794,15 +794,11 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             if self._page:
                 await self._page.close()
-            if self._context:
-                # Export cookies before closing
-                cookies = await self._get_cookies()
-                await self._context.close()
-            if self._browser:
-                await self._browser.stop()
+            if self._camoufox:
+                await self._camoufox.__aexit__(None, None, None)
         except Exception as e:
             logger.warning(f"Error closing browser: {e}")
         finally:
             self._page = None
             self._context = None
-            self._browser = None
+            self._camoufox = None
