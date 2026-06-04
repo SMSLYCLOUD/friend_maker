@@ -299,22 +299,29 @@ class CampaignExecutor:
                                     profile_data = await self.adapter.get_user_profile(h)
                                 except: pass
 
-                                # Pre-engagement: view stories
-                                try:
-                                    await self.adapter.view_stories(h)
-                                    self.logger.info(f"Viewed stories for @{h}")
-                                except: pass
+                                # Check if account is private
+                                is_private = profile_data.get("is_private", False)
+                                if is_private:
+                                    self.logger.info(f"@{h} is private — skipping DM, will follow only")
 
-                                # Pre-engagement: like recent posts
-                                try:
-                                    user_posts = await self.adapter.get_user_recent_posts(h, limit=2)
-                                    for p in user_posts[:2]:
-                                        url = p.get("url", "")
-                                        if url:
-                                            await self.adapter.like_post(url)
-                                            self.logger.info(f"Liked post by @{h}")
-                                            await self.anti_detect.random_delay(lambda: self.running)
-                                except: pass
+                                # Pre-engagement: view stories (skip if private)
+                                if not is_private:
+                                    try:
+                                        await self.adapter.view_stories(h)
+                                        self.logger.info(f"Viewed stories for @{h}")
+                                    except: pass
+
+                                # Pre-engagement: like recent posts (skip if private)
+                                if not is_private:
+                                    try:
+                                        user_posts = await self.adapter.get_user_recent_posts(h, limit=2)
+                                        for p in user_posts[:2]:
+                                            url = p.get("url", "")
+                                            if url:
+                                                await self.adapter.like_post(url)
+                                                self.logger.info(f"Liked post by @{h}")
+                                                await self.anti_detect.random_delay(lambda: self.running)
+                                    except: pass
 
                                 # Follow
                                 try:
@@ -324,18 +331,21 @@ class CampaignExecutor:
                                 except: pass
                                 await self.anti_detect.random_delay(lambda: self.running)
 
-                                # DM
-                                msg = "Hello!"
-                                if self.generator:
-                                    msg = await self.generator.generate_dm(
-                                        profile_data, campaign.message_template, campaign.ai_instructions,
-                                        bot_instructions=self.bot_instructions, ref_images=ref_images
-                                    )
-                                try:
-                                    res = await self.adapter.send_dm(h, msg)
-                                    if res.success:
-                                        self.logger.info(f"DM'd @{h}")
-                                except: pass
+                                # DM (skip if private)
+                                if not is_private:
+                                    msg = "Hello!"
+                                    if self.generator:
+                                        msg = await self.generator.generate_dm(
+                                            profile_data, campaign.message_template, campaign.ai_instructions,
+                                            bot_instructions=self.bot_instructions, ref_images=ref_images
+                                        )
+                                    try:
+                                        res = await self.adapter.send_dm(h, msg)
+                                        if res.success:
+                                            self.logger.info(f"DM'd @{h}")
+                                    except: pass
+                                else:
+                                    self.logger.info(f"Skipped DM for @{h} (private account)")
 
                                 self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                 actions_today += 1
@@ -439,22 +449,29 @@ class CampaignExecutor:
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
-                    # Pre-engagement: view stories
-                    try:
-                        await self.adapter.view_stories(handle)
-                        self.logger.info(f"Viewed stories for @{handle}")
-                    except: pass
+                    # Check if private
+                    is_private = profile_data.get("is_private", False)
+                    if is_private:
+                        self.logger.info(f"@{handle} is private — skipping stories/posts/DM, will follow only")
 
-                    # Pre-engagement: like recent posts
-                    try:
-                        user_posts = await self.adapter.get_user_recent_posts(handle, limit=2)
-                        for p in user_posts[:2]:
-                            p_url = p.get("url", "")
-                            if p_url:
-                                await self.adapter.like_post(p_url)
-                                self.logger.info(f"Liked post by @{handle}")
-                                await self.anti_detect.random_delay(lambda: self.running)
-                    except: pass
+                    # Pre-engagement: view stories (skip if private)
+                    if not is_private:
+                        try:
+                            await self.adapter.view_stories(handle)
+                            self.logger.info(f"Viewed stories for @{handle}")
+                        except: pass
+
+                    # Pre-engagement: like recent posts (skip if private)
+                    if not is_private:
+                        try:
+                            user_posts = await self.adapter.get_user_recent_posts(handle, limit=2)
+                            for p in user_posts[:2]:
+                                p_url = p.get("url", "")
+                                if p_url:
+                                    await self.adapter.like_post(p_url)
+                                    self.logger.info(f"Liked post by @{handle}")
+                                    await self.anti_detect.random_delay(lambda: self.running)
+                        except: pass
 
                     # Follow
                     try:
@@ -463,21 +480,24 @@ class CampaignExecutor:
                     except: pass
                     await self.anti_detect.random_delay(lambda: self.running)
 
-                    # DM
-                    msg = "Hello!"
-                    if self.generator:
-                        msg = await self.generator.generate_dm(
-                            profile_data,
-                            campaign.message_template,
-                            campaign.ai_instructions,
-                            bot_instructions=self.bot_instructions,
-                            ref_images=ref_images
-                        )
-                        self.logger.info(f"Generated DM for @{handle}: {msg[:80]}...")
-                    res = await self.adapter.send_dm(handle, msg)
-                    success = res.success
-                    error = res.error
-                    self.logger.info(f"DM to @{handle}: {'SENT' if success else f'FAILED: {error}'}")
+                    # DM (skip if private)
+                    if not is_private:
+                        msg = "Hello!"
+                        if self.generator:
+                            msg = await self.generator.generate_dm(
+                                profile_data,
+                                campaign.message_template,
+                                campaign.ai_instructions,
+                                bot_instructions=self.bot_instructions,
+                                ref_images=ref_images
+                            )
+                            self.logger.info(f"Generated DM for @{handle}: {msg[:80]}...")
+                        res = await self.adapter.send_dm(handle, msg)
+                        success = res.success
+                        error = res.error
+                        self.logger.info(f"DM to @{handle}: {'SENT' if success else f'FAILED: {error}'}")
+                    else:
+                        self.logger.info(f"Skipped DM for @{handle} (private account)")
 
                 elif action_type == "comment":
                     profile_data = {"username": handle, "bio": ""}

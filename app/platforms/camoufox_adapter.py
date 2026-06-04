@@ -613,9 +613,25 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             url = f"https://www.{self.platform}.com/@{handle}"
-            await self._navigate(url)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
+
+            # Check if account is private
+            is_private = False
+            private_indicators = ["This account is private", "This account's posts are hidden", "Private account"]
+            for indicator in private_indicators:
+                if indicator.lower() in text.lower():
+                    is_private = True
+                    break
+
+            # Also check for lock icon (TikTok private indicator)
+            try:
+                lock = await self._page.query_selector('[data-e2e="private-account"], .private-account, [aria-label*="private"]')
+                if lock:
+                    is_private = True
+            except: pass
 
             llm_response = self._llm_decide(
                 text,
@@ -632,12 +648,13 @@ class CamoufoxAdapter(PlatformAdapter):
                 "display_name": data.get("display_name", ""),
                 "follower_count": data.get("follower_count", ""),
                 "recent_posts": data.get("recent_posts", []),
+                "is_private": is_private,
             }
         except BlockerDetected:
             raise
         except Exception as e:
             logger.error(f"Get user profile failed: {e}")
-            return {"username": handle, "bio": "", "display_name": "", "follower_count": "", "recent_posts": []}
+            return {"username": handle, "bio": "", "display_name": "", "follower_count": "", "recent_posts": [], "is_private": False}
 
     async def get_user_recent_posts(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         try:
