@@ -180,27 +180,32 @@ class CampaignExecutor:
         # Get or generate plan
         action_type = campaign.campaign_type
         context = campaign.ai_instructions or ""
-        user_queue = []  # Local queue of users to process
+        user_queue = []
 
         if action_type == "comment_engage":
             target = campaign.targeting.get("target_account", "")
             if not target:
-                target = campaign.ai_instructions.split("of")[-1].split("on")[0].strip().lstrip("@") if "of" in (campaign.ai_instructions or "") else ""
-            if not target:
-                self.logger.error("comment_engage requires a target account. Add it to AI instructions as 'followers of @target' or set targeting.target_account. Stopping.")
+                self.logger.error("comment_engage requires target_account in targeting. Stopping.")
                 self.running = False
                 return
             self.logger.info(f"Comment engage mode — target: @{target}")
             await self._run_comment_engage(campaign, target, ref_images, actions_today, limit)
-        else:
-            plan = await self._get_plan(campaign, ref_images)
-            sources = plan.get("sources", [])
-            strategy = plan.get("strategy", "follower_mining")
-            fetch_limit = plan.get("fetch_limit", 20)
+            # Skip the follower mining loop entirely
+            self.logger.info("Campaign execution finished.")
+            if 'response_monitor_task' in dir() and not response_monitor_task.done():
+                response_monitor_task.cancel()
+                try: await response_monitor_task
+                except asyncio.CancelledError: pass
+            return
 
-            if not sources:
-                self.logger.error("No sources found from plan. Stopping.")
-                self.running = False
+        plan = await self._get_plan(campaign, ref_images)
+        sources = plan.get("sources", [])
+        strategy = plan.get("strategy", "follower_mining")
+        fetch_limit = plan.get("fetch_limit", 20)
+
+        if not sources:
+            self.logger.error("No sources found from plan. Stopping.")
+            self.running = False
 
         while self.running and sources:
             try:
@@ -489,25 +494,7 @@ class CampaignExecutor:
                         except: pass
                         await self.anti_detect.random_delay(lambda: self.running)
 
-                        # Step 3: Reply to their comment
-                        comments = await self.adapter.get_post_comments(post_url, limit=20)
-                        for c in comments:
-                            if c.get("username", "").lstrip("@") == h:
-                                reply_text = "Great point!"
-                                if self.generator:
-                                    reply_context = {"username": h, "bio": profile_data.get("bio", ""), "comment_text": c.get("text", "")}
-                                    reply_text = await self.generator.generate_dm(
-                                        reply_context, campaign.message_template, campaign.ai_instructions,
-                                        bot_instructions=self.bot_instructions, ref_images=ref_images
-                                    )
-                                try:
-                                    await self.adapter.reply_to_comment(c.get("id", ""), reply_text, post_url=post_url)
-                                    self.logger.info(f"Replied to @{h}'s comment")
-                                except: pass
-                                break
-                        await self.anti_detect.random_delay(lambda: self.running)
-
-                        # Step 4: DM
+                        # Step 3: DM
                         msg = "Hello!"
                         if self.generator:
                             msg = await self.generator.generate_dm(
