@@ -299,6 +299,22 @@ class CampaignExecutor:
                                     profile_data = await self.adapter.get_user_profile(h)
                                 except: pass
 
+                                # Run classifier to check bot_instructions
+                                if self.classifier:
+                                    analysis = await self.classifier.classify(
+                                        profile_data, bot_instructions=self.bot_instructions,
+                                        ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
+                                    )
+                                    self.logger.info(f"Classification @{h}: skip={analysis.get('should_skip')}, reason={analysis.get('skip_reason')}, score={analysis.get('match_score')}")
+                                    if analysis.get("should_skip"):
+                                        self.logger.info(f"Skipping @{h}: {analysis.get('skip_reason')}")
+                                        self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                                        continue
+                                    if analysis.get("match_score", 0) < 0.2:
+                                        self.logger.info(f"Skipping @{h}: low score ({analysis.get('match_score')})")
+                                        self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                                        continue
+
                                 # Check if account is private
                                 is_private = profile_data.get("is_private", False)
                                 if is_private:
