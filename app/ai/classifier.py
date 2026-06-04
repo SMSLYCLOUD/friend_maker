@@ -127,11 +127,17 @@ Recent Posts: {', '.join(profile_data.get('recent_posts', [])[:3]) if profile_da
 
 {"(I have attached a screenshot of the profile for visual analysis.)" if image_base64 else ""}{ref_hint}
 
+CRITICAL RULES:
+- "should_skip" MUST be false UNLESS one of the filtering rules below EXPLICITLY matches the profile.
+- Do NOT invent your own skip reasons. Do NOT skip based on "inactivity", "insufficient data", "no political indicators", "low quality", or any reason not listed in the rules.
+- If no filtering rules are provided, always set "should_skip": false.
+- Only set "should_skip": true if a specific rule EXPLICITLY applies (e.g., "skip followers below 100" and the profile has 50 followers).
+
 Task:
 1. Identify the 'niche' (e.g., Tech, Fitness, Business, Politics, Entertainment).
 2. Determine 'account_type' (Personal, Business, Bot, Influencer, Media).
 3. Calculate 'match_score' (0.0 to 1.0) — how well does this profile match the target audience: {audience}?
-4. Check if the profile should be SKIPPED based on the filtering rules below.{rules}
+4. Check if the profile should be SKIPPED based ONLY on the filtering rules below.{rules}
 
 Return format:
 {{

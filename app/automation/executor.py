@@ -189,37 +189,61 @@ class CampaignExecutor:
 
         action_type = campaign.campaign_type
         context = campaign.ai_instructions or ""
+        user_queue = []  # Local queue of users to process
 
         while self.running and sources:
-            if actions_today >= limit:
-                self.logger.info(f"Daily limit of {limit} reached.")
-                break
-
-            if self.anti_detect.needs_break():
-                await self.anti_detect.take_break(lambda: self.running)
-            if not self.running: break
-
-            # Pick next source
-            source = sources[0]
-            self.logger.info(f"Fetching 1 target from source: {source}")
-
-            # Fetch 1 follower from this source
             try:
-                self._busy = True
-                new_users = []
-                if strategy == "follower_mining":
-                    new_users = await self.adapter.get_followers(source, limit=1)
-                elif strategy == "search":
-                    new_users = await self.adapter.search_users(source, limit=1, context=context)
-                elif strategy == "group_combing":
-                    new_users = await self.adapter.get_group_members(source, limit=1)
+                if actions_today >= limit:
+                    self.logger.info(f"Daily limit of {limit} reached.")
+                    break
 
-                if not new_users:
-                    self.logger.info(f"No more users from {source}. Moving to next source.")
-                    sources.pop(0)
-                    continue
+                if self.anti_detect.needs_break():
+                    await self.anti_detect.take_break(lambda: self.running)
+                if not self.running: break
 
-                user = new_users[0]
+                # Refill queue if empty
+                if not user_queue:
+                    source = sources[0]
+                    self.logger.info(f"Fetching batch from source: {source}")
+
+                    try:
+                        self._busy = True
+                        new_users = []
+                        if strategy == "follower_mining":
+                            new_users = await self.adapter.get_followers(source, limit=fetch_limit)
+                        elif strategy == "search":
+                            new_users = await self.adapter.search_users(source, limit=fetch_limit, context=context)
+                        elif strategy == "group_combing":
+                            new_users = await self.adapter.get_group_members(source, limit=fetch_limit)
+
+                        if not new_users:
+                            self.logger.info(f"No more users from {source}. Moving to next source.")
+                            sources.pop(0)
+                            continue
+
+                        # Filter already-contacted users from the batch
+                        for u in new_users:
+                            h = u.platform_id.lstrip("@")
+                            if not self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
+                                user_queue.append(u)
+
+                        self.logger.info(f"Got {len(new_users)} users, {len(user_queue)} new after dedup")
+                        if not user_queue:
+                            self.logger.info(f"All {len(new_users)} users already contacted. Moving to next source.")
+                            sources.pop(0)
+                            continue
+
+                    except BlockerDetected:
+                        raise
+                    except Exception as e:
+                        self.logger.error(f"Failed to fetch users: {e}")
+                        sources.pop(0)
+                        continue
+                    finally:
+                        self._busy = False
+
+                # Process next user from queue
+                user = user_queue.pop(0)
                 handle = user.platform_id.lstrip("@")
 
                 # Skip if already contacted
@@ -233,7 +257,6 @@ class CampaignExecutor:
                 error = None
 
                 if action_type == "growth":
-                    # Classify before following
                     if self.classifier:
                         profile_data = {"username": handle, "bio": ""}
                         try:
@@ -255,8 +278,8 @@ class CampaignExecutor:
                     res = await self.adapter.follow(handle)
                     success = res.success
                     error = res.error
+
                 elif action_type == "outreach":
-                    # Scrape profile for personalization
                     profile_data = {"username": handle, "bio": ""}
                     try:
                         profile_data = await self.adapter.get_user_profile(handle)
@@ -264,7 +287,6 @@ class CampaignExecutor:
                     except Exception as e:
                         self.logger.warning(f"Failed to scrape profile: {e}")
 
-                    # Classify before DMing
                     if self.classifier:
                         analysis = await self.classifier.classify(
                             profile_data, bot_instructions=self.bot_instructions,
@@ -280,7 +302,6 @@ class CampaignExecutor:
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
-                    # Generate and send DM
                     msg = "Hello!"
                     if self.generator:
                         msg = await self.generator.generate_dm(
@@ -303,7 +324,6 @@ class CampaignExecutor:
                     except Exception as e:
                         self.logger.warning(f"Failed to scrape profile: {e}")
 
-                    # Classify before commenting
                     if self.classifier:
                         analysis = await self.classifier.classify(
                             profile_data, bot_instructions=self.bot_instructions,
@@ -379,26 +399,19 @@ class CampaignExecutor:
                     "campaign_id": campaign.id,
                     "campaign_name": campaign.name,
                     "platform": self.adapter.platform_name,
-                    "source": source,
                 }
                 self._blocker_event.clear()
-                # Update campaign status
                 campaign.status = "blocked"
                 self.repo.update_campaign(campaign)
-                # Alert user via Telegram
                 await self._alert_blocker(campaign, e)
-                # Wait for resume
                 await self._wait_for_resume()
                 if not self.running:
                     break
-                # Re-set busy and continue
                 self._busy = True
                 continue
             except Exception as e:
-                self.logger.error(f"Error processing source {source}: {e}")
+                self.logger.error(f"Error processing user: {e}")
                 await self.anti_detect.trigger_cooldown(lambda: self.running)
-            finally:
-                self._busy = False
 
         self.logger.info("Campaign execution finished.")
 

@@ -292,10 +292,17 @@ class CamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Scroll down to load more followers
-            for i in range(5):
-                await self._page.mouse.wheel(0, 800)
-                await self._human_delay(1, 2)
+            # Scroll down to load more followers (TikTok lazy-loads heavily)
+            prev_count = 0
+            for i in range(15):
+                await self._page.mouse.wheel(0, 1500)
+                await self._human_delay(1.5, 2.5)
+                # Count current links to detect if new content loaded
+                links = await self._page.query_selector_all('a[href*="/@"]')
+                curr_count = len(links)
+                if curr_count == prev_count and i > 3:
+                    break  # No new content loaded, stop scrolling
+                prev_count = curr_count
 
             text = await self._extract_page_text()
 
