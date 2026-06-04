@@ -157,6 +157,14 @@ class CampaignExecutor:
         self.load_bot_instructions()
         ref_images = self.load_reference_images()
 
+        # Log instructions for debugging
+        self.logger.info(f"BOT_INSTRUCTIONS loaded: {len(self.bot_instructions)} chars")
+        if self.bot_instructions:
+            self.logger.info(f"BOT_INSTRUCTIONS: {self.bot_instructions[:200]}")
+        self.logger.info(f"Campaign ai_instructions: {len(campaign.ai_instructions or '')} chars")
+        if campaign.ai_instructions:
+            self.logger.info(f"Campaign instructions: {campaign.ai_instructions[:200]}")
+
         # 1. Authenticate
         account = self.repo.get_account(campaign.account_id, user_id)
         if not account:
