@@ -87,8 +87,18 @@ class ProfileClassifier:
     async def classify(self, profile_data: Dict[str, Any], image_base64: Optional[str] = None,
                        bot_instructions: str = "", ref_images: List[str] = None,
                        campaign_instructions: str = "") -> Dict[str, Any]:
+        # Merge bot_instructions with campaign_instructions for filtering rules
+        combined_instructions = ""
+        if bot_instructions:
+            combined_instructions = bot_instructions
+        if campaign_instructions:
+            if combined_instructions:
+                combined_instructions = combined_instructions + "\n" + campaign_instructions
+            else:
+                combined_instructions = campaign_instructions
+
         # Run fast pre-filters first
-        pre_skip = self.pre_filter(profile_data, bot_instructions)
+        pre_skip = self.pre_filter(profile_data, combined_instructions)
         if pre_skip:
             self.logger.info(f"Pre-filter skip: {pre_skip} for @{profile_data.get('username')}")
             return {
@@ -101,10 +111,10 @@ class ProfileClassifier:
             }
 
         rules = ""
-        if bot_instructions:
+        if combined_instructions:
             rules = f"""
 FILTERING RULES (these are MANDATORY — skip profiles that match any of these):
-{bot_instructions}
+{combined_instructions}
 
 You MUST check these rules and set "should_skip": true and "skip_reason" if the profile violates any rule.
 """
@@ -151,7 +161,7 @@ Return format:
         result = self._parse_json(response)
 
         # Override: ignore should_skip from LLM if no rules exist — only pre_filter decides skipping
-        if not bot_instructions and result.get("should_skip"):
+        if not combined_instructions and result.get("should_skip"):
             self.logger.info(f"Ignoring LLM skip (no rules set) — using score only")
             result["should_skip"] = False
             result["skip_reason"] = None
