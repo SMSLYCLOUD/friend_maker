@@ -334,13 +334,7 @@ class CampaignExecutor:
                                 # Check if account is private
                                 is_private = profile_data.get("is_private", False)
                                 if is_private:
-                                    self.logger.info(f"@{h} is private — follow only, no engagement")
-                                    # Follow only
-                                    try:
-                                        res = await self.adapter.follow(h)
-                                        if res.success:
-                                            self.logger.info(f"Followed @{h} (private)")
-                                    except: pass
+                                    self.logger.info(f"@{h} is private — skipping (comment_engage)")
                                     self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                     continue
 
