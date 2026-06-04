@@ -46,49 +46,6 @@ class SkyvernAdapter(PlatformAdapter):
             logger.info(f"Reusing browser session: {self._browser_session_id}")
             return
 
-        from skyvern import Skyvern
-        api_key = os.getenv("SKYVERN_API_KEY", "")
-        skyvern = Skyvern(base_url=SKYVERN_BASE_URL, api_key=api_key)
-
-        try:
-            session = await skyvern.create_browser_session(timeout=60)
-            session_dict = self._to_dict(session)
-            self._browser_session_id = session_dict.get("browser_session_id") or session_dict.get("id")
-            logger.info(f"Created browser session: {self._browser_session_id}")
-        except Exception as e:
-            logger.warning(f"Failed to create browser session: {e}")
-            self._browser_session_id = None
-
-    def _get_cookie_header(self, session_data: str) -> str:
-        """Build a Cookie HTTP header string from session data."""
-        try:
-            cookies = json.loads(session_data)
-            if not isinstance(cookies, list):
-                return ""
-            parts = []
-            for c in cookies:
-                name = c.get("name", "")
-                value = c.get("value", "")
-                if name and value:
-                    parts.append(f"{name}={value}")
-            return "; ".join(parts)
-        except Exception:
-            return ""
-
-    async def _ensure_browser_session(self, session_data: Optional[str] = None):
-        """Ensure we have a browser session ID for task reuse.
-        
-        For self-hosted Skyvern, run_task() creates its own browser internally.
-        We create a persistent session via the API and pass browser_session_id 
-        to run_task() so all tasks in this campaign share the same browser.
-        Cookies persist in the browser's profile across tasks.
-        
-        Each adapter instance = one isolated browser session per account.
-        """
-        if self._browser_session_id:
-            logger.info(f"Reusing browser session: {self._browser_session_id}")
-            return
-
         # Build cookie header from session data for extra_http_headers
         if session_data:
             self._cookie_header = self._get_cookie_header(session_data)
@@ -133,7 +90,7 @@ class SkyvernAdapter(PlatformAdapter):
             "data_extraction_goal": extraction_goal,
             "data_extraction_schema": extraction_schema,
             "wait_for_completion": False,
-            "max_screenshot_scrolls": 2,
+            "max_screenshot_scrolls": 5,
         }
         if self._browser_session_id:
             payload["browser_session_id"] = self._browser_session_id
@@ -401,9 +358,23 @@ class SkyvernAdapter(PlatformAdapter):
         results = []
         try:
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}/followers"
+            if self.platform == "tiktok":
+                url = f"https://www.{self.platform}.com/@{handle}"
+                prompt = (
+                    f"Go to the profile page for @{handle} on TikTok. "
+                    f"Find the followers list — on TikTok this is opened by clicking the 'Following' count on the profile. "
+                    f"Once the followers list is visible, scroll down to load more, "
+                    f"then extract the usernames and display names of the first {limit} followers."
+                )
+            else:
+                url = f"https://www.{self.platform}.com/@{handle}/followers"
+                prompt = (
+                    f"You are on the followers page for @{handle} on {self.platform}. "
+                    f"Scroll down to load more followers, "
+                    f"then extract the usernames and display names of the first {limit} followers visible on the page."
+                )
             task = await self._run_task_with_extraction(
-                prompt=f"You are already on the followers page. Do NOT use the search bar. Do NOT click any search buttons. Simply scroll down to load more followers, then extract the usernames and display names of the first {limit} followers visible on the page.",
+                prompt=prompt,
                 url=url,
                 extraction_goal=f"Extract the usernames and display names of the first {limit} followers from the followers list",
                 extraction_schema={
