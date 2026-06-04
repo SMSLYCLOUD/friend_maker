@@ -184,7 +184,7 @@ class CamoufoxAdapter(PlatformAdapter):
     async def _navigate(self, url: str):
         """Navigate to URL with human-like behavior."""
         async def _do_navigate():
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
             await self._human_scroll()
             await self._human_move_mouse()
@@ -291,7 +291,7 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Navigate directly to followers page
             url = f"https://www.{self.platform}.com/@{handle}/followers"
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
             text = await self._extract_page_text()
@@ -359,7 +359,7 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Try clicking Follow button
             follow_btn = self._page.get_by_role("button", name="Follow").first
-            await follow_btn.click(timeout=10000)
+            await follow_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="follow")
         except BlockerDetected:
@@ -377,7 +377,7 @@ class CamoufoxAdapter(PlatformAdapter):
             self._check_for_blockers(text, url)
 
             following_btn = self._page.get_by_role("button", name="Following").first
-            await following_btn.click(timeout=10000)
+            await following_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="unfollow")
         except BlockerDetected:
@@ -391,7 +391,7 @@ class CamoufoxAdapter(PlatformAdapter):
             handle = user_id.lstrip("@")
             url = f"https://www.{self.platform}.com/@{handle}"
             logger.info(f"send_dm: Navigating to {url}")
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
             # Close any modal overlays that might block clicks
@@ -399,7 +399,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 close_btns = await self._page.query_selector_all('[data-e2e="modal-close"], .TUXModal-overlay button[aria-label="Close"], button[data-testid="close"]')
                 for btn in close_btns:
                     try:
-                        await btn.click(timeout=5000)
+                        await btn.click(timeout=8000)
                         await self._human_delay(0.5, 1)
                     except: pass
                 # Also try pressing Escape
@@ -413,7 +413,7 @@ class CamoufoxAdapter(PlatformAdapter):
             # Try to find and click message/DM button
             msg_btn = self._page.get_by_role("button", name="Message").first
             logger.info(f"send_dm: Clicking Message button for @{handle}")
-            await msg_btn.click(timeout=12000, force=True)
+            await msg_btn.click(timeout=20000, force=True)
             await self._human_delay(2, 3)
 
             # Type message with human delays
@@ -426,7 +426,7 @@ class CamoufoxAdapter(PlatformAdapter):
             # Send
             send_btn = self._page.get_by_role("button", name="Send").first
             logger.info(f"send_dm: Clicking Send button")
-            await send_btn.click(timeout=10000)
+            await send_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             logger.info(f"send_dm: DM sent to @{handle}")
             return ActionResult(success=True, action_type="dm")
@@ -515,7 +515,7 @@ class CamoufoxAdapter(PlatformAdapter):
         results = []
         try:
             await self._ensure_browser(self._session_data)
-            await self._page.goto(post_url, wait_until="domcontentloaded", timeout=45000)
+            await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
             # Infinite scroll until no new comment links load
@@ -648,7 +648,7 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
             url = f"https://www.{self.platform}.com/@{handle}"
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
             # Scroll to load posts (TikTok lazy-loads)
@@ -713,13 +713,13 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Find comment input and type
             comment_input = self._page.locator("textarea[placeholder*='comment'], div[contenteditable='true']").first
-            await comment_input.click(timeout=10000)
+            await comment_input.click(timeout=15000)
             for char in message:
                 await comment_input.type(char, delay=random.randint(50, 150))
             await self._human_delay(0.5, 1)
 
             post_btn = self._page.get_by_role("button", name="Post").first
-            await post_btn.click(timeout=10000)
+            await post_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="comment")
         except BlockerDetected:
@@ -738,16 +738,16 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Click first post
             first_post = self._page.locator("article a, div[data-e2e='user-post'] a").first
-            await first_post.click(timeout=10000)
+            await first_post.click(timeout=15000)
             await self._human_delay(2, 3)
 
             comment_input = self._page.locator("textarea[placeholder*='comment'], div[contenteditable='true']").first
-            await comment_input.click(timeout=10000)
+            await comment_input.click(timeout=15000)
             for char in message:
                 await comment_input.type(char, delay=random.randint(50, 150))
 
             post_btn = self._page.get_by_role("button", name="Post").first
-            await post_btn.click(timeout=10000)
+            await post_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="comment")
         except BlockerDetected:
@@ -777,7 +777,7 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Find the message input box
             msg_input = self._page.locator("textarea, div[contenteditable='true'], div[data-e2e='message-input']").first
-            await msg_input.click(timeout=10000)
+            await msg_input.click(timeout=15000)
             await self._human_delay(0.5, 1)
 
             # Type with human delays
@@ -787,7 +787,7 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Send the message
             send_btn = self._page.get_by_role("button", name="Send").first
-            await send_btn.click(timeout=10000)
+            await send_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="reply_dm")
         except BlockerDetected:
@@ -813,7 +813,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 "button[aria-label*='Like'], "
                 "button[aria-label*='like']"
             ).first
-            await like_btn.click(timeout=10000)
+            await like_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="like")
         except BlockerDetected:
@@ -837,7 +837,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 "button[aria-label*='Unlike'], "
                 "button[aria-label*='unlike']"
             ).first
-            await unlike_btn.click(timeout=10000)
+            await unlike_btn.click(timeout=15000)
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="unlike")
         except BlockerDetected:
@@ -862,13 +862,13 @@ class CamoufoxAdapter(PlatformAdapter):
                 "button[aria-label*='Share'], "
                 "button[aria-label*='share']"
             ).first
-            await share_btn.click(timeout=10000)
+            await share_btn.click(timeout=15000)
             await self._human_delay(1, 2)
 
             # Click repost option if available
             try:
                 repost_btn = self._page.get_by_role("button", name="Repost").first
-                await repost_btn.click(timeout=5000)
+                await repost_btn.click(timeout=8000)
                 await self._human_delay(1, 2)
             except Exception:
                 # Repost might not be available, that's ok
@@ -897,7 +897,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 "div[data-e2e='user-avatar'][data-e2e='has-story'], "
                 "a[href*='/story']"
             ).first
-            await story_btn.click(timeout=10000)
+            await story_btn.click(timeout=15000)
             await self._human_delay(3, 5)
 
             # Wait for story to play, then close
@@ -907,7 +907,7 @@ class CamoufoxAdapter(PlatformAdapter):
                     "button[data-e2e='close-button'], "
                     "button[aria-label='Close']"
                 ).first
-                await close_btn.click(timeout=5000)
+                await close_btn.click(timeout=8000)
             except Exception:
                 pass
 
