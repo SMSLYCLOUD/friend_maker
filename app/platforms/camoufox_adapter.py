@@ -700,7 +700,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 await self._page.mouse.wheel(0, 1200)
                 await self._human_delay(1.5, 2.5)
 
-            # Try HTML extraction first — look for post links
+            # Try HTML extraction first — look for post links belonging to THIS user only
             posts = []
             try:
                 links = await self._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
@@ -708,6 +708,9 @@ class CamoufoxAdapter(PlatformAdapter):
                 for link in links[:limit * 5]:
                     href = await link.get_attribute("href")
                     if not href:
+                        continue
+                    # Only include posts from this user's profile
+                    if f"/@{handle}/" not in href and f"/@{handle}?" not in href:
                         continue
                     # Extract video/photo ID for dedup
                     import re
