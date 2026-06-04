@@ -189,14 +189,6 @@ class CampaignExecutor:
                 self.running = False
                 return
             self.logger.info(f"Comment engage mode — target: @{target}")
-            await self._run_comment_engage(campaign, target, ref_images, actions_today, limit)
-            # Skip the follower mining loop entirely
-            self.logger.info("Campaign execution finished.")
-            if 'response_monitor_task' in dir() and not response_monitor_task.done():
-                response_monitor_task.cancel()
-                try: await response_monitor_task
-                except asyncio.CancelledError: pass
-            return
 
         plan = await self._get_plan(campaign, ref_images)
         sources = plan.get("sources", [])
@@ -220,7 +212,96 @@ class CampaignExecutor:
                 # Refill queue if empty
                 if not user_queue:
                     source = sources[0]
-                    self.logger.info(f"Fetching batch from source: {source}")
+
+                    # comment_engage bypasses the queue — process source directly
+                    if action_type == "comment_engage":
+                        self.logger.info(f"Comment engage: discovering posts from @{source}...")
+                        sources.pop(0)
+                        try:
+                            target_posts = await self.adapter.get_user_recent_posts(source, limit=10)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to fetch posts from @{source}: {e}")
+                            continue
+
+                        if not target_posts:
+                            self.logger.info(f"No posts found for @{source}")
+                            continue
+
+                        processed_commenters = set()
+                        for tp in target_posts:
+                            if not self.running or actions_today >= limit:
+                                break
+                            tp_url = tp.get("url", "")
+                            if not tp_url:
+                                continue
+                            self.logger.info(f"Checking comments on: {tp_url}")
+                            try:
+                                commenters = await self.adapter.get_post_commenters(tp_url, limit=20)
+                            except Exception as e:
+                                self.logger.warning(f"Failed to get commenters: {e}")
+                                continue
+                            if not commenters:
+                                continue
+
+                            for u in commenters:
+                                if not self.running or actions_today >= limit:
+                                    break
+                                h = u.platform_id.lstrip("@")
+                                if h in processed_commenters:
+                                    continue
+                                if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
+                                    continue
+                                processed_commenters.add(h)
+                                self.logger.info(f"Processing commenter @{h}...")
+
+                                profile_data = {"username": h, "bio": ""}
+                                try:
+                                    profile_data = await self.adapter.get_user_profile(h)
+                                except: pass
+
+                                # Pre-engagement: view stories
+                                try:
+                                    await self.adapter.view_stories(h)
+                                    self.logger.info(f"Viewed stories for @{h}")
+                                except: pass
+
+                                # Pre-engagement: like recent posts
+                                try:
+                                    user_posts = await self.adapter.get_user_recent_posts(h, limit=2)
+                                    for p in user_posts[:2]:
+                                        url = p.get("url", "")
+                                        if url:
+                                            await self.adapter.like_post(url)
+                                            self.logger.info(f"Liked post by @{h}")
+                                            await self.anti_detect.random_delay(lambda: self.running)
+                                except: pass
+
+                                # Follow
+                                try:
+                                    res = await self.adapter.follow(h)
+                                    if res.success:
+                                        self.logger.info(f"Followed @{h}")
+                                except: pass
+                                await self.anti_detect.random_delay(lambda: self.running)
+
+                                # DM
+                                msg = "Hello!"
+                                if self.generator:
+                                    msg = await self.generator.generate_dm(
+                                        profile_data, campaign.message_template, campaign.ai_instructions,
+                                        bot_instructions=self.bot_instructions, ref_images=ref_images
+                                    )
+                                try:
+                                    res = await self.adapter.send_dm(h, msg)
+                                    if res.success:
+                                        self.logger.info(f"DM'd @{h}")
+                                except: pass
+
+                                self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                                actions_today += 1
+                                self.logger.info(f"✓ Completed engagement with @{h} ({actions_today}/{limit})")
+                                await self.anti_detect.random_delay(lambda: self.running)
+                        continue
 
                     try:
                         self._busy = True
@@ -452,67 +533,6 @@ class CampaignExecutor:
                         await self.anti_detect.random_delay(lambda: self.running)
                     success = True
 
-                elif action_type == "comment_engage":
-                    post_url = campaign.targeting.get("post_url", "")
-                    if not post_url:
-                        self.logger.warning("comment_engage requires post_url in targeting")
-                        break
-                    commenters = await self.adapter.get_post_commenters(post_url, limit=fetch_limit)
-                    if not commenters:
-                        self.logger.info("No commenters found on post")
-                        break
-                    for u in commenters:
-                        h = u.platform_id.lstrip("@")
-                        if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
-                            continue
-                        self.logger.info(f"Processing commenter @{h}...")
-                        profile_data = {"username": h, "bio": ""}
-                        try:
-                            profile_data = await self.adapter.get_user_profile(h)
-                        except: pass
-
-                        # Step 1: Pre-engagement
-                        try:
-                            await self.adapter.view_stories(h)
-                            self.logger.info(f"Viewed stories for @{h}")
-                        except: pass
-                        try:
-                            posts = await self.adapter.get_user_recent_posts(h, limit=2)
-                            for p in posts[:2]:
-                                url = p.get("url", "")
-                                if url:
-                                    await self.adapter.like_post(url)
-                                    self.logger.info(f"Liked post by @{h}")
-                                    await self.anti_detect.random_delay(lambda: self.running)
-                        except: pass
-
-                        # Step 2: Follow
-                        try:
-                            res = await self.adapter.follow(h)
-                            if res.success:
-                                self.logger.info(f"Followed @{h}")
-                        except: pass
-                        await self.anti_detect.random_delay(lambda: self.running)
-
-                        # Step 3: DM
-                        msg = "Hello!"
-                        if self.generator:
-                            msg = await self.generator.generate_dm(
-                                profile_data, campaign.message_template, campaign.ai_instructions,
-                                bot_instructions=self.bot_instructions, ref_images=ref_images
-                            )
-                        try:
-                            res = await self.adapter.send_dm(h, msg)
-                            if res.success:
-                                self.logger.info(f"DM'd @{h}")
-                        except: pass
-
-                        self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
-                        actions_today += 1
-                        self.logger.info(f"✓ Completed engagement with @{h} ({actions_today}/{limit})")
-                        await self.anti_detect.random_delay(lambda: self.running)
-                    success = True
-
                 # Log and register
                 self.repo.log_action(ActionLog(
                     id=f"log_{campaign.id}_{handle}_{int(asyncio.get_event_loop().time())}",
@@ -592,116 +612,19 @@ class CampaignExecutor:
         else:
             self.logger.info("Campaign ended but browser session kept alive for next run.")
 
-    async def _run_comment_engage(self, campaign, target, ref_images, actions_today, limit):
-        """Comment engage: find posts on target's profile, engage with commenters."""
-        self.logger.info(f"Fetching recent posts from @{target}...")
-        try:
-            posts = await self.adapter.get_user_recent_posts(target, limit=10)
-        except Exception as e:
-            self.logger.error(f"Failed to fetch posts from @{target}: {e}")
-            return
-
-        if not posts:
-            self.logger.info(f"No posts found for @{target}")
-            return
-
-        self.logger.info(f"Found {len(posts)} posts from @{target}")
-        processed_users = set()
-
-        for post in posts:
-            if not self.running or actions_today >= limit:
-                break
-
-            post_url = post.get("url", "")
-            if not post_url:
-                continue
-
-            self.logger.info(f"Checking comments on: {post_url}")
-            try:
-                commenters = await self.adapter.get_post_commenters(post_url, limit=20)
-            except Exception as e:
-                self.logger.warning(f"Failed to get commenters: {e}")
-                continue
-
-            if not commenters:
-                self.logger.info("No commenters on this post")
-                continue
-
-            self.logger.info(f"Found {len(commenters)} commenters on post")
-
-            for u in commenters:
-                if not self.running or actions_today >= limit:
-                    break
-
-                h = u.platform_id.lstrip("@")
-
-                # Skip if already processed in this session or previously contacted
-                if h in processed_users:
-                    continue
-                if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, "comment_engage"):
-                    continue
-
-                processed_users.add(h)
-                self.logger.info(f"Engaging with commenter @{h}...")
-
-                # Get profile
-                profile_data = {"username": h, "bio": ""}
-                try:
-                    profile_data = await self.adapter.get_user_profile(h)
-                except: pass
-
-                # Pre-engagement: view stories
-                try:
-                    await self.adapter.view_stories(h)
-                    self.logger.info(f"Viewed stories for @{h}")
-                except: pass
-
-                # Pre-engagement: like recent posts
-                try:
-                    user_posts = await self.adapter.get_user_recent_posts(h, limit=2)
-                    for p in user_posts[:2]:
-                        p_url = p.get("url", "")
-                        if p_url:
-                            await self.adapter.like_post(p_url)
-                            self.logger.info(f"Liked post by @{h}")
-                            await self.anti_detect.random_delay(lambda: self.running)
-                except: pass
-
-                # Follow
-                try:
-                    await self.adapter.follow(h)
-                    self.logger.info(f"Followed @{h}")
-                except: pass
-                await self.anti_detect.random_delay(lambda: self.running)
-
-                # DM
-                msg = "Hello!"
-                if self.generator:
-                    msg = await self.generator.generate_dm(
-                        profile_data, campaign.message_template, campaign.ai_instructions,
-                        bot_instructions=self.bot_instructions, ref_images=ref_images
-                    )
-                try:
-                    await self.adapter.send_dm(h, msg)
-                    self.logger.info(f"DM'd @{h}")
-                except: pass
-
-                # Log and register
-                self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, "comment_engage", campaign.id)
-                self.repo.log_action(ActionLog(
-                    id=f"log_{campaign.id}_{h}_{int(asyncio.get_event_loop().time())}",
-                    account_id=campaign.account_id, campaign_id=campaign.id,
-                    action_type="comment_engage", target_user=h, success=True
-                ))
-                actions_today += 1
-                self.logger.info(f"✓ Completed @{h} ({actions_today}/{limit})")
-                await self.anti_detect.random_delay(lambda: self.running)
-
-        self.logger.info(f"Comment engage finished. Processed {len(processed_users)} users.")
 
     async def _get_plan(self, campaign: Campaign, ref_images: list) -> dict:
         """Run planner and return sources, strategy, limit."""
         PLATFORM_NAMES = {"tiktok", "instagram", "twitter", "x", "facebook", "linkedin", "youtube", "reddit"}
+
+        # comment_engage: use target_account from targeting directly
+        if campaign.campaign_type == "comment_engage":
+            target = campaign.targeting.get("target_account", "")
+            if target:
+                target = target.lstrip("@")
+                self.logger.info(f"Comment engage plan: source=@{target}")
+                return {"sources": [target], "strategy": "comment_engage", "fetch_limit": 20}
+            # Fall through to planner if no target_account set
 
         if self.planner and campaign.ai_instructions:
             self.logger.info("Running AI Strategic Planning...")
