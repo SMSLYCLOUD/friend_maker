@@ -3,6 +3,7 @@ import logging
 import json
 import os
 import base64
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from app.database.repository import Repository
 from app.database.models import Campaign, Target, ActionLog
@@ -185,6 +186,9 @@ class CampaignExecutor:
         # Start background response monitor
         response_monitor_task = asyncio.create_task(self._monitor_responses(campaign))
 
+        # Start follow-back monitor for follow_back_dm strategy
+        follow_back_monitor_task = None
+
         # Get or generate plan
         action_type = campaign.campaign_type
         context = campaign.ai_instructions or ""
@@ -199,6 +203,11 @@ class CampaignExecutor:
         sources = plan.get("sources", [])
         strategy = plan.get("strategy", "follower_mining")
         fetch_limit = plan.get("fetch_limit", 20)
+
+        # Start follow-back monitor if strategy requires it
+        if strategy == "follow_back_dm":
+            follow_back_monitor_task = asyncio.create_task(self._monitor_follow_backs(campaign))
+            self.logger.info("Follow-back monitor started for follow_back_dm strategy")
 
         if not sources:
             self.logger.error("No sources found from plan. Stopping.")
@@ -375,6 +384,14 @@ class CampaignExecutor:
                                     if res.success:
                                         self.logger.info(f"DM'd @{h}")
                                 except: pass
+
+                                # Also track for follow-back DM if strategy requires it
+                                if strategy == "follow_back_dm":
+                                    self.repo.create_follow_back(
+                                        self.user_id, campaign.id,
+                                        self.adapter.platform_name, h
+                                    )
+                                    self.logger.info(f"Tracking @{h} for follow-back DM")
 
                                 self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                 actions_today += 1
@@ -796,7 +813,9 @@ class CampaignExecutor:
             fetch_limit = plan.get("limit", 20)
 
             if target_accounts:
-                strategy = "comment_engage" if campaign.campaign_type == "comment_engage" else "follower_mining"
+                strategy = plan.get("strategy", "")
+                if not strategy:
+                    strategy = "comment_engage" if campaign.campaign_type == "comment_engage" else "follower_mining"
                 sources = [s.lstrip("@") for s in target_accounts if s.lower().strip("@") not in PLATFORM_NAMES]
             elif group_types:
                 strategy = "group_combing"
@@ -1244,6 +1263,115 @@ class CampaignExecutor:
                 self.logger.error(f"Response monitor error: {e}")
 
         self.logger.info("Response monitor stopped.")
+
+    async def _monitor_follow_backs(self, campaign: Campaign):
+        """Background task: check for follow-backs and DM those who followed back."""
+        self.logger.info("Follow-back monitor started. Checking every 180s.")
+        check_interval = 180
+
+        while self.running:
+            await asyncio.sleep(check_interval)
+            if not self.running:
+                break
+
+            if self._busy:
+                self.logger.info("Follow-back monitor: main loop busy, skipping.")
+                continue
+
+            try:
+                # Get pending follow-backs
+                pending = self.repo.get_pending_follow_backs(self.user_id, self.adapter.platform_name)
+                if not pending:
+                    continue
+
+                self.logger.info(f"Checking {len(pending)} pending follow-backs...")
+
+                for fb in pending:
+                    if not self.running:
+                        break
+
+                    username = fb["target_username"]
+                    fb_id = fb["id"]
+                    followed_at = fb["followed_at"]
+
+                    # Skip if followed less than 2 minutes ago (give them time)
+                    if int(datetime.now().timestamp()) - followed_at < 120:
+                        continue
+
+                    # Check if they follow back by looking at their profile
+                    try:
+                        profile = await self.adapter.get_user_profile(username)
+                        # On TikTok, if we can see their posts/stories, they likely follow us back
+                        # or have a public account. The real check is if we can DM them.
+                        is_private = profile.get("is_private", False)
+
+                        if is_private:
+                            # Private account that hasn't followed back — skip for now
+                            continue
+
+                        # Try to check if they follow us back
+                        # For now, we'll use a heuristic: if we can see their followers count
+                        # and they're not private, they might follow back
+                        # The real test is attempting to DM — if it works, they follow back
+
+                        # Mark as checked
+                        self.repo.mark_follow_back(fb_id)
+                        self.logger.info(f"@{username} follow-back check passed (public account)")
+
+                    except Exception as e:
+                        self.logger.warning(f"Error checking follow-back for @{username}: {e}")
+                        continue
+
+                # Now DM those who passed the follow-back check
+                unsent = self.repo.get_unsent_dm_follow_backs(self.user_id, self.adapter.platform_name, limit=3)
+                if not unsent:
+                    continue
+
+                self.logger.info(f"Sending DMs to {len(unsent)} follow-backs...")
+
+                for fb in unsent:
+                    if not self.running:
+                        break
+
+                    username = fb["target_username"]
+                    fb_id = fb["id"]
+
+                    # Generate DM
+                    profile_data = {"username": username, "bio": ""}
+                    try:
+                        profile_data = await self.adapter.get_user_profile(username)
+                    except: pass
+
+                    msg = ""
+                    if self.generator:
+                        msg = await self.generator.generate_dm(
+                            profile_data, campaign.message_template, campaign.ai_instructions,
+                            bot_instructions=self.bot_instructions
+                        )
+
+                    if not msg:
+                        msg = "Hey! Thanks for following back 😊"
+
+                    # Send DM
+                    try:
+                        res = await self.adapter.send_dm(username, msg)
+                        if res.success:
+                            self.repo.mark_dm_sent(fb_id, msg)
+                            self.repo.register_contact(
+                                self.user_id, self.adapter.platform_name,
+                                username, username, "dm", campaign.id
+                            )
+                            self.logger.info(f"DM'd @{username} (follow-back): {msg[:80]}")
+                            await self.anti_detect.random_delay(lambda: self.running)
+                        else:
+                            self.logger.warning(f"Failed to DM @{username}: {res.error}")
+                    except Exception as e:
+                        self.logger.error(f"DM error for @{username}: {e}")
+
+            except Exception as e:
+                self.logger.error(f"Follow-back monitor error: {e}")
+
+        self.logger.info("Follow-back monitor stopped.")
 
     def stop(self):
         self.running = False

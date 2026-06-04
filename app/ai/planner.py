@@ -69,6 +69,17 @@ class CampaignPlanner:
         if bot_instructions:
             constraints = f"\n\nCONSTRAINTS (must follow):\n{bot_instructions}"
 
+        # Detect strategy from instructions
+        instructions_lower = persona_instructions.lower()
+        strategy = "comment_engage"
+        if any(phrase in instructions_lower for phrase in [
+            "follow back", "followback", "follow them first",
+            "wait for follow back", "dm when they follow",
+            "only dm if they follow", "follow then dm",
+        ]):
+            strategy = "follow_back_dm"
+            self.logger.info(f"Detected follow_back_dm strategy from instructions")
+
         prompt = f"""
 Parse this instruction and extract targets. Return JSON only.
 
@@ -83,7 +94,7 @@ RULES:
 - Do NOT add related, similar, or popular accounts
 
 RETURN:
-{{"target_accounts": ["account1"], "keywords": [], "group_types": [], "limit": 20}}
+{{"target_accounts": ["account1"], "keywords": [], "group_types": [], "limit": 20, "strategy": "{strategy}"}}
 """
 
         try:

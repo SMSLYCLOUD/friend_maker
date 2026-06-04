@@ -99,3 +99,17 @@ class ScheduledAction(BaseModel):
     is_active: bool = True
     created_at: int
     last_run_at: Optional[int] = None
+
+class FollowBack(BaseModel):
+    id: str
+    user_id: str
+    campaign_id: str
+    platform: str
+    target_username: str
+    followed_at: int = Field(default_factory=lambda: int(datetime.now().timestamp()))
+    follow_back_checked_at: Optional[int] = None
+    has_followed_back: bool = False
+    dm_sent: bool = False
+    dm_sent_at: Optional[int] = None
+    dm_message: Optional[str] = None
+    status: str = "pending"  # pending, followed_back, dm_sent, expired

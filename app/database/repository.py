@@ -473,6 +473,71 @@ class Repository:
         self.session.execute(query, {"key": key, "value": value, "updated_at": int(datetime.now().timestamp())})
         self.session.commit()
 
+    # --- Follow-Back Tracking ---
+    def create_follow_back(self, user_id: str, campaign_id: str, platform: str, target_username: str) -> str:
+        fb_id = str(uuid.uuid4())
+        query = text("""
+        INSERT INTO follow_backs (id, user_id, campaign_id, platform, target_username, followed_at, status)
+        VALUES (:id, :user_id, :campaign_id, :platform, :target_username, :followed_at, 'pending')
+        """)
+        self.session.execute(query, {
+            "id": fb_id, "user_id": user_id, "campaign_id": campaign_id,
+            "platform": platform, "target_username": target_username,
+            "followed_at": int(datetime.now().timestamp())
+        })
+        self.session.commit()
+        return fb_id
+
+    def get_pending_follow_backs(self, user_id: str, platform: str) -> list:
+        query = text("""
+        SELECT * FROM follow_backs
+        WHERE user_id = :user_id AND platform = :platform AND status = 'pending'
+        ORDER BY followed_at ASC
+        """)
+        result = self.session.execute(query, {"user_id": user_id, "platform": platform})
+        return [dict(row._asdict()) for row in result.fetchall()]
+
+    def mark_follow_back(self, follow_back_id: str):
+        query = text("""
+        UPDATE follow_backs SET has_followed_back = 1, follow_back_checked_at = :now, status = 'followed_back'
+        WHERE id = :id
+        """)
+        self.session.execute(query, {"id": follow_back_id, "now": int(datetime.now().timestamp())})
+        self.session.commit()
+
+    def mark_dm_sent(self, follow_back_id: str, message: str):
+        query = text("""
+        UPDATE follow_backs SET dm_sent = 1, dm_sent_at = :now, dm_message = :msg, status = 'dm_sent'
+        WHERE id = :id
+        """)
+        self.session.execute(query, {"id": follow_back_id, "now": int(datetime.now().timestamp()), "msg": message})
+        self.session.commit()
+
+    def expire_follow_back(self, follow_back_id: str):
+        query = text("UPDATE follow_backs SET status = 'expired' WHERE id = :id")
+        self.session.execute(query, {"id": follow_back_id})
+        self.session.commit()
+
+    def get_unsent_dm_follow_backs(self, user_id: str, platform: str, limit: int = 10) -> list:
+        query = text("""
+        SELECT * FROM follow_backs
+        WHERE user_id = :user_id AND platform = :platform
+        AND has_followed_back = 1 AND dm_sent = 0 AND status = 'followed_back'
+        ORDER BY follow_back_checked_at ASC
+        LIMIT :limit
+        """)
+        result = self.session.execute(query, {"user_id": user_id, "platform": platform, "limit": limit})
+        return [dict(row._asdict()) for row in result.fetchall()]
+
+    def count_follow_backs_today(self, user_id: str, platform: str) -> int:
+        today_start = int(datetime.now().replace(hour=0, minute=0, second=0).timestamp())
+        query = text("""
+        SELECT COUNT(*) FROM follow_backs
+        WHERE user_id = :user_id AND platform = :platform AND followed_at >= :today_start
+        """)
+        result = self.session.execute(query, {"user_id": user_id, "platform": platform, "today_start": today_start})
+        return result.fetchone()[0]
+
 
 def get_repository():
     repo = Repository()

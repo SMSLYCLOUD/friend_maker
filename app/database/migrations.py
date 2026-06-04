@@ -118,4 +118,19 @@ CREATE TABLE IF NOT EXISTS contact_registry (
     contacted_at INTEGER,
     UNIQUE(user_id, platform, platform_user_id, action_type)
 );
+
+CREATE TABLE IF NOT EXISTS follow_backs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    target_username TEXT NOT NULL,
+    followed_at INTEGER,
+    follow_back_checked_at INTEGER,
+    has_followed_back INTEGER DEFAULT 0,
+    dm_sent INTEGER DEFAULT 0,
+    dm_sent_at INTEGER,
+    dm_message TEXT,
+    status TEXT DEFAULT 'pending'
+);
 """
