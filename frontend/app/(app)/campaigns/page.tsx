@@ -99,7 +99,7 @@ export default function CampaignsPage() {
         ...form,
         targeting: {
           tags: [],
-          post_url: form.targeting_json || undefined,
+          target_account: form.targeting_json || undefined,
         },
       };
       delete payload.targeting_json;
@@ -223,14 +223,14 @@ export default function CampaignsPage() {
               {form.campaign_type === "comment_engage" && (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider">
-                    Targeting JSON
+                    Target Account
                   </label>
                   <input
                     type="text"
                     value={form.targeting_json || ""}
                     onChange={(e) => setForm({ ...form, targeting_json: e.target.value })}
-                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all text-sm font-mono"
-                    placeholder='{"post_url": "https://www.tiktok.com/@user/video/123"}'
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all text-sm"
+                    placeholder="e.g. violinia.de (the account whose posts to engage with)"
                   />
                 </div>
               )}

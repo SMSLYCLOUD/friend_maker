@@ -128,6 +128,7 @@ class AccountResponse(BaseModel):
 class TargetingSchema(BaseModel):
     tags: Optional[List[str]] = []
     keywords: Optional[List[str]] = []
+    target_account: Optional[str] = None
     post_url: Optional[str] = None
 
 class ScheduleSchema(BaseModel):
