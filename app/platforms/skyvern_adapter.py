@@ -358,23 +358,13 @@ class SkyvernAdapter(PlatformAdapter):
         results = []
         try:
             handle = user_id.lstrip("@")
-            if self.platform == "tiktok":
-                url = f"https://www.{self.platform}.com/@{handle}"
-                prompt = (
-                    f"Go to the profile page for @{handle} on TikTok. "
-                    f"Find the followers list — on TikTok this is opened by clicking the 'Following' count on the profile. "
-                    f"Once the followers list is visible, scroll down to load more, "
-                    f"then extract the usernames and display names of the first {limit} followers."
-                )
-            else:
-                url = f"https://www.{self.platform}.com/@{handle}/followers"
-                prompt = (
-                    f"You are on the followers page for @{handle} on {self.platform}. "
-                    f"Scroll down to load more followers, "
-                    f"then extract the usernames and display names of the first {limit} followers visible on the page."
-                )
+            url = f"https://www.{self.platform}.com/@{handle}"
             task = await self._run_task_with_extraction(
-                prompt=prompt,
+                prompt=(
+                    f"Go to the profile page for @{handle} on {self.platform}. "
+                    f"Find and open the followers list, then extract the usernames and display names "
+                    f"of the first {limit} followers."
+                ),
                 url=url,
                 extraction_goal=f"Extract the usernames and display names of the first {limit} followers from the followers list",
                 extraction_schema={
