@@ -394,39 +394,69 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Extract user_id from page source (needed for DM URL)
-            import re
-            user_id_match = None
+            # Check for blockers
+            page_text = await self._extract_page_text()
+            self._check_for_blockers(page_text, url)
+
+            # Method 1: Click "Message" button on profile
+            dm_opened = False
             try:
-                page_source = await self._page.content()
-                user_id_match = re.search(r'"userInfo":\{"user":\{"id":"(\d+)"', page_source)
-            except: pass
+                msg_btn = self._page.locator('button:has-text("Message"), [data-e2e="message-button"]')
+                if await msg_btn.count() > 0:
+                    await msg_btn.first.click(timeout=10000)
+                    logger.info("send_dm: Clicked Message button on profile")
+                    await self._human_delay(3, 5)
+                    dm_opened = True
+            except Exception as e:
+                logger.info(f"send_dm: Message button click failed: {e}")
 
-            if not user_id_match:
-                logger.warning(f"send_dm: Could not extract user_id for @{handle}")
-                return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
+            # Method 2: Try DM URL with user_id if button didn't work
+            if not dm_opened:
+                import re
+                user_id_match = None
+                try:
+                    page_source = await self._page.content()
+                    user_id_match = re.search(r'"userInfo":\{"user":\{"id":"(\d+)"', page_source)
+                except: pass
 
-            numeric_id = user_id_match.group(1)
-            logger.info(f"send_dm: Found user_id={numeric_id} for @{handle}")
+                if user_id_match:
+                    numeric_id = user_id_match.group(1)
+                    logger.info(f"send_dm: Found user_id={numeric_id}, trying DM URL")
+                    dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={numeric_id}"
+                    await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
+                    await self._human_delay(3, 5)
 
-            # Navigate directly to DM chat using user_id
-            dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={numeric_id}"
-            logger.info(f"send_dm: Navigating to DM: {dm_url}")
-            await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
-
-            # Wait for DM page to fully load (chat unique ID indicator)
-            try:
-                await self._page.locator('p[data-e2e="chat-uniqueid"]').wait_for(state="visible", timeout=30000)
-                logger.info("send_dm: DM page loaded")
-            except:
-                logger.warning("send_dm: DM page load indicator not found, continuing anyway")
-
-            await self._human_delay(2, 4)
+                    # Check if we landed on a valid DM page (not 404)
+                    current_url = self._page.url
+                    if "404" in current_url or "direct/inbox" in current_url:
+                        logger.warning(f"send_dm: DM URL redirected to {current_url}, trying profile approach")
+                        # Go back to profile and try clicking message button
+                        await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                        await self._human_delay(3, 5)
+                        try:
+                            # Look for the message button by various selectors
+                            for selector in [
+                                'button:has-text("Message")',
+                                '[data-e2e="message-button"]',
+                                'div[role="button"]:has-text("Message")',
+                                '//p[text()="Send message"]',
+                            ]:
+                                btn = self._page.locator(selector)
+                                if await btn.count() > 0:
+                                    await btn.first.click(timeout=10000)
+                                    logger.info(f"send_dm: Clicked message via fallback selector")
+                                    await self._human_delay(3, 5)
+                                    dm_opened = True
+                                    break
+                        except: pass
+                    else:
+                        dm_opened = True
 
             # Wait for DM input box
             dm_input = self._page.locator('div[aria-label="Send a message..."][role="textbox"]')
             try:
                 await dm_input.wait_for(state="visible", timeout=30000)
+                logger.info("send_dm: DM input found")
             except:
                 # Check for warning messages
                 page_text = await self._extract_page_text()
@@ -459,10 +489,12 @@ class CamoufoxAdapter(PlatformAdapter):
                 logger.warning(f"send_dm: DM input not found at {self._page.url}")
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
 
-            # Type message
+            # Type message using clipboard (faster, avoids char-by-char delay)
             logger.info(f"send_dm: Typing message ({len(message)} chars)")
-            for char in message:
-                await dm_input.type(char, delay=random.randint(50, 150))
+            await dm_input.click()
+            await self._page.evaluate(f"navigator.clipboard.writeText({repr(message)})")
+            await self._page.keyboard.press("Control+KeyA")
+            await self._page.keyboard.press("Control+KeyV")
             await self._human_delay(0.5, 1)
 
             # Click send button
@@ -471,7 +503,6 @@ class CamoufoxAdapter(PlatformAdapter):
                 await send_btn.wait_for(state="visible", timeout=10000)
                 await send_btn.click(timeout=10000)
             except:
-                # Fallback: use keyboard Enter (avoids stale locator after typing)
                 await self._page.keyboard.press("Enter")
 
             await self._human_delay(1, 2)
