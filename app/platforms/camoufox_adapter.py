@@ -391,14 +391,29 @@ class CamoufoxAdapter(PlatformAdapter):
             handle = user_id.lstrip("@")
             url = f"https://www.{self.platform}.com/@{handle}"
             logger.info(f"send_dm: Navigating to {url}")
-            await self._navigate(url)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await self._human_delay(3, 5)
+
+            # Close any modal overlays that might block clicks
+            try:
+                close_btns = await self._page.query_selector_all('[data-e2e="modal-close"], .TUXModal-overlay button[aria-label="Close"], button[data-testid="close"]')
+                for btn in close_btns:
+                    try:
+                        await btn.click(timeout=2000)
+                        await self._human_delay(0.5, 1)
+                    except: pass
+                # Also try pressing Escape
+                await self._page.keyboard.press("Escape")
+                await self._human_delay(1, 2)
+            except: pass
+
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
             # Try to find and click message/DM button
             msg_btn = self._page.get_by_role("button", name="Message").first
             logger.info(f"send_dm: Clicking Message button for @{handle}")
-            await msg_btn.click(timeout=5000)
+            await msg_btn.click(timeout=8000, force=True)
             await self._human_delay(2, 3)
 
             # Type message with human delays
