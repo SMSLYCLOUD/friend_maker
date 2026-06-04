@@ -717,20 +717,84 @@ class CamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Check if account is private
+            # Robust private account detection
             is_private = False
-            private_indicators = ["This account is private", "This account's posts are hidden", "Private account"]
-            for indicator in private_indicators:
-                if indicator.lower() in text.lower():
+
+            # 1. Text-based detection (multiple variations)
+            private_text_indicators = [
+                "this account is private",
+                "this account's posts are hidden",
+                "private account",
+                "account is private",
+                "posts are hidden",
+                "follow this account to see their photos and videos",
+            ]
+            text_lower = text.lower()
+            for indicator in private_text_indicators:
+                if indicator in text_lower:
                     is_private = True
+                    logger.info(f"Private account detected (text): @{handle} — '{indicator}'")
                     break
 
-            # Also check for lock icon (TikTok private indicator)
-            try:
-                lock = await self._page.query_selector('[data-e2e="private-account"], .private-account, [aria-label*="private"]')
-                if lock:
-                    is_private = True
-            except: pass
+            # 2. DOM element detection (multiple selectors)
+            if not is_private:
+                private_selectors = [
+                    '[data-e2e="private-account"]',
+                    '.private-account',
+                    '[aria-label*="private" i]',
+                    '[aria-label*="Private" i]',
+                    'div[class*="DivPrivateAccount"]',
+                    'div[class*="private"]',
+                    'p[data-e2e="private-account"]',
+                ]
+                for sel in private_selectors:
+                    try:
+                        el = await self._page.query_selector(sel)
+                        if el:
+                            is_private = True
+                            logger.info(f"Private account detected (DOM): @{handle} — selector '{sel}'")
+                            break
+                    except: pass
+
+            # 3. Check if profile grid is empty (private accounts have no visible posts)
+            if not is_private:
+                try:
+                    grid = await self._page.query_selector('[data-e2e="user-post-item"], [data-e2e="user-post-grid"]')
+                    if not grid:
+                        # No grid at all — could be private or empty account
+                        # Check for the "follow to see" message
+                        if "follow" in text_lower and ("see" in text_lower or "photos" in text_lower or "videos" in text_lower):
+                            is_private = True
+                            logger.info(f"Private account detected (no grid + follow text): @{handle}")
+                except: pass
+
+            # 4. Check for lock icon in profile area
+            if not is_private:
+                try:
+                    lock_selectors = [
+                        'svg[class*="lock"]',
+                        'svg[class*="Lock"]',
+                        '[data-e2e="lock-icon"]',
+                        'span[class*="lock"]',
+                    ]
+                    for sel in lock_selectors:
+                        el = await self._page.query_selector(sel)
+                        if el:
+                            is_private = True
+                            logger.info(f"Private account detected (lock icon): @{handle}")
+                            break
+                except: pass
+
+            # If private, skip LLM call — return minimal data
+            if is_private:
+                return {
+                    "username": handle,
+                    "bio": "",
+                    "display_name": "",
+                    "follower_count": "",
+                    "recent_posts": [],
+                    "is_private": True,
+                }
 
             llm_response = self._llm_decide(
                 text,
@@ -747,7 +811,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 "display_name": data.get("display_name", ""),
                 "follower_count": data.get("follower_count", ""),
                 "recent_posts": data.get("recent_posts", []),
-                "is_private": is_private,
+                "is_private": False,
             }
         except BlockerDetected:
             raise
