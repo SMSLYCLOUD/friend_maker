@@ -67,6 +67,57 @@ class ProfileClassifier:
     def __init__(self, manager: OpenRouterManager):
         self.manager = manager
 
+    async def check_clone_accounts(self, target_name: str, search_results: List[Dict[str, Any]],
+                                    screenshot_b64: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Check if a target has too many clone/fake accounts.
+        - If > 3 similar accounts found → likely fake/clones, skip
+        - If <= 3 → send screenshot to LLM for verification
+        Returns: {"is_safe": bool, "clone_count": int, "reason": str}
+        """
+        clone_count = len(search_results)
+
+        # If many similar accounts exist → likely fake/clone network
+        if clone_count > 3:
+            return {
+                "is_safe": False,
+                "clone_count": clone_count,
+                "reason": f"Found {clone_count} accounts similar to '{target_name}' — likely fake/clone accounts"
+            }
+
+        # If few similar accounts → verify with LLM screenshot
+        if screenshot_b64:
+            prompt = f"""Analyze this TikTok search result for "{target_name}".
+
+Search Results:
+{json.dumps(search_results[:5], indent=2)}
+
+TASK: Determine if these accounts are legitimate or fake/clone accounts.
+- Are there multiple accounts with very similar names?
+- Do they look like impersonation or fan accounts?
+- Is the original "{target_name}" account the real one?
+
+Return JSON only:
+{{"is_safe": true/false, "reason": "explanation", "original_account": "most likely real username"}}"""
+
+            try:
+                response = await self.manager.generate(prompt, image_base64=screenshot_b64)
+                result = self._parse_json(response)
+                return {
+                    "is_safe": result.get("is_safe", True),
+                    "clone_count": clone_count,
+                    "reason": result.get("reason", "LLM verification passed")
+                }
+            except Exception as e:
+                logger.error(f"Clone LLM check failed: {e}")
+
+        # Default: safe if few clones
+        return {
+            "is_safe": True,
+            "clone_count": clone_count,
+            "reason": f"Only {clone_count} similar accounts found — likely safe"
+        }
+
     def _extract_filter_criteria(self, instructions: str) -> str:
         if not instructions:
             return ""

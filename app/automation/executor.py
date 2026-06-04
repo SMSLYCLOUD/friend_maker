@@ -280,6 +280,31 @@ class CampaignExecutor:
 
                         self.logger.info(f"Found {len(post_urls)} unique posts on @{source}")
 
+                        # SAFETY CHECK: Search for clone/fake accounts of the target
+                        if self.classifier:
+                            try:
+                                self.logger.info(f"Running clone safety check for '{source}'...")
+                                clone_results = await self.adapter.search_for_clones(source, limit=10)
+
+                                # Take screenshot of search results for LLM verification
+                                search_screenshot = None
+                                try:
+                                    ss_bytes = await self.adapter._page.screenshot(full_page=False)
+                                    search_screenshot = base64.b64encode(ss_bytes).decode("utf-8")
+                                except: pass
+
+                                clone_check = await self.classifier.check_clone_accounts(
+                                    source, clone_results, screenshot_b64=search_screenshot
+                                )
+                                self.logger.info(f"Clone check for @{source}: safe={clone_check['is_safe']}, clones={clone_check['clone_count']}, reason={clone_check['reason']}")
+
+                                if not clone_check["is_safe"]:
+                                    self.logger.warning(f"SKIPPING @{source}: {clone_check['reason']}")
+                                    # Skip this entire source
+                                    continue
+                            except Exception as e:
+                                self.logger.warning(f"Clone safety check failed: {e} — proceeding anyway")
+
                         processed_commenters = set()
                         for post_url in post_urls:
                             if not self.running or actions_today >= limit:

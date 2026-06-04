@@ -1107,6 +1107,91 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"Check live failed: {e}")
             return {"username": handle, "is_live": False, "url": ""}
 
+    async def search_for_clones(self, target_name: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search TikTok for accounts similar to target_name. Returns list of {username, display_name, bio, followers}."""
+        try:
+            await self._ensure_browser(self._session_data)
+            # Clean the name for search (remove dots, underscores, etc.)
+            clean_name = target_name.replace(".", " ").replace("_", " ").replace("-", " ").strip()
+            search_url = f"https://www.{self.platform}.com/search/user?q={clean_name}&lang=en"
+            logger.info(f"search_for_clones: Searching for '{clean_name}'")
+            await self._page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
+
+            # Scroll to load more results
+            for _ in range(3):
+                await self._page.mouse.wheel(0, 1000)
+                await self._human_delay(1, 2)
+
+            # Extract user cards from search results
+            results = []
+            try:
+                # TikTok search user cards
+                cards = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="user-card"], div[class*="UserCard"]')
+                if not cards:
+                    # Fallback: look for any user links
+                    cards = await self._page.query_selector_all('a[href*="/@"]')
+
+                seen_usernames = set()
+                for card in cards[:limit * 2]:
+                    try:
+                        # Get username
+                        link = await card.query_selector('a[href*="/@"]') if await card.evaluate("el => el.tagName") != "A" else card
+                        if not link:
+                            continue
+                        href = await link.get_attribute("href")
+                        if not href or "/@" not in href:
+                            continue
+                        username = href.split("/@")[1].split("?")[0].split("/")[0]
+                        if username in seen_usernames or not username:
+                            continue
+                        seen_usernames.add(username)
+
+                        # Get display name and bio
+                        display_name = ""
+                        bio = ""
+                        try:
+                            name_el = await card.query_selector('p[class*="nickname"], span[class*="nickname"], h3, h4')
+                            if name_el:
+                                display_name = await name_el.inner_text()
+                        except: pass
+                        try:
+                            bio_el = await card.query_selector('p[class*="desc"], span[class*="bio"], p[class*="account"]')
+                            if bio_el:
+                                bio = await bio_el.inner_text()
+                        except: pass
+
+                        results.append({
+                            "username": username,
+                            "display_name": display_name,
+                            "bio": bio,
+                        })
+                    except: pass
+
+            except Exception as e:
+                logger.warning(f"search_for_clones: Error extracting cards: {e}")
+
+            # If HTML extraction failed, use LLM
+            if not results:
+                try:
+                    text = await self._extract_page_text()
+                    llm_response = self._llm_decide(
+                        text,
+                        f"Extract the first {limit} user profiles from this search result. Return JSON: {{\"users\": [{{\"username\": \"...\", \"display_name\": \"...\", \"bio\": \"...\"}}]}}"
+                    )
+                    import json
+                    data = json.loads(llm_response)
+                    results = data.get("users", [])[:limit]
+                except: pass
+
+            logger.info(f"search_for_clones: Found {len(results)} accounts for '{clean_name}'")
+            return results
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            logger.error(f"search_for_clones failed: {e}")
+            return []
+
     async def close(self):
         """Close the browser."""
         try:
