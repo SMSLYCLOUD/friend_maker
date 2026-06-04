@@ -616,6 +616,179 @@ class CamoufoxAdapter(PlatformAdapter):
             pass
         return None
 
+    async def reply_to_dm(self, user_id: str, message: str) -> ActionResult:
+        """Reply to an existing DM conversation."""
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = user_id.lstrip("@")
+            await self._navigate(f"https://www.{self.platform}.com/direct/t/{handle}")
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text)
+
+            # Find the message input box
+            msg_input = self._page.locator("textarea, div[contenteditable='true'], div[data-e2e='message-input']").first
+            await msg_input.click(timeout=5000)
+            await self._human_delay(0.5, 1)
+
+            # Type with human delays
+            for char in message:
+                await msg_input.type(char, delay=random.randint(50, 150))
+            await self._human_delay(0.5, 1)
+
+            # Send the message
+            send_btn = self._page.get_by_role("button", name="Send").first
+            await send_btn.click(timeout=5000)
+            await self._human_delay(1, 2)
+            return ActionResult(success=True, action_type="reply_dm")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="reply_dm", error=str(e))
+
+    async def like_post(self, post_url: str) -> ActionResult:
+        """Like a post."""
+        try:
+            await self._ensure_browser(self._session_data)
+            await self._navigate(post_url)
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text, post_url)
+
+            # Find and click the like/heart button
+            like_btn = self._page.locator(
+                "button[data-e2e='like-icon'], "
+                "button[data-e2e='like-button'], "
+                "span[data-e2e='like-icon'], "
+                "svg[data-e2e='like-icon'], "
+                "button[aria-label*='Like'], "
+                "button[aria-label*='like']"
+            ).first
+            await like_btn.click(timeout=5000)
+            await self._human_delay(1, 2)
+            return ActionResult(success=True, action_type="like")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="like", error=str(e))
+
+    async def unlike_post(self, post_url: str) -> ActionResult:
+        """Unlike a post."""
+        try:
+            await self._ensure_browser(self._session_data)
+            await self._navigate(post_url)
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text, post_url)
+
+            unlike_btn = self._page.locator(
+                "button[data-e2e='like-icon'], "
+                "button[data-e2e='like-button'], "
+                "span[data-e2e='like-icon'], "
+                "button[aria-label*='Unlike'], "
+                "button[aria-label*='unlike']"
+            ).first
+            await unlike_btn.click(timeout=5000)
+            await self._human_delay(1, 2)
+            return ActionResult(success=True, action_type="unlike")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="unlike", error=str(e))
+
+    async def share_post(self, post_url: str) -> ActionResult:
+        """Share/repost a post."""
+        try:
+            await self._ensure_browser(self._session_data)
+            await self._navigate(post_url)
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text, post_url)
+
+            # Click share button
+            share_btn = self._page.locator(
+                "button[data-e2e='share-icon'], "
+                "button[data-e2e='share-button'], "
+                "span[data-e2e='share-icon'], "
+                "button[aria-label*='Share'], "
+                "button[aria-label*='share']"
+            ).first
+            await share_btn.click(timeout=5000)
+            await self._human_delay(1, 2)
+
+            # Click repost option if available
+            try:
+                repost_btn = self._page.get_by_role("button", name="Repost").first
+                await repost_btn.click(timeout=3000)
+                await self._human_delay(1, 2)
+            except Exception:
+                # Repost might not be available, that's ok
+                pass
+
+            return ActionResult(success=True, action_type="share")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="share", error=str(e))
+
+    async def view_stories(self, user_id: str) -> ActionResult:
+        """View a user's stories."""
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = user_id.lstrip("@")
+            url = f"https://www.{self.platform}.com/@{handle}"
+            await self._navigate(url)
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text, url)
+
+            # Look for story circle/avatar
+            story_btn = self._page.locator(
+                "div[data-e2e='story-avatar'], "
+                "div[data-e2e='user-avatar'][data-e2e='has-story'], "
+                "a[href*='/story']"
+            ).first
+            await story_btn.click(timeout=5000)
+            await self._human_delay(3, 5)
+
+            # Wait for story to play, then close
+            await self._human_delay(5, 7)
+            try:
+                close_btn = self._page.locator(
+                    "button[data-e2e='close-button'], "
+                    "button[aria-label='Close']"
+                ).first
+                await close_btn.click(timeout=3000)
+            except Exception:
+                pass
+
+            return ActionResult(success=True, action_type="view_story")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="view_story", error=str(e))
+
+    async def check_live(self, user_id: str) -> Dict[str, Any]:
+        """Check if a user is currently live."""
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = user_id.lstrip("@")
+            url = f"https://www.{self.platform}.com/@{handle}"
+            await self._navigate(url)
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text, url)
+
+            is_live = "live" in text.lower() and (
+                "watch" in text.lower() or "streaming" in text.lower() or "LIVE" in text
+            )
+            return {"username": handle, "is_live": is_live, "url": url}
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            logger.error(f"Check live failed: {e}")
+            return {"username": handle, "is_live": False, "url": ""}
+
     async def close(self):
         """Close the browser."""
         try:
