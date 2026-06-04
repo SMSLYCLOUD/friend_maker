@@ -110,6 +110,7 @@ class PlatformType(str, Enum):
 class CampaignType(str, Enum):
     growth = "growth"
     outreach = "outreach"
+    comment_engage = "comment_engage"
 
 class AccountCreate(BaseModel):
     platform: PlatformType
@@ -125,8 +126,9 @@ class AccountResponse(BaseModel):
     has_session: bool = False
 
 class TargetingSchema(BaseModel):
-    tags: List[str]
+    tags: Optional[List[str]] = []
     keywords: Optional[List[str]] = []
+    post_url: Optional[str] = None
 
 class ScheduleSchema(BaseModel):
     days: List[str]

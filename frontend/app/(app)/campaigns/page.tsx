@@ -95,7 +95,15 @@ export default function CampaignsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const newC = await createCampaign(form);
+      const payload = {
+        ...form,
+        targeting: {
+          tags: [],
+          post_url: form.targeting_json || undefined,
+        },
+      };
+      delete payload.targeting_json;
+      const newC = await createCampaign(payload);
       setCampaigns([newC, ...campaigns] as any);
       setForm({ ...form, name: "" });
     } catch (err) {
