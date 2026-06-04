@@ -217,7 +217,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 f"{provider.config.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {provider.config.api_key}"},
                 json={
-                    "model": provider.config.model_name,
+                    "model": provider.config.model,
                     "messages": [{"role": "user", "content": full_prompt}],
                     "temperature": 0.3,
                 },
@@ -288,13 +288,26 @@ class CamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Click followers button
+            # Click followers button — try multiple selectors for TikTok
             try:
-                followers_link = self._page.locator(f'a[href*="/{handle}/followers"]').first
-                await followers_link.click(timeout=5000)
-                await self._human_delay(2, 4)
+                selectors = [
+                    f'a[href*="/{handle}/followers"]',
+                    'a[data-e2e="followers-count"]',
+                    'strong[data-e2e="followers-count"]',
+                    'a:has-text("followers")',
+                    'div[data-e2e="followers"]',
+                ]
+                for sel in selectors:
+                    try:
+                        el = self._page.locator(sel).first
+                        if await el.is_visible(timeout=2000):
+                            await el.click(timeout=5000)
+                            await self._human_delay(2, 4)
+                            break
+                    except Exception:
+                        continue
             except Exception:
-                logger.warning("Could not find followers link, trying generic approach")
+                logger.warning("Could not find followers link")
 
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
