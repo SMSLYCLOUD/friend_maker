@@ -52,6 +52,7 @@ class CamoufoxAdapter(PlatformAdapter):
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
         self._session_data: Optional[str] = None
+        self._camoufox = None
 
     async def _ensure_browser(self, session_data: Optional[str] = None):
         """Launch Camoufox browser if not already running."""
@@ -597,7 +598,35 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
             url = f"https://www.{self.platform}.com/@{handle}"
-            await self._navigate(url)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await self._human_delay(3, 5)
+
+            # Scroll to load posts (TikTok lazy-loads)
+            for _ in range(5):
+                await self._page.mouse.wheel(0, 1200)
+                await self._human_delay(1.5, 2.5)
+
+            # Try HTML extraction first — look for post links
+            posts = []
+            try:
+                links = await self._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
+                seen_urls = set()
+                for link in links[:limit * 3]:
+                    href = await link.get_attribute("href")
+                    if href and href not in seen_urls:
+                        if not href.startswith("http"):
+                            href = f"https://www.{self.platform}.com{href}"
+                        seen_urls.add(href)
+                        posts.append({"url": href, "caption": ""})
+                        if len(posts) >= limit:
+                            break
+                if posts:
+                    logger.info(f"Extracted {len(posts)} posts from HTML for @{handle}")
+                    return posts
+            except Exception as e:
+                logger.warning(f"HTML post extraction failed: {e}")
+
+            # Fallback to LLM
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
