@@ -429,6 +429,14 @@ async def stop_campaign(
     await scheduler.stop_campaign(campaign_id)
     return {"status": "stopped", "campaign_id": campaign_id}
 
+@app.post("/api/campaigns/pause-all")
+async def pause_all_campaigns(
+    user: dict = Depends(get_current_user)
+):
+    """Pause all running campaigns to preserve API credits."""
+    paused = await scheduler.pause_all_campaigns()
+    return {"status": "paused", "count": paused}
+
 @app.post("/api/campaigns/{campaign_id}/resume")
 async def resume_campaign(
     campaign_id: str,

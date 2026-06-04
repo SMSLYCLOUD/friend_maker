@@ -148,6 +148,12 @@ class Repository:
         result = self.session.execute(query, {"user_id": user_id})
         return [Campaign(**self._row_to_dict(row)) for row in result.fetchall()]
 
+    def get_all_active_campaigns(self) -> List[Campaign]:
+        """Get all campaigns that are active or blocked (can be paused)."""
+        query = text("SELECT * FROM campaigns WHERE status IN ('active', 'blocked')")
+        result = self.session.execute(query)
+        return [Campaign(**self._row_to_dict(row)) for row in result.fetchall()]
+
     # --- Target Operations ---
     def add_target(self, target: Target):
         query = text("""

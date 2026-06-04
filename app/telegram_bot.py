@@ -38,6 +38,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("stopcampaign", self.cmd_stop_campaign))
         self.app.add_handler(CommandHandler("resume", self.cmd_resume))
         self.app.add_handler(CommandHandler("skip", self.cmd_skip))
+        self.app.add_handler(CommandHandler("pauseall", self.cmd_pauseall))
         self.app.add_handler(CallbackQueryHandler(self._handle_callback))
 
         await self.app.initialize()
@@ -276,6 +277,20 @@ class TelegramBot:
         try:
             await self._api("POST", f"/api/campaigns/{campaign_id}/skip-blocker")
             await self._reply(update, f"⏭ Campaign `{campaign_id[:8]}...` — blocker skipped")
+        except Exception as e:
+            await self._reply(update, f"❌ Error: {e}")
+
+    async def cmd_pauseall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Pause all running campaigns to preserve API credits."""
+        if not self._is_allowed(update.effective_user.id):
+            return
+        try:
+            result = await self._api("POST", "/api/campaigns/pause-all")
+            count = result.get("count", 0)
+            if count > 0:
+                await self._reply(update, f"⏸ Paused {count} campaign(s) — API credits preserved")
+            else:
+                await self._reply(update, "ℹ️ No active campaigns to pause")
         except Exception as e:
             await self._reply(update, f"❌ Error: {e}")
 

@@ -60,6 +60,33 @@ class Scheduler:
             del self.tasks[campaign_id]
             self.logger.info(f"Stopped campaign {campaign_id}")
 
+    async def pause_all_campaigns(self) -> int:
+        """Pause all running campaigns. Returns count of paused campaigns."""
+        paused = 0
+        repo = Repository()
+        try:
+            # Get all active or blocked campaigns
+            campaigns = repo.get_all_active_campaigns()
+            for campaign in campaigns:
+                # Signal executor to pause if running
+                executor = self.executors.get(campaign.id)
+                if executor:
+                    executor.pause()
+                # Cancel the task if running
+                if campaign.id in self.tasks:
+                    self.tasks[campaign.id].cancel()
+                    del self.tasks[campaign.id]
+                # Update status in DB
+                if campaign.status in ("active", "blocked"):
+                    campaign.status = "paused"
+                    repo.update_campaign(campaign)
+                    paused += 1
+                    self.logger.info(f"Paused campaign {campaign.id} ({campaign.name})")
+        finally:
+            repo.close()
+        self.logger.info(f"Paused {paused} campaign(s)")
+        return paused
+
     async def resume_campaign(self, campaign_id: str):
         """Resume a blocked campaign by signaling its executor."""
         executor = self.executors.get(campaign_id)

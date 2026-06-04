@@ -129,6 +129,12 @@ class CampaignExecutor:
         self._blocker_info = None
         self._blocker_event.set()
 
+    def pause(self):
+        """Pause execution — stops the next iteration."""
+        self.running = False
+        self._blocker_event.set()  # unblock so the loop can exit cleanly
+        self.logger.info("Executor paused")
+
     async def skip_blocker(self):
         """Skip the current blocked target and resume."""
         self._blocker_info = None
