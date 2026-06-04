@@ -226,7 +226,7 @@ class CamoufoxAdapter(PlatformAdapter):
                     "messages": [{"role": "user", "content": full_prompt}],
                     "temperature": 0.3,
                 },
-                timeout=90,
+                timeout=120,
             )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
