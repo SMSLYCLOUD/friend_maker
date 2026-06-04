@@ -6,6 +6,7 @@ from typing import Dict, Optional, List
 from app.database.repository import Repository
 from app.automation.executor import CampaignExecutor
 from app.platforms.skyvern_adapter import SkyvernAdapter
+from app.platforms import get_platform_adapter
 from app.ai.openrouter_manager import OpenRouterManager
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
