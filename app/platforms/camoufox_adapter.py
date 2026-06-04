@@ -614,17 +614,43 @@ class CamoufoxAdapter(PlatformAdapter):
                     break
                 prev_count = curr_count
 
-            # Extract commenters from HTML
+            # Extract video owner from URL to exclude them
+            video_owner = ""
             try:
-                links = await self._page.query_selector_all('a[href*="/@"]')
-                for link in links[:limit * 3]:
+                video_owner = post_url.split("/@")[-1].split("/")[0].split("?")[0].lower()
+            except: pass
+
+            # Extract commenters from HTML — prefer comment section links
+            seen = set()
+            try:
+                # Try comment-section-specific selectors first
+                comment_links = await self._page.query_selector_all(
+                    '[class*="DivComment"] a[href*="/@"], '
+                    '[data-e2e="comment-username"] a[href*="/@"], '
+                    '[class*="Comment"] a[href*="/@"], '
+                    '[class*="comment"] a[href*="/@"]'
+                )
+                # Fallback to all links if comment-specific ones not found
+                if not comment_links:
+                    comment_links = await self._page.query_selector_all('a[href*="/@"]')
+
+                for link in comment_links[:limit * 5]:
                     href = await link.get_attribute("href")
                     if href and "/@" in href:
                         username = href.split("/@")[-1].split("/")[0].split("?")[0]
-                        if username and len(username) > 1:
-                            results.append(UserProfile(platform_id=username, username=username))
-                            if len(results) >= limit:
-                                break
+                        # Skip: too short, numeric-only, video owner, already seen
+                        if not username or len(username) < 2:
+                            continue
+                        if username.isdigit():
+                            continue
+                        if username.lower() == video_owner:
+                            continue
+                        if username in seen:
+                            continue
+                        seen.add(username)
+                        results.append(UserProfile(platform_id=username, username=username))
+                        if len(results) >= limit:
+                            break
                 if results:
                     logger.info(f"Extracted {len(results)} commenters from HTML")
                     return results
