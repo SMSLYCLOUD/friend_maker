@@ -12,6 +12,7 @@ from app.ai.generator import MessageGenerator
 from app.ai.planner import CampaignPlanner
 from app.automation.anti_detection import AntiDetection
 from app.memory.conversation_memory import get_conversation_memory, get_relationship_tracker, get_scheduled_action_manager
+from app.exceptions import BlockerDetected
 
 class CampaignExecutor:
     def __init__(self,
@@ -34,6 +35,10 @@ class CampaignExecutor:
         self.running = False
         self.bot_instructions = ""
         self._busy = False
+        # Blocker pause/resume
+        self._blocker_event = asyncio.Event()
+        self._blocker_event.set()  # starts "not blocked"
+        self._blocker_info: Optional[dict] = None
 
     def load_bot_instructions(self):
         self.bot_instructions = self.repo.get_global_setting("BOT_INSTRUCTIONS", "")
@@ -95,6 +100,43 @@ class CampaignExecutor:
         if images:
             self.logger.info(f"Loaded {len(images)} reference images")
         return images
+
+    async def _wait_for_resume(self):
+        """Block until the resume event is set (or stop signal)."""
+        self.logger.info("Paused — waiting for resume signal...")
+        while self.running:
+            try:
+                await asyncio.wait_for(self._blocker_event.wait(), timeout=5.0)
+                self.logger.info("Resume signal received — continuing.")
+                return
+            except asyncio.TimeoutError:
+                continue
+        self.logger.info("Stop signal received while paused.")
+
+    async def _alert_blocker(self, campaign: Campaign, blocker: BlockerDetected):
+        """Send Telegram alert about the blocker."""
+        try:
+            from app.telegram_bot import get_bot_instance
+            bot = get_bot_instance()
+            if bot:
+                await bot.send_blocker_alert(campaign, blocker)
+                self.logger.info("Blocker alert sent to Telegram.")
+        except Exception as e:
+            self.logger.error(f"Failed to send blocker alert: {e}")
+
+    async def resume(self):
+        """Resume execution after a blocker is resolved."""
+        self._blocker_info = None
+        self._blocker_event.set()
+
+    async def skip_blocker(self):
+        """Skip the current blocked target and resume."""
+        self._blocker_info = None
+        self._blocker_event.set()
+
+    def get_blocker_info(self) -> Optional[dict]:
+        """Return current blocker info if blocked."""
+        return self._blocker_info
 
     async def run_campaign(self, campaign_id: str, user_id: str):
         self.running = True
@@ -312,6 +354,31 @@ class CampaignExecutor:
             except asyncio.CancelledError:
                 self.logger.info("Task cancelled.")
                 raise
+            except BlockerDetected as e:
+                self.logger.warning(f"Blocker detected: {e}")
+                self._busy = False
+                self._blocker_info = {
+                    "type": e.blocker_type,
+                    "message": e.message,
+                    "url": e.url,
+                    "campaign_id": campaign.id,
+                    "campaign_name": campaign.name,
+                    "platform": self.adapter.platform_name,
+                    "source": source,
+                }
+                self._blocker_event.clear()
+                # Update campaign status
+                campaign.status = "blocked"
+                self.repo.update_campaign(campaign)
+                # Alert user via Telegram
+                await self._alert_blocker(campaign, e)
+                # Wait for resume
+                await self._wait_for_resume()
+                if not self.running:
+                    break
+                # Re-set busy and continue
+                self._busy = True
+                continue
             except Exception as e:
                 self.logger.error(f"Error processing source {source}: {e}")
                 await self.anti_detect.trigger_cooldown(lambda: self.running)
@@ -473,6 +540,25 @@ class CampaignExecutor:
                     new_users = []
                 
                 users.extend(new_users)
+            except BlockerDetected as e:
+                self.logger.warning(f"Blocker detected during discovery: {e}")
+                self._blocker_info = {
+                    "type": e.blocker_type,
+                    "message": e.message,
+                    "url": e.url,
+                    "campaign_id": campaign.id,
+                    "campaign_name": campaign.name,
+                    "platform": self.adapter.platform_name,
+                    "source": source,
+                }
+                self._blocker_event.clear()
+                campaign.status = "blocked"
+                self.repo.update_campaign(campaign)
+                await self._alert_blocker(campaign, e)
+                await self._wait_for_resume()
+                if not self.running:
+                    break
+                continue
             except Exception as e:
                 self.logger.error(f"Failed to comb {source}: {e}")
             

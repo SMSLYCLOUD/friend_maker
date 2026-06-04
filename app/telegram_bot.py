@@ -1,16 +1,18 @@
 import asyncio
 import logging
-from typing import Set
+from typing import Set, Optional
 
 import httpx
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from app.config import settings
 
 logger = logging.getLogger("TelegramBot")
 
 INTERNAL_API = "http://localhost:8000"
+VNC_BASE_URL = "http://153.75.247.117:6080"
+
 
 class TelegramBot:
     def __init__(self, token: str, allowed_user_ids: Set[int] = None):
@@ -34,6 +36,9 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("campaign", self.cmd_campaign))
         self.app.add_handler(CommandHandler("startcampaign", self.cmd_start_campaign))
         self.app.add_handler(CommandHandler("stopcampaign", self.cmd_stop_campaign))
+        self.app.add_handler(CommandHandler("resume", self.cmd_resume))
+        self.app.add_handler(CommandHandler("skip", self.cmd_skip))
+        self.app.add_handler(CallbackQueryHandler(self._handle_callback))
 
         await self.app.initialize()
         await self.app.start()
@@ -75,6 +80,98 @@ class TelegramBot:
         kw = {"parse_mode": "Markdown"} if markdown else {}
         await update.message.reply_text(text, **kw)
 
+    # ── Proactive messaging ──────────────────────────────────────────
+
+    async def send_message(self, text: str, markdown: bool = True, reply_markup=None):
+        """Send a proactive message to all allowed users."""
+        if not self.app or not self.allowed_user_ids:
+            return
+        kw = {"parse_mode": "Markdown"} if markdown else {}
+        if reply_markup:
+            kw["reply_markup"] = reply_markup
+        for user_id in self.allowed_user_ids:
+            try:
+                await self.app.bot.send_message(user_id, text, **kw)
+            except Exception as e:
+                logger.error(f"Failed to send message to {user_id}: {e}")
+
+    async def send_blocker_alert(self, campaign, blocker):
+        """Send a blocker alert with inline keyboard buttons."""
+        vnc_url = f"{VNC_BASE_URL}"
+        campaign_id = campaign.id
+        short_id = campaign_id[:12]
+
+        text = (
+            f"🚨 *Campaign Blocked*\n\n"
+            f"*Campaign:* {campaign.name} (`{short_id}...`)\n"
+            f"*Platform:* {getattr(campaign, 'platform', 'N/A')}\n"
+            f"*Blocker:* {blocker.blocker_type}\n"
+            f"*Detail:* {blocker.message}\n"
+        )
+        if blocker.url:
+            text += f"*URL:* {blocker.url}\n"
+        text += (
+            f"\n👉 *Fix via VNC:* {vnc_url}\n\n"
+            f"Once you've resolved the issue, click *Resume* or type `/resume {short_id}`"
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Resume", callback_data=f"resume:{campaign_id}"),
+                InlineKeyboardButton("⏭ Skip Target", callback_data=f"skip:{campaign_id}"),
+            ],
+            [
+                InlineKeyboardButton("🛑 Stop Campaign", callback_data=f"stop:{campaign_id}"),
+            ],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await self.send_message(text, reply_markup=reply_markup)
+
+    # ── Callback query handler ───────────────────────────────────────
+
+    async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        if not self._is_allowed(query.from_user.id):
+            await query.answer("Not authorized.", show_alert=True)
+            return
+
+        data = query.data or ""
+        if ":" not in data:
+            await query.answer("Invalid action.")
+            return
+
+        action, campaign_id = data.split(":", 1)
+
+        try:
+            if action == "resume":
+                await self._api("POST", f"/api/campaigns/{campaign_id}/resume")
+                await query.edit_message_text(
+                    f"✅ Campaign `{campaign_id[:12]}...` resumed.\n"
+                    f"Waiting for next action..."
+                )
+            elif action == "skip":
+                await self._api("POST", f"/api/campaigns/{campaign_id}/skip-blocker")
+                await query.edit_message_text(
+                    f"⏭ Campaign `{campaign_id[:12]}...` — blocker skipped.\n"
+                    f"Continuing with next target..."
+                )
+            elif action == "stop":
+                await self._api("POST", f"/api/campaigns/{campaign_id}/stop")
+                await query.edit_message_text(
+                    f"🛑 Campaign `{campaign_id[:12]}...` stopped."
+                )
+            else:
+                await query.answer("Unknown action.")
+                return
+
+            await query.answer()
+        except Exception as e:
+            logger.error(f"Callback error: {e}")
+            await query.answer(f"Error: {e}", show_alert=True)
+
+    # ── Commands ─────────────────────────────────────────────────────
+
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update.effective_user.id):
             return
@@ -84,6 +181,8 @@ class TelegramBot:
             "*/analytics* — Action statistics\n"
             "*/startcampaign* `<id>` — Start a campaign\n"
             "*/stopcampaign* `<id>` — Stop a campaign\n"
+            "*/resume* `<id>` — Resume a blocked campaign\n"
+            "*/skip* `<id>` — Skip blocker and continue\n"
             "*/help* — This message"
         )
 
@@ -100,7 +199,8 @@ class TelegramBot:
             )
             lines = ["📊 *Campaigns*"]
             for c in campaigns:
-                lines.append(f"• `{c['id'][:8]}...` {c['name']}: *{c['status']}*")
+                status_emoji = "🚧" if c["status"] == "blocked" else "🟢" if c["status"] == "active" else "⏸"
+                lines.append(f"{status_emoji} `{c['id'][:8]}...` {c['name']}: *{c['status']}*")
             if not campaigns:
                 lines.append("  _(none)_")
             lines.append("")
@@ -135,7 +235,7 @@ class TelegramBot:
             return
         campaign_id = context.args[0]
         try:
-            result = await self._api("POST", f"/api/campaigns/{campaign_id}/start")
+            await self._api("POST", f"/api/campaigns/{campaign_id}/start")
             await self._reply(update, f"✅ Campaign `{campaign_id[:8]}...` started")
         except Exception as e:
             await self._reply(update, f"❌ Error: {e}")
@@ -148,13 +248,45 @@ class TelegramBot:
             return
         campaign_id = context.args[0]
         try:
-            result = await self._api("POST", f"/api/campaigns/{campaign_id}/stop")
+            await self._api("POST", f"/api/campaigns/{campaign_id}/stop")
             await self._reply(update, f"✅ Campaign `{campaign_id[:8]}...` stopped")
+        except Exception as e:
+            await self._reply(update, f"❌ Error: {e}")
+
+    async def cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self._is_allowed(update.effective_user.id):
+            return
+        if not context.args:
+            await self._reply(update, "Usage: `/resume <campaign_id>`")
+            return
+        campaign_id = context.args[0]
+        try:
+            await self._api("POST", f"/api/campaigns/{campaign_id}/resume")
+            await self._reply(update, f"✅ Campaign `{campaign_id[:8]}...` resumed")
+        except Exception as e:
+            await self._reply(update, f"❌ Error: {e}")
+
+    async def cmd_skip(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self._is_allowed(update.effective_user.id):
+            return
+        if not context.args:
+            await self._reply(update, "Usage: `/skip <campaign_id>`")
+            return
+        campaign_id = context.args[0]
+        try:
+            await self._api("POST", f"/api/campaigns/{campaign_id}/skip-blocker")
+            await self._reply(update, f"⏭ Campaign `{campaign_id[:8]}...` — blocker skipped")
         except Exception as e:
             await self._reply(update, f"❌ Error: {e}")
 
 
 _bot_instance: TelegramBot | None = None
+
+
+def get_bot_instance() -> Optional[TelegramBot]:
+    """Return the running bot instance (for proactive messaging)."""
+    return _bot_instance
+
 
 async def start_bot():
     global _bot_instance
@@ -164,6 +296,7 @@ async def start_bot():
         allowed = {int(x.strip()) for x in raw.split(",") if x.strip()}
     _bot_instance = TelegramBot(settings.TELEGRAM_BOT_TOKEN, allowed)
     await _bot_instance.start()
+
 
 async def stop_bot():
     global _bot_instance

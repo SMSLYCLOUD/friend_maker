@@ -429,6 +429,40 @@ async def stop_campaign(
     await scheduler.stop_campaign(campaign_id)
     return {"status": "stopped", "campaign_id": campaign_id}
 
+@app.post("/api/campaigns/{campaign_id}/resume")
+async def resume_campaign(
+    campaign_id: str,
+    repo: Repository = Depends(get_repository),
+    user: dict = Depends(get_current_user)
+):
+    """Resume a blocked campaign after the user has resolved the blocker."""
+    campaign = repo.get_campaign(campaign_id, user["id"])
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.status != "blocked":
+        raise HTTPException(status_code=400, detail=f"Campaign is not blocked (status: {campaign.status})")
+    campaign.status = "active"
+    repo.update_campaign(campaign)
+    await scheduler.resume_campaign(campaign_id)
+    return {"status": "resumed", "campaign_id": campaign_id}
+
+@app.post("/api/campaigns/{campaign_id}/skip-blocker")
+async def skip_blocker(
+    campaign_id: str,
+    repo: Repository = Depends(get_repository),
+    user: dict = Depends(get_current_user)
+):
+    """Skip the current blocker target and continue the campaign."""
+    campaign = repo.get_campaign(campaign_id, user["id"])
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.status != "blocked":
+        raise HTTPException(status_code=400, detail=f"Campaign is not blocked (status: {campaign.status})")
+    campaign.status = "active"
+    repo.update_campaign(campaign)
+    await scheduler.skip_blocker(campaign_id)
+    return {"status": "skipped", "campaign_id": campaign_id}
+
 @app.put("/api/campaigns/{campaign_id}", response_model=CampaignResponse)
 def update_campaign(
     campaign_id: str,

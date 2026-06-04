@@ -18,6 +18,7 @@ class Scheduler:
         self.logger = logging.getLogger("Scheduler")
         self.running = False
         self.tasks: Dict[str, asyncio.Task] = {}
+        self.executors: Dict[str, CampaignExecutor] = {}
 
         self.playwright = None
         self.browser = None
@@ -58,6 +59,24 @@ class Scheduler:
             self.tasks[campaign_id].cancel()
             del self.tasks[campaign_id]
             self.logger.info(f"Stopped campaign {campaign_id}")
+
+    async def resume_campaign(self, campaign_id: str):
+        """Resume a blocked campaign by signaling its executor."""
+        executor = self.executors.get(campaign_id)
+        if executor:
+            await executor.resume()
+            self.logger.info(f"Resumed campaign {campaign_id}")
+        else:
+            self.logger.warning(f"No executor found for campaign {campaign_id}")
+
+    async def skip_blocker(self, campaign_id: str):
+        """Skip the current blocker and resume the campaign."""
+        executor = self.executors.get(campaign_id)
+        if executor:
+            await executor.skip_blocker()
+            self.logger.info(f"Skipped blocker for campaign {campaign_id}")
+        else:
+            self.logger.warning(f"No executor found for campaign {campaign_id}")
 
     async def _run_wrapper(self, campaign_id: str, user_id: str, attempt=1):
         task_repo = Repository()
@@ -103,10 +122,13 @@ class Scheduler:
         try:
             adapter = SkyvernAdapter(platform=account.platform)
             executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
+            self.executors[campaign_id] = executor
             await executor.run_campaign(campaign_id, user_id)
 
         except Exception as e:
             self.logger.error(f"Swarm Agent [{account.username}] crashed: {e}")
+        finally:
+            self.executors.pop(campaign_id, None)
 
     async def _process_scheduled_actions(self):
         """Background task to process scheduled actions"""
