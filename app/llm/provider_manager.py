@@ -72,6 +72,12 @@ class ProviderManager:
 
     # Default config per provider — only API_KEY required, rest auto-filled
     PROVIDER_DEFAULTS: dict[str, dict] = {
+        "Xiaomi MiMo": {
+            "model": "mimo-v2.5",
+            "base_url": "https://token-plan-sgp.xiaomimimo.com/v1",
+            "rpm_limit": 30,
+            "rpd_limit": 1000,
+        },
         "Groq": {
             "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "base_url": "https://api.groq.com/openai/v1",
@@ -102,19 +108,13 @@ class ProviderManager:
             "rpm_limit": 40,
             "rpd_limit": 1000,
         },
-        "Xiaomi MiMo": {
-            "model": "mimo-v2.5",
-            "base_url": "https://token-plan-sgp.xiaomimimo.com/v1",
-            "rpm_limit": 30,
-            "rpd_limit": 1000,
-        },
     }
 
     def _init_from_env(self):
         """Parse provider configs from environment variables."""
         provider_names = [
             n.strip()
-            for n in os.getenv("SKYVERN_LLM_PROVIDERS", "Groq,OpenRouter").split(",")
+            for n in os.getenv("SKYVERN_LLM_PROVIDERS", "Xiaomi MiMo,Groq,OpenRouter").split(",")
             if n.strip()
         ]
 
