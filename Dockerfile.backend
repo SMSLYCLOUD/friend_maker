@@ -31,6 +31,7 @@ RUN useradd -m -u 1000 appuser && \
 
 # Install Camoufox browser as root (needs write access to site-packages for GeoIP)
 RUN python -m camoufox fetch && \
+    mv /root/.cache/camoufox /home/appuser/.cache/camoufox && \
     chown -R appuser:appuser /home/appuser/.cache/camoufox
 
 # Grant appuser access to noVNC
