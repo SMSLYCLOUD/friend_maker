@@ -4,6 +4,7 @@ model_list:
     litellm_params:
       model: groq/meta-llama/llama-4-scout-17b-16e-instruct
       api_key: "os.environ/GROQ_API_KEY"
+      timeout: 15
       rpm: 30
     model_info:
       id: groq-primary
@@ -14,6 +15,7 @@ model_list:
       model: openai/mimo-v2.5
       api_key: "os.environ/XIAOMI_MIMO_API_KEY"
       api_base: https://token-plan-sgp.xiaomimimo.com/v1
+      timeout: 15
       rpm: 30
     model_info:
       id: xiaomi-fallback
@@ -23,41 +25,45 @@ model_list:
     litellm_params:
       model: openrouter/google/gemini-3.5-flash
       api_key: "os.environ/OPENROUTER_API_KEY"
+      timeout: 15
       rpm: 30
     model_info:
       id: openrouter-fallback
 
-  # ── Fallback 2: Google Gemini (free tier, vision) ──
+  # ── Fallback 3: Google Gemini (free tier, vision) ──
   - model_name: skyvern-llm
     litellm_params:
       model: gemini/gemini-3.5-flash
       api_key: "os.environ/GEMINI_API_KEY"
+      timeout: 15
       rpm: 10
     model_info:
       id: google-fallback
 
-  # ── Fallback 3: SambaNova (free tier) ──
+  # ── Fallback 4: SambaNova (free tier) ──
   - model_name: skyvern-llm
     litellm_params:
       model: sambanova/Llama-4-Maverick-17B-128E-Instruct
       api_key: "os.environ/SAMBANOVA_API_KEY"
+      timeout: 15
       rpm: 30
     model_info:
       id: sambanova-fallback
 
-  # ── Fallback 4: NVIDIA NIM (free tier) ──
+  # ── Fallback 5: NVIDIA NIM (free tier) ──
   - model_name: skyvern-llm
     litellm_params:
       model: openai/meta/llama-4-maverick-17b-128e-instruct
       api_key: "os.environ/NVIDIA_API_KEY"
       api_base: https://integrate.api.nvidia.com/v1
+      timeout: 15
       rpm: 40
     model_info:
       id: nvidia-fallback
 
 litellm_settings:
-  num_retries: 2
-  request_timeout: 60
+  num_retries: 1
+  request_timeout: 15
   fallbacks:
     - skyvern-llm: [xiaomi-fallback, openrouter-fallback, google-fallback, sambanova-fallback, nvidia-fallback]
   cooldown_time: 30
