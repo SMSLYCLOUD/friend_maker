@@ -500,13 +500,39 @@ class CamoufoxAdapter(PlatformAdapter):
         results = []
         try:
             await self._ensure_browser(self._session_data)
-            await self._navigate(post_url)
+            await self._page.goto(post_url, wait_until="domcontentloaded", timeout=30000)
+            await self._human_delay(3, 5)
+
+            # Scroll down to load comments (TikTok lazy-loads)
+            for _ in range(5):
+                await self._page.mouse.wheel(0, 1200)
+                await self._human_delay(1.5, 2.5)
+
+            # Try HTML extraction first — look for comment author links
+            usernames = []
+            try:
+                links = await self._page.query_selector_all('a[href*="/@"]')
+                for link in links[:limit * 3]:
+                    href = await link.get_attribute("href")
+                    if href and "/@" in href:
+                        username = href.split("/@")[-1].split("/")[0].split("?")[0]
+                        if username and len(username) > 1 and username not in usernames:
+                            usernames.append(username)
+                if usernames:
+                    logger.info(f"Extracted {len(usernames)} commenters from HTML")
+                    for u in usernames[:limit]:
+                        results.append(UserProfile(platform_id=u, username=u))
+                    return results
+            except Exception as e:
+                logger.warning(f"HTML commenter extraction failed: {e}")
+
+            # Fallback to LLM
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
             llm_response = self._llm_decide(
                 text,
-                f"Extract the first {limit} users who commented. Return JSON: {{\"users\": [{{\"username\": \"...\", \"display_name\": \"...\"}}]}}"
+                f"Extract the first {limit} users who commented on this post. Return JSON: {{\"users\": [{{\"username\": \"...\", \"display_name\": \"...\"}}]}}"
             )
             try:
                 data = json.loads(llm_response)
