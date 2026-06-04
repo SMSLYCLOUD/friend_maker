@@ -77,7 +77,8 @@ PLATFORM: {platform}
 
 RULES:
 - Only include accounts LITERALLY named in the instruction
-- "followers of X" → target_accounts = ["X"] (one account only)
+- "followers of X" → target_accounts = ["X"]
+- "DM commenters of X" or "engage with commenters of X" → target_accounts = ["X"]
 - "message people interested in Y" → keywords = ["Y"]
 - Do NOT add related, similar, or popular accounts
 

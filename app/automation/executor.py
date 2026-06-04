@@ -184,11 +184,8 @@ class CampaignExecutor:
 
         if action_type == "comment_engage":
             target = campaign.targeting.get("target_account", "")
-            if not target:
-                self.logger.error("comment_engage requires target_account in targeting. Stopping.")
-                self.running = False
-                return
-            self.logger.info(f"Comment engage mode — target: @{target}")
+            if target:
+                self.logger.info(f"Comment engage mode — target: @{target.lstrip('@')}")
 
         plan = await self._get_plan(campaign, ref_images)
         sources = plan.get("sources", [])
@@ -617,14 +614,14 @@ class CampaignExecutor:
         """Run planner and return sources, strategy, limit."""
         PLATFORM_NAMES = {"tiktok", "instagram", "twitter", "x", "facebook", "linkedin", "youtube", "reddit"}
 
-        # comment_engage: use target_account from targeting directly
+        # comment_engage: try target_account first, then let planner extract from instructions
         if campaign.campaign_type == "comment_engage":
             target = campaign.targeting.get("target_account", "")
             if target:
                 target = target.lstrip("@")
                 self.logger.info(f"Comment engage plan: source=@{target}")
                 return {"sources": [target], "strategy": "comment_engage", "fetch_limit": 20}
-            # Fall through to planner if no target_account set
+            # No target_account set — fall through to planner to extract from AI instructions
 
         if self.planner and campaign.ai_instructions:
             self.logger.info("Running AI Strategic Planning...")
@@ -641,7 +638,7 @@ class CampaignExecutor:
             fetch_limit = plan.get("limit", 20)
 
             if target_accounts:
-                strategy = "follower_mining"
+                strategy = "comment_engage" if campaign.campaign_type == "comment_engage" else "follower_mining"
                 sources = [s.lstrip("@") for s in target_accounts if s.lower().strip("@") not in PLATFORM_NAMES]
             elif group_types:
                 strategy = "group_combing"
