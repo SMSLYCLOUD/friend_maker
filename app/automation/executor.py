@@ -210,42 +210,74 @@ class CampaignExecutor:
                 if not user_queue:
                     source = sources[0]
 
-                    # comment_engage bypasses the queue — process source directly
+                    # comment_engage: navigate to profile, find one post, engage with commenters
                     if action_type == "comment_engage":
-                        self.logger.info(f"Comment engage: discovering posts from @{source}...")
                         sources.pop(0)
+                        self.logger.info(f"Comment engage: navigating to @{source} profile...")
+
                         try:
-                            target_posts = await self.adapter.get_user_recent_posts(source, limit=10)
+                            profile_url = f"https://www.tiktok.com/@{source}"
+                            await self.adapter._page.goto(profile_url, wait_until="domcontentloaded", timeout=30000)
+                            await self.adapter._human_delay(3, 5)
                         except Exception as e:
-                            self.logger.warning(f"Failed to fetch posts from @{source}: {e}")
+                            self.logger.warning(f"Failed to navigate to profile: {e}")
                             continue
 
-                        if not target_posts:
-                            self.logger.info(f"No posts found for @{source}")
+                        # Find post links on profile
+                        try:
+                            links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
+                            import re
+                            post_urls = []
+                            seen_ids = set()
+                            for link in links[:30]:
+                                href = await link.get_attribute("href")
+                                if not href:
+                                    continue
+                                vid_match = re.search(r'/(video|photo)/(\d+)', href)
+                                if not vid_match:
+                                    continue
+                                vid_id = vid_match.group(2)
+                                if vid_id in seen_ids:
+                                    continue
+                                seen_ids.add(vid_id)
+                                if not href.startswith("http"):
+                                    href = f"https://www.tiktok.com{href}"
+                                post_urls.append(href)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to find post links: {e}")
                             continue
+
+                        if not post_urls:
+                            self.logger.info(f"No posts found on @{source} profile")
+                            continue
+
+                        self.logger.info(f"Found {len(post_urls)} unique posts on @{source}")
 
                         processed_commenters = set()
-                        for tp in target_posts:
+                        for post_url in post_urls:
                             if not self.running or actions_today >= limit:
                                 break
-                            tp_url = tp.get("url", "")
-                            if not tp_url:
-                                continue
-                            await self.anti_detect.random_delay(lambda: self.running)
-                            self.logger.info(f"Checking comments on: {tp_url}")
+
+                            self.logger.info(f"Checking comments on: {post_url}")
+                            await self.adapter._human_delay(2, 4)
+
                             try:
-                                commenters = await self.adapter.get_post_commenters(tp_url, limit=20)
+                                commenters = await self.adapter.get_post_commenters(post_url, limit=20)
                             except Exception as e:
                                 self.logger.warning(f"Failed to get commenters: {e}")
                                 continue
+
                             if not commenters:
+                                self.logger.info(f"No commenters on this post")
                                 continue
+
+                            self.logger.info(f"Found {len(commenters)} commenters")
 
                             for u in commenters:
                                 if not self.running or actions_today >= limit:
                                     break
                                 h = u.platform_id.lstrip("@")
-                                if h in processed_commenters:
+                                if not h or h in processed_commenters:
                                     continue
                                 if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
                                     continue
