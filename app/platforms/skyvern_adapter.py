@@ -32,6 +32,22 @@ class SkyvernAdapter(PlatformAdapter):
         self._browser_session_id: Optional[str] = None
         self._cookie_header: Optional[str] = None
 
+    def _get_cookie_header(self, session_data: str) -> str:
+        """Build a Cookie HTTP header string from session data."""
+        try:
+            cookies = json.loads(session_data)
+            if not isinstance(cookies, list):
+                return ""
+            parts = []
+            for c in cookies:
+                name = c.get("name", "")
+                value = c.get("value", "")
+                if name and value:
+                    parts.append(f"{name}={value}")
+            return "; ".join(parts)
+        except Exception:
+            return ""
+
     async def _ensure_browser_session(self, session_data: Optional[str] = None):
         """Ensure we have a browser session ID for task reuse.
         
