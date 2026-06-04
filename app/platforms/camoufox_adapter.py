@@ -406,11 +406,17 @@ class CamoufoxAdapter(PlatformAdapter):
                 await msg_btn.wait_for(state="visible", timeout=10000)
             except:
                 logger.info(f"send_dm: No Message button found for @{handle} (private or not followed)")
-                return ActionResult(success=False, action_type="dm", error="No Message button found - account may be private")
+                return ActionResult(success=False, action_type="dm", error="No Message button found")
 
             logger.info(f"send_dm: Clicking Message button for @{handle}")
             await msg_btn.click(timeout=15000, force=True)
-            await self._human_delay(2, 3)
+            await self._human_delay(3, 5)
+
+            # Check if we ended up on the DM page
+            current_url = self._page.url
+            if "404" in current_url or "direct/inbox" not in current_url:
+                logger.warning(f"send_dm: Redirected to {current_url} — DM not available for @{handle}")
+                return ActionResult(success=False, action_type="dm", error="DM page not available")
 
             # Type message with human delays
             textbox = self._page.locator("textarea, div[contenteditable='true']").first

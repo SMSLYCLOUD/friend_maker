@@ -289,6 +289,10 @@ class CampaignExecutor:
                                 h = u.platform_id.lstrip("@")
                                 if not h or h in processed_commenters:
                                     continue
+                                # Skip numeric-only IDs (not real usernames)
+                                if h.isdigit():
+                                    self.logger.info(f"Skipping numeric ID @{h}")
+                                    continue
                                 if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
                                     continue
                                 processed_commenters.add(h)
