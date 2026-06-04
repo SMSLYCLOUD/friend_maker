@@ -324,10 +324,18 @@ class CampaignExecutor:
                                     profile_data = await self.adapter.get_user_profile(h)
                                 except: pass
 
-                                # Run classifier to check bot_instructions
+                                # Capture screenshot for LLM verification
+                                screenshot_b64 = None
+                                try:
+                                    screenshot_bytes = await self.adapter._page.screenshot(full_page=False)
+                                    screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+                                except: pass
+
+                                # Run classifier with screenshot
                                 if self.classifier:
                                     analysis = await self.classifier.classify(
-                                        profile_data, bot_instructions=self.bot_instructions,
+                                        profile_data, screenshot_b64=screenshot_b64,
+                                        bot_instructions=self.bot_instructions,
                                         ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
                                     )
                                     self.logger.info(f"Classification @{h}: skip={analysis.get('should_skip')}, reason={analysis.get('skip_reason')}, score={analysis.get('match_score')}")

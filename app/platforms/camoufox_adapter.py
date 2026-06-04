@@ -415,67 +415,53 @@ class CamoufoxAdapter(PlatformAdapter):
             page_text = await self._extract_page_text()
             self._check_for_blockers(page_text, url)
 
-            # Method 1: Click "Message" button on profile
-            dm_opened = False
-            try:
-                msg_btn = self._page.locator('button:has-text("Message"), [data-e2e="message-button"]')
-                if await msg_btn.count() > 0:
-                    await msg_btn.first.click(timeout=10000)
-                    logger.info("send_dm: Clicked Message button on profile")
-                    await self._human_delay(3, 5)
-                    dm_opened = True
-            except Exception as e:
-                logger.info(f"send_dm: Message button click failed: {e}")
-
-            # Method 2: Try DM URL with user_id if button didn't work
-            if not dm_opened:
-                import re
-                user_id_match = None
+            # Try to open DM — click Message button on profile
+            msg_btn_clicked = False
+            msg_btn_selectors = [
+                'button:has-text("Message")',
+                '[data-e2e="message-button"]',
+                'div[role="button"]:has-text("Message")',
+                'a[href*="/direct"]',
+                '//p[text()="Send message"]',
+                '//div[contains(@class, "message")]//button',
+            ]
+            for sel in msg_btn_selectors:
                 try:
-                    page_source = await self._page.content()
-                    user_id_match = re.search(r'"userInfo":\{"user":\{"id":"(\d+)"', page_source)
+                    btn = self._page.locator(sel)
+                    if await btn.count() > 0:
+                        await btn.first.click(timeout=10000)
+                        logger.info(f"send_dm: Clicked Message button via '{sel}'")
+                        msg_btn_clicked = True
+                        break
                 except: pass
 
-                if user_id_match:
-                    numeric_id = user_id_match.group(1)
-                    logger.info(f"send_dm: Found user_id={numeric_id}, trying DM URL")
-                    dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={numeric_id}"
-                    await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
-                    await self._human_delay(3, 5)
+            if not msg_btn_clicked:
+                logger.warning(f"send_dm: No Message button found for @{handle}")
+                return ActionResult(success=False, action_type="dm", error="Message button not found")
 
-                    # Check if we landed on a valid DM page (not 404)
-                    current_url = self._page.url
-                    if "404" in current_url or "direct/inbox" in current_url:
-                        logger.warning(f"send_dm: DM URL redirected to {current_url}, trying profile approach")
-                        # Go back to profile and try clicking message button
-                        await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                        await self._human_delay(3, 5)
-                        try:
-                            # Look for the message button by various selectors
-                            for selector in [
-                                'button:has-text("Message")',
-                                '[data-e2e="message-button"]',
-                                'div[role="button"]:has-text("Message")',
-                                '//p[text()="Send message"]',
-                            ]:
-                                btn = self._page.locator(selector)
-                                if await btn.count() > 0:
-                                    await btn.first.click(timeout=10000)
-                                    logger.info(f"send_dm: Clicked message via fallback selector")
-                                    await self._human_delay(3, 5)
-                                    dm_opened = True
-                                    break
-                        except: pass
-                    else:
-                        dm_opened = True
+            # Wait for DM input — TikTok opens DM as overlay on same page
+            # Try multiple selectors for the DM input
+            dm_input = None
+            dm_input_selectors = [
+                'div[aria-label="Send a message..."][role="textbox"]',
+                '[data-e2e="dm-input"]',
+                'div[contenteditable="true"][role="textbox"]',
+                'div[aria-label*="message" i][role="textbox"]',
+                'p[data-e2e="dm-input"]',
+            ]
 
-            # Wait for DM input box
-            dm_input = self._page.locator('div[aria-label="Send a message..."][role="textbox"]')
-            try:
-                await dm_input.wait_for(state="visible", timeout=30000)
-                logger.info("send_dm: DM input found")
-            except:
-                # Check for warning messages
+            for sel in dm_input_selectors:
+                try:
+                    candidate = self._page.locator(sel)
+                    await candidate.wait_for(state="visible", timeout=15000)
+                    dm_input = candidate
+                    logger.info(f"send_dm: DM input found via '{sel}'")
+                    break
+                except:
+                    continue
+
+            if not dm_input:
+                # Check for warning messages before giving up
                 page_text = await self._extract_page_text()
                 warnings = [
                     "Only friends can send messages",
@@ -494,7 +480,6 @@ class CamoufoxAdapter(PlatformAdapter):
                         logger.warning(f"send_dm: DM blocked — {w}")
                         return ActionResult(success=False, action_type="dm", error=f"DM blocked: {w}")
 
-                # Also check for dm-warning element
                 try:
                     warn_el = await self._page.query_selector('[data-e2e="dm-warning"]')
                     if warn_el:
@@ -503,7 +488,12 @@ class CamoufoxAdapter(PlatformAdapter):
                         return ActionResult(success=False, action_type="dm", error=f"DM warning: {warn_text}")
                 except: pass
 
-                logger.warning(f"send_dm: DM input not found at {self._page.url}")
+                # Last resort: screenshot for debugging
+                try:
+                    ss = await self._page.screenshot()
+                    logger.warning(f"send_dm: DM input not found. Screenshot saved. URL: {self._page.url}")
+                except: pass
+
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
 
             # Type message using clipboard (faster, avoids char-by-char delay)

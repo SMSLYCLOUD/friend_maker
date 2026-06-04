@@ -1,39 +1,14 @@
 import json
 import logging
 import re
+import base64
 from typing import Dict, Any, Optional, List
 from app.ai.openrouter_manager import OpenRouterManager
 
 logger = logging.getLogger("ProfileClassifier")
 
-# Common female name indicators
-FEMALE_INDICATORS = [
-    "she", "her", "hers", "girl", "woman", "female", "queen", "princess",
-    "baddie", "softie", "aesthetic", "coquette", "angel", "doll",
-    "mrs", "miss", "ms", "lady", "sis", "sister", "queen",
-    "feminine", "girly", "pretty", "cute", "beautiful",
-]
-
-# Common male name indicators
-MALE_INDICATORS = [
-    "he", "him", "his", "boy", "man", "male", "king", "bro",
-    "dude", "guy", "sir", "mr", "king", "prince", "boss",
-    "masculine", "manly", "brother", "brotherhood",
-]
-
-# Bot/spam indicators
-BOT_INDICATORS = [
-    "bot", "automated", "ai ", "chatgpt", "gpt", "openai",
-    "follow for follow", "f4f", "like for like", "l4l",
-    "dm for promo", "promo", "collab", "spon",
-    "link in bio", "click here", "free followers",
-    "earn money", "make money", "work from home",
-    "crypto", "nft", "forex", "trading",
-]
-
 
 def _parse_follower_count(followers) -> int:
-    """Parse follower count from various formats."""
     if isinstance(followers, (int, float)):
         return int(followers)
     if not followers:
@@ -45,45 +20,47 @@ def _parse_follower_count(followers) -> int:
     elif s.endswith("m"):
         try: return int(float(s[:-1]) * 1000000)
         except: return 0
-    elif s.endswith("b"):
-        try: return int(float(s[:-1]) * 1000000000)
-        except: return 0
     try:
         return int(s)
     except:
         return 0
 
 
-def _detect_gender(profile_data: Dict[str, Any]) -> str:
-    """Detect gender from profile data. Returns 'male', 'female', or 'unknown'."""
+def _detect_gender_text(profile_data: Dict[str, Any]) -> str:
+    """Text-based gender detection from username, display name, bio."""
     text = " ".join([
         profile_data.get("username", ""),
         profile_data.get("display_name", ""),
         profile_data.get("bio", ""),
     ]).lower()
 
-    female_score = sum(1 for w in FEMALE_INDICATORS if w in text)
-    male_score = sum(1 for w in MALE_INDICATORS if w in text)
+    female_kw = ["she", "her", "girl", "woman", "female", "queen", "princess",
+                  "baddie", "aesthetic", "coquette", "angel", "doll", "mrs", "miss",
+                  "lady", "sis", "sister", "feminine", "girly"]
+    male_kw = ["he", "him", "boy", "man", "male", "king", "bro", "dude", "guy",
+               "sir", "mr", "prince", "boss", "masculine", "brother"]
 
-    if female_score > male_score and female_score >= 1:
+    f_score = sum(1 for w in female_kw if w in text)
+    m_score = sum(1 for w in male_kw if w in text)
+
+    if f_score > m_score and f_score >= 1:
         return "female"
-    elif male_score > female_score and male_score >= 1:
+    elif m_score > f_score and m_score >= 1:
         return "male"
     return "unknown"
 
 
-def _is_bot(profile_data: Dict[str, Any]) -> bool:
-    """Detect bot/spam accounts."""
+def _is_bot_text(profile_data: Dict[str, Any]) -> bool:
     text = " ".join([
         profile_data.get("username", ""),
         profile_data.get("display_name", ""),
         profile_data.get("bio", ""),
     ]).lower()
-
-    for indicator in BOT_INDICATORS:
-        if indicator in text:
-            return True
-    return False
+    bot_kw = ["bot", "automated", "ai ", "chatgpt", "gpt",
+              "follow for follow", "f4f", "like for like", "l4l",
+              "dm for promo", "promo", "collab", "link in bio",
+              "click here", "free followers", "earn money", "crypto", "nft"]
+    return any(w in text for w in bot_kw)
 
 
 class ProfileClassifier:
@@ -91,7 +68,6 @@ class ProfileClassifier:
         self.manager = manager
 
     def _extract_filter_criteria(self, instructions: str) -> str:
-        """Extract only filtering criteria from complex instructions."""
         if not instructions:
             return ""
         filter_lines = []
@@ -107,28 +83,28 @@ class ProfileClassifier:
                 filter_lines.append(line.strip())
         return "\n".join(filter_lines) if filter_lines else ""
 
-    def _check_filters(self, profile_data: Dict[str, Any], instructions: str) -> Optional[str]:
-        """Programmatic filter checks based on instructions. Returns skip_reason or None."""
+    def _check_text_filters(self, profile_data: Dict[str, Any], instructions: str) -> Optional[str]:
+        """Programmatic text-based filter checks. Returns skip_reason or None."""
         instructions_lower = instructions.lower()
 
-        # Gender filter — only if instructions mention it
-        if any(kw in instructions_lower for kw in ["male only", "only male", "only process male", "skip female", "gender"]):
-            gender = _detect_gender(profile_data)
+        # Gender filter
+        has_gender_filter = any(kw in instructions_lower for kw in [
+            "male only", "only male", "only process male", "skip female",
+            "gender filter", "gender", "only male"
+        ])
+        if has_gender_filter:
+            gender = _detect_gender_text(profile_data)
             if gender == "female":
                 return "female_account"
-            # If unknown and instructions say male only, skip to be safe
-            if gender == "unknown" and "male only" in instructions_lower:
-                return "unknown_gender"
 
         # Bot/spam filter
         if any(kw in instructions_lower for kw in ["bot", "spam", "fake", "automated"]):
-            if _is_bot(profile_data):
+            if _is_bot_text(profile_data):
                 return "bot_or_spam"
 
         # Follower count filters
         followers = _parse_follower_count(profile_data.get("follower_count") or profile_data.get("followers"))
 
-        # Check for minimum followers
         m = re.search(r'(?:skip|min|minimum|less than|under|below)\s+(\d+)\s*(?:k)?\s*(?:followers?)?', instructions_lower)
         if m:
             min_f = int(m.group(1))
@@ -136,7 +112,6 @@ class ProfileClassifier:
             if 0 < followers < min_f:
                 return f"followers_below_{min_f}"
 
-        # Check for maximum followers
         m = re.search(r'(?:skip|max|maximum|more than|over|above|greater than)\s+(\d+)\s*(?:k)?\s*(?:followers?)?', instructions_lower)
         if m:
             max_f = int(m.group(1))
@@ -144,14 +119,14 @@ class ProfileClassifier:
             if followers > max_f:
                 return f"followers_above_{max_f}"
 
-        # Private account check
+        # Private account
         if any(kw in instructions_lower for kw in ["skip private", "private accounts", "no private"]):
             if profile_data.get("is_private"):
                 return "private_account"
 
         return None
 
-    async def classify(self, profile_data: Dict[str, Any], image_base64: Optional[str] = None,
+    async def classify(self, profile_data: Dict[str, Any], screenshot_b64: Optional[str] = None,
                        bot_instructions: str = "", ref_images: List[str] = None,
                        campaign_instructions: str = "") -> Dict[str, Any]:
         # Merge instructions
@@ -161,51 +136,68 @@ class ProfileClassifier:
         if campaign_instructions:
             combined = combined + "\n" + campaign_instructions if combined else campaign_instructions
 
-        # Run programmatic filters FIRST — these are reliable
-        filter_result = self._check_filters(profile_data, combined)
-        if filter_result:
-            logger.info(f"Filter skip: {filter_result} for @{profile_data.get('username')}")
+        # Step 1: Fast text-based filters
+        text_filter = self._check_text_filters(profile_data, combined)
+        if text_filter:
+            logger.info(f"Text filter skip: {text_filter} for @{profile_data.get('username')}")
             return {
                 "should_skip": True,
-                "skip_reason": filter_result,
+                "skip_reason": text_filter,
                 "match_score": 0.0,
                 "niche": "",
                 "account_type": "",
-                "reasoning": f"Filtered: {filter_result}"
+                "reasoning": f"Text filter: {text_filter}"
             }
 
-        # Only use LLM for niche/account_type detection — NOT for filtering
-        prompt = f"""Analyze this social media profile. Return JSON only, no markdown.
+        # Step 2: LLM verification with screenshot (if available)
+        filter_criteria = self._extract_filter_criteria(combined)
 
-Profile:
+        prompt = f"""You are a social media profile classifier. Analyze this profile and decide if it should be SKIPPED.
+
+Profile Data:
 Username: {profile_data.get('username')}
 Bio: {profile_data.get('bio', 'N/A')}
 Display Name: {profile_data.get('display_name', 'N/A')}
 Follower Count: {profile_data.get('follower_count', profile_data.get('followers', 'N/A'))}
+Is Private: {profile_data.get('is_private', False)}
 
-Return:
-{{"niche": "string", "account_type": "string", "match_score": 0.5, "reasoning": "brief"}}"""
+{"FILTERING RULES — you MUST enforce these:" if filter_criteria else ""}
+{filter_criteria}
+
+{"A screenshot of the profile is attached. Use it to determine:" if screenshot_b64 else ""}
+{"- Gender (from profile picture and display name)" if screenshot_b64 else ""}
+{"- Whether this looks like a real person or a bot/spam account" if screenshot_b64 else ""}
+
+DECISION RULES:
+- If rules say "male only" and you can clearly see this is a female profile → skip
+- If profile looks like a bot/spam → skip
+- If you CANNOT determine gender from the screenshot → DO NOT skip (proceed)
+- If no screenshot available and gender is unclear → DO NOT skip
+
+Return JSON only (no markdown):
+{{"should_skip": false, "skip_reason": null, "match_score": 0.5, "niche": "", "account_type": "", "gender_guess": "unknown", "reasoning": "brief explanation"}}"""
 
         try:
-            response = await self.manager.generate(prompt, image_base64=image_base64, ref_images=ref_images)
+            response = await self.manager.generate(prompt, image_base64=screenshot_b64, ref_images=ref_images)
             result = self._parse_json(response)
+
+            # LLM can only SET skip, never override text filters
+            if result.get("should_skip") and not result.get("skip_reason"):
+                result["should_skip"] = False
+                result["skip_reason"] = None
+
+            result.setdefault("should_skip", False)
+            result.setdefault("skip_reason", None)
+            result.setdefault("match_score", 0.5)
             result.setdefault("niche", "")
             result.setdefault("account_type", "")
-            result.setdefault("match_score", 0.5)
             result.setdefault("reasoning", "")
-            # NEVER let LLM override our programmatic filters
-            result["should_skip"] = False
-            result["skip_reason"] = None
             return result
         except Exception as e:
             logger.error(f"LLM classification failed: {e}")
             return {
-                "should_skip": False,
-                "skip_reason": None,
-                "match_score": 0.5,
-                "niche": "",
-                "account_type": "",
-                "reasoning": f"LLM error: {e}"
+                "should_skip": False, "skip_reason": None, "match_score": 0.5,
+                "niche": "", "account_type": "", "reasoning": f"LLM error: {e}"
             }
 
     def _parse_json(self, text: str) -> Dict[str, Any]:
