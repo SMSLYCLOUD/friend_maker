@@ -283,51 +283,53 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
-            await self._navigate(url)
-            text = await self._extract_page_text()
-            self._check_for_blockers(text, url)
 
-            # Click followers button — try multiple selectors for TikTok
-            try:
-                selectors = [
-                    f'a[href*="/{handle}/followers"]',
-                    'a[data-e2e="followers-count"]',
-                    'strong[data-e2e="followers-count"]',
-                    'a:has-text("followers")',
-                    'div[data-e2e="followers"]',
-                ]
-                for sel in selectors:
-                    try:
-                        el = self._page.locator(sel).first
-                        if await el.is_visible(timeout=2000):
-                            await el.click(timeout=5000)
-                            await self._human_delay(2, 4)
-                            break
-                    except Exception:
-                        continue
-            except Exception:
-                logger.warning("Could not find followers link")
+            # Navigate directly to followers page
+            url = f"https://www.{self.platform}.com/@{handle}/followers"
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await self._human_delay(3, 5)
 
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            llm_response = self._llm_decide(
-                text,
-                f"Extract the first {limit} follower usernames and display names. Return JSON: {{\"users\": [{{\"username\": \"...\", \"display_name\": \"...\"}}]}}"
-            )
-            try:
-                data = json.loads(llm_response)
-                users = data.get("users", [])
-            except (json.JSONDecodeError, TypeError):
-                users = []
+            # Scroll down to load more followers
+            for i in range(5):
+                await self._page.mouse.wheel(0, 800)
+                await self._human_delay(1, 2)
 
-            for item in users[:limit]:
-                results.append(UserProfile(
-                    platform_id=item.get("username", ""),
-                    username=item.get("username", ""),
-                    display_name=item.get("display_name"),
-                ))
+            text = await self._extract_page_text()
+
+            # Try to extract usernames from page HTML
+            usernames = []
+            try:
+                links = await self._page.query_selector_all('a[href*="/@"]')
+                for link in links[:limit * 2]:
+                    href = await link.get_attribute("href")
+                    if href and "/@" in href:
+                        username = href.split("/@")[-1].split("/")[0].split("?")[0]
+                        if username and username not in usernames and len(username) > 1:
+                            usernames.append(username)
+            except Exception as e:
+                logger.warning(f"HTML extraction failed: {e}")
+
+            # If HTML extraction got results, use them
+            if usernames:
+                for u in usernames[:limit]:
+                    results.append(UserProfile(platform_id=u, username=u))
+                logger.info(f"Extracted {len(results)} followers from HTML")
+            else:
+                # Fallback to LLM
+                llm_response = self._llm_decide(
+                    text,
+                    f"Extract follower usernames from this TikTok followers page. Return JSON: {{\"usernames\": [\"user1\", \"user2\"]}}"
+                )
+                try:
+                    data = json.loads(llm_response)
+                    for u in data.get("usernames", [])[:limit]:
+                        results.append(UserProfile(platform_id=u, username=u))
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning("LLM extraction also failed")
+
         except BlockerDetected:
             raise
         except Exception as e:
