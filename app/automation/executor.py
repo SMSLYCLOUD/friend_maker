@@ -215,6 +215,7 @@ class CampaignExecutor:
 
         while self.running and sources:
             try:
+                self._busy = True  # Block monitor during all navigation
                 if actions_today >= limit:
                     self.logger.info(f"Daily limit of {limit} reached.")
                     break
@@ -788,6 +789,7 @@ class CampaignExecutor:
                 else:
                     self.logger.warning(f"✗ @{handle} ({action_type}) failed: {error}")
 
+                self._busy = False  # Allow monitor to run during delay
                 await self.anti_detect.random_delay(lambda: self.running)
 
             except asyncio.CancelledError:
@@ -1212,6 +1214,9 @@ class CampaignExecutor:
                 self.logger.info("Response monitor: main loop busy, skipping inbox check.")
                 continue
 
+            # Wait for main loop to fully settle after clearing _busy
+            await asyncio.sleep(10)
+
             try:
                 self.logger.info("Checking inbox for responses...")
                 unread = await self.adapter.check_inbox(limit=5)
@@ -1327,6 +1332,8 @@ class CampaignExecutor:
             if self._busy:
                 self.logger.info("Follow-back monitor: main loop busy, skipping.")
                 continue
+
+            await asyncio.sleep(10)  # Settle time after _busy clears
 
             try:
                 # Get pending follow-backs
