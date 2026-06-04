@@ -708,12 +708,12 @@ def _write_env_file(env: Dict[str, str]) -> None:
 
 
 def _restart_self() -> None:
-    """Restart python-backend and litellm-proxy containers so the new .env takes effect."""
+    """Recreate python-backend and litellm-proxy containers so the new .env takes effect."""
     import subprocess
     for service in ("python-backend", "litellm-proxy"):
         try:
             subprocess.Popen(
-                ["docker", "compose", "restart", service],
+                ["docker", "compose", "up", "-d", "--force-recreate", service],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
