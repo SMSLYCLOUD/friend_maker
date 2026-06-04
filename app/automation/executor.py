@@ -270,25 +270,10 @@ class CampaignExecutor:
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
-                        if analysis.get("match_score", 0) < 0.5:
+                        if analysis.get("match_score", 0) < 0.2:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
-
-                    # Pre-engagement: view stories, like recent posts
-                    try:
-                        await self.adapter.view_stories(handle)
-                        self.logger.info(f"Viewed stories for @{handle}")
-                    except: pass
-                    try:
-                        posts = await self.adapter.get_user_recent_posts(handle, limit=2)
-                        for p in posts[:2]:
-                            url = p.get("url", "")
-                            if url:
-                                await self.adapter.like_post(url)
-                                self.logger.info(f"Liked post by @{handle}")
-                                await self.anti_detect.random_delay(lambda: self.running)
-                    except: pass
 
                     res = await self.adapter.follow(handle)
                     success = res.success
@@ -312,25 +297,10 @@ class CampaignExecutor:
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
-                        if analysis.get("match_score", 0) < 0.5:
+                        if analysis.get("match_score", 0) < 0.2:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
-
-                    # Pre-engagement: view stories, like recent posts
-                    try:
-                        await self.adapter.view_stories(handle)
-                        self.logger.info(f"Viewed stories for @{handle}")
-                    except: pass
-                    try:
-                        posts = await self.adapter.get_user_recent_posts(handle, limit=2)
-                        for p in posts[:2]:
-                            url = p.get("url", "")
-                            if url:
-                                await self.adapter.like_post(url)
-                                self.logger.info(f"Liked post by @{handle}")
-                                await self.anti_detect.random_delay(lambda: self.running)
-                    except: pass
 
                     msg = "Hello!"
                     if self.generator:
@@ -363,7 +333,7 @@ class CampaignExecutor:
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
-                        if analysis.get("match_score", 0) < 0.5:
+                        if analysis.get("match_score", 0) < 0.2:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
