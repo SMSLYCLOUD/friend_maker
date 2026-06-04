@@ -33,7 +33,7 @@ class CampaignPlanner:
             }
 
             try:
-                async with httpx.AsyncClient(timeout=15) as client:
+                async with httpx.AsyncClient(timeout=300) as client:
                     r = await client.post(
                         f"{config.base_url}/chat/completions",
                         json=payload,
@@ -70,43 +70,20 @@ class CampaignPlanner:
             constraints = f"\n\nCONSTRAINTS (must follow):\n{bot_instructions}"
 
         prompt = f"""
-        TASK: Parse this instruction and extract ONLY what is literally written in it.
+Parse this instruction and extract targets. Return JSON only.
 
-        INSTRUCTION: "{persona_instructions}"
-        PLATFORM: {platform}{constraints}
+INSTRUCTION: "{persona_instructions}"
+PLATFORM: {platform}
 
-        CRITICAL RULES — VIOLATION IS FAILURE:
-        1. If the instruction says "followers of X" → target_accounts = ["X"] (ONE account, NOT more)
-        2. If the instruction says "message people interested in Y" → keywords = ["Y"]
-        3. NEVER add accounts that are "related to", "similar to", "fans of", or "associated with" the target
-        4. NEVER add influencer accounts, celebrity accounts, or competitor accounts
-        5. NEVER add accounts just because they are "popular" or "well-known" in the same space
-        6. The ONLY accounts allowed in target_accounts are the ones LITERALLY NAMED in the instruction
-        7. If the instruction names 1 account, target_accounts has EXACTLY 1 item
-        8. If the instruction names 3 accounts, target_accounts has EXACTLY 3 items
+RULES:
+- Only include accounts LITERALLY named in the instruction
+- "followers of X" → target_accounts = ["X"] (one account only)
+- "message people interested in Y" → keywords = ["Y"]
+- Do NOT add related, similar, or popular accounts
 
-        EXAMPLES:
-        - "message the followers of donald trump on tiktok" → target_accounts: ["realdonaldtrump"] (ONE)
-        - "message followers of elonmusk and billgates on twitter" → target_accounts: ["elonmusk", "billgates"] (TWO)
-        - "find people interested in crypto on instagram" → keywords: ["crypto"]
-        - "message members of python community on linkedin" → group_types: ["python community"]
-
-        WRONG (DO NOT DO THIS):
-        - "message the followers of donald trump" → target_accounts: ["realdonaldtrump", "charliekirk11", "seanhannity"] ❌
-        - "message the followers of donald trump" → target_accounts: ["realdonaldtrump", "foxnews", "donaldtrumpjr"] ❌
-
-        RIGHT (DO THIS):
-        - "message the followers of donald trump" → target_accounts: ["realdonaldtrump"] ✅
-
-        RETURN JSON:
-        {{
-            "target_accounts": ["only_accounts_literally_named_in_instruction"],
-            "keywords": ["only_keywords_literally_named_in_instruction"],
-            "group_types": ["only_groups_literally_named_in_instruction"],
-            "limit": 20,
-            "reasoning": "What was extracted and why (must reference specific words from the instruction)."
-        }}
-        """
+RETURN:
+{{"target_accounts": ["account1"], "keywords": [], "group_types": [], "limit": 20}}
+"""
 
         try:
             response = await self._generate_with_provider(prompt)
