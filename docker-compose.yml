@@ -150,7 +150,6 @@ services:
       - cookies:/app/cookies
       - scratch:/app/scratch
       - uploads:/app/uploads
-      - camoufox_cache:/home/appuser/.cache/camoufox
       - ./.env:/app/.env
     env_file:
       - ./.env
@@ -210,7 +209,6 @@ volumes:
   cookies:
   scratch:
   uploads:
-  camoufox_cache:
   skyvern-pgdata:
   skyvern-artifacts:
   skyvern-videos:
