@@ -102,6 +102,12 @@ class ProviderManager:
             "rpm_limit": 40,
             "rpd_limit": 1000,
         },
+        "Xiaomi MiMo": {
+            "model": "mimo-v2.5",
+            "base_url": "https://token-plan-sgp.xiaomimimo.com/v1",
+            "rpm_limit": 30,
+            "rpd_limit": 1000,
+        },
     }
 
     def _init_from_env(self):
