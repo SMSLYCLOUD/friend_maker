@@ -687,24 +687,6 @@ class CampaignExecutor:
                 except: pass
                 await self.anti_detect.random_delay(lambda: self.running)
 
-                # Find and reply to their comment on this post
-                try:
-                    comments = await self.adapter.get_post_comments(post_url, limit=30)
-                    for c in comments:
-                        if c.get("username", "").lstrip("@") == h:
-                            reply_text = "Great point!"
-                            if self.generator:
-                                reply_ctx = {"username": h, "bio": profile_data.get("bio", ""), "comment_text": c.get("text", "")}
-                                reply_text = await self.generator.generate_dm(
-                                    reply_ctx, campaign.message_template, campaign.ai_instructions,
-                                    bot_instructions=self.bot_instructions, ref_images=ref_images
-                                )
-                            await self.adapter.reply_to_comment(c.get("id", ""), reply_text, post_url=post_url)
-                            self.logger.info(f"Replied to @{h}'s comment")
-                            break
-                except: pass
-                await self.anti_detect.random_delay(lambda: self.running)
-
                 # DM
                 msg = "Hello!"
                 if self.generator:
