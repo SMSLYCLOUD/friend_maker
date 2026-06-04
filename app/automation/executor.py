@@ -258,6 +258,7 @@ class CampaignExecutor:
                     profile_data = {"username": handle, "bio": ""}
                     try:
                         profile_data = await self.adapter.get_user_profile(handle)
+                        self.logger.info(f"Profile @{handle}: bio='{profile_data.get('bio', '')[:50]}', posts={len(profile_data.get('recent_posts', []))}")
                     except Exception as e:
                         self.logger.warning(f"Failed to scrape profile: {e}")
 
@@ -267,6 +268,7 @@ class CampaignExecutor:
                             profile_data, bot_instructions=self.bot_instructions,
                             ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
                         )
+                        self.logger.info(f"Classification @{handle}: skip={analysis.get('should_skip')}, reason={analysis.get('skip_reason')}, score={analysis.get('match_score')}")
                         if analysis.get("should_skip"):
                             self.logger.info(f"Skipping @{handle}: {analysis.get('skip_reason')}")
                             continue
@@ -284,10 +286,11 @@ class CampaignExecutor:
                             bot_instructions=self.bot_instructions,
                             ref_images=ref_images
                         )
+                        self.logger.info(f"Generated DM for @{handle}: {msg[:80]}...")
                     res = await self.adapter.send_dm(handle, msg)
                     success = res.success
                     error = res.error
-                    self.logger.info(f"DM to @{handle}: {'sent' if success else f'failed: {error}'}")
+                    self.logger.info(f"DM to @{handle}: {'SENT' if success else f'FAILED: {error}'}")
 
                 elif action_type == "comment":
                     profile_data = {"username": handle, "bio": ""}

@@ -378,29 +378,35 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
             url = f"https://www.{self.platform}.com/@{handle}"
+            logger.info(f"send_dm: Navigating to {url}")
             await self._navigate(url)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
             # Try to find and click message/DM button
             msg_btn = self._page.get_by_role("button", name="Message").first
+            logger.info(f"send_dm: Clicking Message button for @{handle}")
             await msg_btn.click(timeout=5000)
             await self._human_delay(2, 3)
 
             # Type message with human delays
             textbox = self._page.locator("textarea, div[contenteditable='true']").first
+            logger.info(f"send_dm: Typing message ({len(message)} chars)")
             for char in message:
                 await textbox.type(char, delay=random.randint(50, 150))
             await self._human_delay(0.5, 1)
 
             # Send
             send_btn = self._page.get_by_role("button", name="Send").first
+            logger.info(f"send_dm: Clicking Send button")
             await send_btn.click(timeout=5000)
             await self._human_delay(1, 2)
+            logger.info(f"send_dm: DM sent to @{handle}")
             return ActionResult(success=True, action_type="dm")
         except BlockerDetected:
             raise
         except Exception as e:
+            logger.error(f"send_dm FAILED for @{handle}: {e}")
             return ActionResult(success=False, action_type="dm", error=str(e))
 
     async def check_inbox(self, limit: int = 10) -> List[Dict[str, Any]]:
