@@ -108,7 +108,7 @@ class CamoufoxAdapter(PlatformAdapter):
 
     async def _run_with_retry(self, fn, *args, **kwargs):
         """Run a function, restarting the browser if it died."""
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 if self._page and self._page.is_closed():
                     logger.warning("Page closed, restarting browser...")
@@ -122,11 +122,15 @@ class CamoufoxAdapter(PlatformAdapter):
                     or "handler is closed" in error_str
                     or "target closed" in error_str
                 )
-                if is_browser_dead and attempt == 0:
-                    logger.warning(f"Browser died, restarting: {e}")
-                    self._page = None
-                    self._context = None
-                    await self._ensure_browser(self._session_data)
+                is_nav_abort = "ns_binding_aborted" in error_str
+                if (is_browser_dead or is_nav_abort) and attempt < 2:
+                    logger.warning(f"Navigation failed (attempt {attempt + 1}): {e}")
+                    if is_browser_dead:
+                        self._page = None
+                        self._context = None
+                        await self._ensure_browser(self._session_data)
+                    else:
+                        await self._human_delay(3, 5)
                     continue
                 raise
 
@@ -180,8 +184,8 @@ class CamoufoxAdapter(PlatformAdapter):
     async def _navigate(self, url: str):
         """Navigate to URL with human-like behavior."""
         async def _do_navigate():
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await self._human_delay(2, 4)
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await self._human_delay(3, 5)
             await self._human_scroll()
             await self._human_move_mouse()
         await self._run_with_retry(_do_navigate)

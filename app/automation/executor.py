@@ -231,6 +231,7 @@ class CampaignExecutor:
                             tp_url = tp.get("url", "")
                             if not tp_url:
                                 continue
+                            await self.anti_detect.random_delay(lambda: self.running)
                             self.logger.info(f"Checking comments on: {tp_url}")
                             try:
                                 commenters = await self.adapter.get_post_commenters(tp_url, limit=20)
