@@ -396,24 +396,20 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Close any modal overlays that might block clicks
             try:
-                close_btns = await self._page.query_selector_all('[data-e2e="modal-close"], .TUXModal-overlay button[aria-label="Close"], button[data-testid="close"]')
-                for btn in close_btns:
-                    try:
-                        await btn.click(timeout=8000)
-                        await self._human_delay(0.5, 1)
-                    except: pass
-                # Also try pressing Escape
                 await self._page.keyboard.press("Escape")
                 await self._human_delay(1, 2)
             except: pass
 
-            text = await self._extract_page_text()
-            self._check_for_blockers(text, url)
-
-            # Try to find and click message/DM button
+            # Check if Message button exists (not on private/non-followed accounts)
             msg_btn = self._page.get_by_role("button", name="Message").first
+            try:
+                await msg_btn.wait_for(state="visible", timeout=10000)
+            except:
+                logger.info(f"send_dm: No Message button found for @{handle} (private or not followed)")
+                return ActionResult(success=False, action_type="dm", error="No Message button found - account may be private")
+
             logger.info(f"send_dm: Clicking Message button for @{handle}")
-            await msg_btn.click(timeout=20000, force=True)
+            await msg_btn.click(timeout=15000, force=True)
             await self._human_delay(2, 3)
 
             # Type message with human delays
@@ -799,26 +795,26 @@ class CamoufoxAdapter(PlatformAdapter):
         """Like a post."""
         try:
             await self._ensure_browser(self._session_data)
-            await self._navigate(post_url)
-            await self._human_delay(2, 3)
-            text = await self._extract_page_text()
-            self._check_for_blockers(text, post_url)
+            await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
 
             # Find and click the like/heart button
             like_btn = self._page.locator(
                 "button[data-e2e='like-icon'], "
                 "button[data-e2e='like-button'], "
                 "span[data-e2e='like-icon'], "
-                "svg[data-e2e='like-icon'], "
                 "button[aria-label*='Like'], "
                 "button[aria-label*='like']"
             ).first
-            await like_btn.click(timeout=15000)
+            logger.info(f"like_post: Clicking like button on {post_url}")
+            await like_btn.click(timeout=15000, force=True)
             await self._human_delay(1, 2)
+            logger.info(f"like_post: Like clicked successfully")
             return ActionResult(success=True, action_type="like")
         except BlockerDetected:
             raise
         except Exception as e:
+            logger.error(f"like_post FAILED on {post_url}: {e}")
             return ActionResult(success=False, action_type="like", error=str(e))
 
     async def unlike_post(self, post_url: str) -> ActionResult:
