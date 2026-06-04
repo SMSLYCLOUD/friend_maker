@@ -280,30 +280,10 @@ class CampaignExecutor:
 
                         self.logger.info(f"Found {len(post_urls)} unique posts on @{source}")
 
-                        # SAFETY CHECK: Search for clone/fake accounts of the target
-                        if self.classifier:
-                            try:
-                                self.logger.info(f"Running clone safety check for '{source}'...")
-                                clone_results = await self.adapter.search_for_clones(source, limit=10)
-
-                                # Take screenshot of search results for LLM verification
-                                search_screenshot = None
-                                try:
-                                    ss_bytes = await self.adapter._page.screenshot(full_page=False)
-                                    search_screenshot = base64.b64encode(ss_bytes).decode("utf-8")
-                                except: pass
-
-                                clone_check = await self.classifier.check_clone_accounts(
-                                    source, clone_results, screenshot_b64=search_screenshot
-                                )
-                                self.logger.info(f"Clone check for @{source}: safe={clone_check['is_safe']}, clones={clone_check['clone_count']}, reason={clone_check['reason']}")
-
-                                if not clone_check["is_safe"]:
-                                    self.logger.warning(f"SKIPPING @{source}: {clone_check['reason']}")
-                                    # Skip this entire source
-                                    continue
-                            except Exception as e:
-                                self.logger.warning(f"Clone safety check failed: {e} — proceeding anyway")
+                        # SAFETY CHECK: For each commenter, check if target accounts follow them
+                        if self.classifier and source:
+                            self.logger.info(f"Safety check: searching followers of commenters for '{source}' accounts")
+                            # We'll check each commenter's followers below, before engaging
 
                         processed_commenters = set()
                         for post_url in post_urls:
@@ -344,17 +324,31 @@ class CampaignExecutor:
                                 processed_commenters.add(h)
                                 self.logger.info(f"Processing commenter @{h}...")
 
-                                profile_data = {"username": h, "bio": ""}
-                                try:
-                                    profile_data = await self.adapter.get_user_profile(h)
-                                except: pass
+                                # Run safety check + profile scrape + screenshot in parallel
+                                async def _scrape_profile():
+                                    try:
+                                        return await self.adapter.get_user_profile(h)
+                                    except:
+                                        return {"username": h, "bio": ""}
 
-                                # Capture screenshot for LLM verification
-                                screenshot_b64 = None
-                                try:
-                                    screenshot_bytes = await self.adapter._page.screenshot(full_page=False)
-                                    screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-                                except: pass
+                                async def _take_screenshot():
+                                    try:
+                                        ss = await self.adapter._page.screenshot(full_page=False)
+                                        return base64.b64encode(ss).decode("utf-8")
+                                    except:
+                                        return None
+
+                                async def _safety():
+                                    return await self._safety_check(h, [source])
+
+                                profile_data, screenshot_b64, safety_ok = await asyncio.gather(
+                                    _scrape_profile(), _take_screenshot(), _safety()
+                                )
+
+                                if not safety_ok:
+                                    self.logger.info(f"Skipping @{h}: safety check failed")
+                                    self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                                    continue
 
                                 # Run classifier with screenshot
                                 if self.classifier:
@@ -483,13 +477,26 @@ class CampaignExecutor:
                 error = None
 
                 if action_type == "growth":
-                    if self.classifier:
-                        profile_data = {"username": handle, "bio": ""}
+                    # Run profile scrape + screenshot in parallel
+                    async def _scrape():
                         try:
-                            profile_data = await self.adapter.get_user_profile(handle)
-                        except: pass
+                            return await self.adapter.get_user_profile(handle)
+                        except:
+                            return {"username": handle, "bio": ""}
+
+                    async def _ss():
+                        try:
+                            s = await self.adapter._page.screenshot(full_page=False)
+                            return base64.b64encode(s).decode("utf-8")
+                        except:
+                            return None
+
+                    profile_data, screenshot_b64 = await asyncio.gather(_scrape(), _ss())
+
+                    if self.classifier:
                         analysis = await self.classifier.classify(
-                            profile_data, bot_instructions=self.bot_instructions,
+                            profile_data, screenshot_b64=screenshot_b64,
+                            bot_instructions=self.bot_instructions,
                             ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
                         )
                         if analysis.get("should_skip"):
@@ -546,16 +553,32 @@ class CampaignExecutor:
                         except: pass
 
                 elif action_type == "outreach":
-                    profile_data = {"username": handle, "bio": ""}
-                    try:
-                        profile_data = await self.adapter.get_user_profile(handle)
-                        self.logger.info(f"Profile @{handle}: bio='{profile_data.get('bio', '')[:50]}', posts={len(profile_data.get('recent_posts', []))}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to scrape profile: {e}")
+                    # Run profile scrape + screenshot in parallel
+                    async def _scrape_o():
+                        try:
+                            return await self.adapter.get_user_profile(handle)
+                        except:
+                            return {"username": handle, "bio": ""}
+
+                    async def _ss_o():
+                        try:
+                            s = await self.adapter._page.screenshot(full_page=False)
+                            return base64.b64encode(s).decode("utf-8")
+                        except:
+                            return None
+
+                    profile_data, screenshot_b64 = await asyncio.gather(_scrape_o(), _ss_o())
+                    self.logger.info(f"Profile @{handle}: bio='{profile_data.get('bio', '')[:50]}', posts={len(profile_data.get('recent_posts', []))}")
+
+                    if not safety_ok:
+                        self.logger.info(f"Skipping @{handle}: safety check failed")
+                        self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
+                        continue
 
                     if self.classifier:
                         analysis = await self.classifier.classify(
-                            profile_data, bot_instructions=self.bot_instructions,
+                            profile_data, screenshot_b64=screenshot_b64,
+                            bot_instructions=self.bot_instructions,
                             ref_images=ref_images, campaign_instructions=campaign.ai_instructions or ""
                         )
                         self.logger.info(f"Classification @{handle}: skip={analysis.get('should_skip')}, reason={analysis.get('skip_reason')}, score={analysis.get('match_score')}")
@@ -1405,6 +1428,27 @@ class CampaignExecutor:
                 self.logger.error(f"Follow-back monitor error: {e}")
 
         self.logger.info("Follow-back monitor stopped.")
+
+    async def _safety_check(self, target_username: str, source_accounts: List[str]) -> bool:
+        """
+        Universal safety check before any interaction.
+        Checks if any of source_accounts follow target_username.
+        Returns True if SAFE to interact, False if should SKIP.
+        """
+        if not source_accounts or not self.classifier:
+            return True
+
+        try:
+            result = await self.adapter.check_user_followers(target_username, source_accounts)
+            if result["found"]:
+                matched = [m["username"] for m in result["matched_names"]]
+                self.logger.warning(f"SAFETY SKIP @{target_username}: target accounts found in followers: {matched}")
+                return False
+            self.logger.info(f"SAFETY OK @{target_username}: no target accounts in followers")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Safety check failed for @{target_username}: {e} — proceeding anyway")
+            return True
 
     def stop(self):
         self.running = False

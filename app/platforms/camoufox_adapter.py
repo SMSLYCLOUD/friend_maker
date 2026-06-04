@@ -1107,6 +1107,151 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"Check live failed: {e}")
             return {"username": handle, "is_live": False, "url": ""}
 
+    async def check_user_followers(self, username: str, search_names: List[str]) -> Dict[str, Any]:
+        """
+        Check if any of search_names appear in a user's followers list.
+        Returns: {"found": bool, "matched_names": [...], "follower_count": int}
+        """
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = username.lstrip("@")
+            url = f"https://www.{self.platform}.com/@{handle}"
+            logger.info(f"check_user_followers: Checking followers of @{handle}")
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
+
+            # Click on followers count to open followers list
+            followers_clicked = False
+            followers_selectors = [
+                '[data-e2e="followers-count"]',
+                'a[href*="/followers"]',
+                'strong[title="Followers"]',
+                'span:has-text("Followers")',
+            ]
+            for sel in followers_selectors:
+                try:
+                    el = self._page.locator(sel).first
+                    if await el.count() > 0:
+                        await el.click(timeout=10000)
+                        followers_clicked = True
+                        logger.info(f"check_user_followers: Clicked followers via '{sel}'")
+                        await self._human_delay(2, 3)
+                        break
+                except: pass
+
+            if not followers_clicked:
+                logger.warning(f"check_user_followers: Could not open followers list for @{handle}")
+                return {"found": False, "matched_names": [], "follower_count": 0}
+
+            # Get total follower count
+            follower_count = 0
+            try:
+                count_el = self._page.locator('[data-e2e="followers-count"]').first
+                if await count_el.count() > 0:
+                    count_text = await count_el.inner_text()
+                    follower_count = self._parse_count_text(count_text)
+            except: pass
+
+            # Search through followers list for matching names
+            matched = []
+            search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
+
+            # Scroll through followers list and check names
+            seen = set()
+            for scroll_i in range(20):  # Max 20 scrolls
+                # Get all visible follower names/usernames
+                try:
+                    items = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="follow-item"], div[class*="FollowerItem"]')
+                    if not items:
+                        # Fallback: get all links with /@
+                        items = await self._page.query_selector_all('a[href*="/@"]')
+                except:
+                    items = []
+
+                new_found = False
+                for item in items:
+                    try:
+                        # Get username from link
+                        link = await item.query_selector('a[href*="/@"]') if await item.evaluate("el => el.tagName") != "A" else item
+                        if not link:
+                            continue
+                        href = await link.get_attribute("href")
+                        if not href or "/@" not in href:
+                            continue
+                        item_username = href.split("/@")[1].split("?")[0].split("/").lower()
+                        if item_username in seen:
+                            continue
+                        seen.add(item_username)
+                        new_found = True
+
+                        # Get display name
+                        display_name = ""
+                        try:
+                            name_el = await item.query_selector('p[class*="nickname"], span[class*="nickname"], h3, h4')
+                            if name_el:
+                                display_name = (await name_el.inner_text()).lower()
+                        except: pass
+
+                        # Check if this follower matches any of our search names
+                        combined = f"{item_username} {display_name}".replace(".", " ").replace("_", " ").replace("-", " ")
+                        for search_name in search_lower:
+                            # Check if search name words appear in the follower's name
+                            search_words = search_name.split()
+                            if len(search_words) >= 2:
+                                # Multi-word name: check if most words match
+                                matches = sum(1 for w in search_words if w in combined)
+                                if matches >= len(search_words) - 1:  # Allow 1 word mismatch
+                                    matched.append({"username": item_username, "display_name": display_name, "matched_search": search_name})
+                                    logger.info(f"check_user_followers: FOUND match '@{item_username}' ({display_name}) for '{search_name}'")
+                            else:
+                                # Single word: exact or substring match
+                                if search_words[0] in combined and len(search_words[0]) >= 3:
+                                    matched.append({"username": item_username, "display_name": display_name, "matched_search": search_name})
+                                    logger.info(f"check_user_followers: FOUND match '@{item_username}' ({display_name}) for '{search_name}'")
+                    except: pass
+
+                # If we found matches, stop early
+                if matched:
+                    break
+
+                # If no new items found, we've reached the end
+                if not new_found and scroll_i > 2:
+                    break
+
+                # Scroll down
+                try:
+                    await self._page.mouse.wheel(0, 800)
+                    await self._human_delay(1, 2)
+                except: pass
+
+            logger.info(f"check_user_followers: @{handle} has {follower_count} followers, found {len(matched)} matches")
+            return {
+                "found": len(matched) > 0,
+                "matched_names": matched,
+                "follower_count": follower_count
+            }
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            logger.error(f"check_user_followers failed: {e}")
+            return {"found": False, "matched_names": [], "follower_count": 0}
+
+    def _parse_count_text(self, text: str) -> int:
+        """Parse follower count text like '1.2K' or '12,345'."""
+        if not text:
+            return 0
+        text = text.replace(",", "").replace(" ", "").lower()
+        if text.endswith("k"):
+            try: return int(float(text[:-1]) * 1000)
+            except: return 0
+        elif text.endswith("m"):
+            try: return int(float(text[:-1]) * 1000000)
+            except: return 0
+        try:
+            return int(text)
+        except:
+            return 0
+
     async def search_for_clones(self, target_name: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search TikTok for accounts similar to target_name. Returns list of {username, display_name, bio, followers}."""
         try:
