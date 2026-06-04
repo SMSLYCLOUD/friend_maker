@@ -64,7 +64,7 @@ services:
     environment:
       - DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@skyvern-postgres:5432/skyvern
       - BROWSER_STREAMING_MODE=cdp
-      - BROWSER_TYPE=chromium-headful
+      - BROWSER_TYPE=stealth-chromium
       - ENABLE_CODE_BLOCK=true
       # LLM via LiteLLM proxy — dynamic fallback Groq→OpenRouter→Google→SambaNova→NVIDIA
       - ENABLE_OPENAI_COMPATIBLE=true
