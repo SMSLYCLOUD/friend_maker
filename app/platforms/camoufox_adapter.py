@@ -77,7 +77,17 @@ class CamoufoxAdapter(PlatformAdapter):
 
         logger.info(f"Launching Camoufox browser for {self.platform}...")
         self._camoufox = AsyncCamoufox(**launch_kwargs)
-        self._context = await self._camoufox.__aenter__()
+        try:
+            self._context = await self._camoufox.__aenter__()
+        except Exception as e:
+            logger.warning(f"Camoufox launch failed with proxy, retrying without: {e}")
+            launch_kwargs.pop("proxy", None)
+            self._camoufox = AsyncCamoufox(**launch_kwargs)
+            self._context = await self._camoufox.__aenter__()
+
+        # Camoufox may return Browser or BrowserContext — get the context either way
+        if hasattr(self._context, 'new_context'):
+            self._context = await self._context.new_context()
 
         if session_data:
             await self._load_cookies(session_data)
