@@ -105,6 +105,30 @@ class CamoufoxAdapter(PlatformAdapter):
         except Exception:
             return "[]"
 
+    async def _run_with_retry(self, fn, *args, **kwargs):
+        """Run a function, restarting the browser if it died."""
+        for attempt in range(2):
+            try:
+                if self._page and self._page.is_closed():
+                    logger.warning("Page closed, restarting browser...")
+                    await self._ensure_browser(self._session_data)
+                return await fn(*args, **kwargs)
+            except Exception as e:
+                error_str = str(e).lower()
+                is_browser_dead = (
+                    "closed" in error_str
+                    or "disconnected" in error_str
+                    or "handler is closed" in error_str
+                    or "target closed" in error_str
+                )
+                if is_browser_dead and attempt == 0:
+                    logger.warning(f"Browser died, restarting: {e}")
+                    self._page = None
+                    self._context = None
+                    await self._ensure_browser(self._session_data)
+                    continue
+                raise
+
     @staticmethod
     def _get_proxy_config() -> Optional[dict]:
         url = os.getenv("SKYVERN_PROXY_URL", "").strip()
@@ -154,17 +178,21 @@ class CamoufoxAdapter(PlatformAdapter):
 
     async def _navigate(self, url: str):
         """Navigate to URL with human-like behavior."""
-        await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await self._human_delay(2, 4)
-        await self._human_scroll()
-        await self._human_move_mouse()
+        async def _do_navigate():
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await self._human_delay(2, 4)
+            await self._human_scroll()
+            await self._human_move_mouse()
+        await self._run_with_retry(_do_navigate)
 
     async def _extract_page_text(self) -> str:
         """Extract visible text from the page."""
-        try:
-            return await self._page.inner_text("body")
-        except Exception:
-            return ""
+        async def _do_extract():
+            try:
+                return await self._page.inner_text("body")
+            except Exception:
+                return ""
+        return await self._run_with_retry(_do_extract)
 
     def _llm_decide(self, page_text: str, prompt: str) -> str:
         """Ask the LLM what to do based on page content."""
