@@ -166,8 +166,8 @@ class CampaignExecutor:
         auth_result = await self.adapter.authenticate(account.session_data, account.username, account.password)
         if not auth_result:
             self.logger.error("Authentication failed. Aborting.")
-            if hasattr(self.adapter, 'cleanup'):
-                await self.adapter.cleanup()
+            if hasattr(self.adapter, 'close'):
+                await self.adapter.close()
             return
 
         self.logger.info("Authentication successful. Starting fetch→DM→next loop.")
@@ -275,6 +275,21 @@ class CampaignExecutor:
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
+                    # Pre-engagement: view stories, like recent posts
+                    try:
+                        await self.adapter.view_stories(handle)
+                        self.logger.info(f"Viewed stories for @{handle}")
+                    except: pass
+                    try:
+                        posts = await self.adapter.get_user_recent_posts(handle, limit=2)
+                        for p in posts[:2]:
+                            url = p.get("url", "")
+                            if url:
+                                await self.adapter.like_post(url)
+                                self.logger.info(f"Liked post by @{handle}")
+                                await self.anti_detect.random_delay(lambda: self.running)
+                    except: pass
+
                     res = await self.adapter.follow(handle)
                     success = res.success
                     error = res.error
@@ -301,6 +316,21 @@ class CampaignExecutor:
                             self.logger.info(f"Skipping @{handle}: low score ({analysis.get('match_score')})")
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
+
+                    # Pre-engagement: view stories, like recent posts
+                    try:
+                        await self.adapter.view_stories(handle)
+                        self.logger.info(f"Viewed stories for @{handle}")
+                    except: pass
+                    try:
+                        posts = await self.adapter.get_user_recent_posts(handle, limit=2)
+                        for p in posts[:2]:
+                            url = p.get("url", "")
+                            if url:
+                                await self.adapter.like_post(url)
+                                self.logger.info(f"Liked post by @{handle}")
+                                await self.anti_detect.random_delay(lambda: self.running)
+                    except: pass
 
                     msg = "Hello!"
                     if self.generator:
@@ -350,6 +380,91 @@ class CampaignExecutor:
                     res = await self.adapter.comment_on_recent_post(handle, comment_text)
                     success = res.success
                     error = res.error
+
+                elif action_type == "unfollow":
+                    res = await self.adapter.unfollow(handle)
+                    success = res.success
+                    error = res.error
+
+                elif action_type == "comment_reply":
+                    post_url = campaign.targeting.get("post_url", "")
+                    if not post_url:
+                        self.logger.warning("comment_reply requires post_url in targeting")
+                        break
+                    comments = await self.adapter.get_post_comments(post_url, limit=fetch_limit)
+                    if not comments:
+                        self.logger.info("No comments found on post")
+                        break
+                    for c in comments:
+                        commenter = c.get("username", "").lstrip("@")
+                        if not commenter or self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, commenter, action_type):
+                            continue
+                        reply_text = "Great point!"
+                        if self.generator:
+                            profile_data = {"username": commenter, "bio": "", "comment_text": c.get("text", "")}
+                            reply_text = await self.generator.generate_dm(
+                                profile_data, campaign.message_template, campaign.ai_instructions,
+                                bot_instructions=self.bot_instructions, ref_images=ref_images
+                            )
+                        res = await self.adapter.reply_to_comment(c.get("id", ""), reply_text, post_url=post_url)
+                        if res.success:
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, commenter, commenter, action_type, campaign.id)
+                            actions_today += 1
+                            self.logger.info(f"✓ Replied to @{commenter}'s comment")
+                        await self.anti_detect.random_delay(lambda: self.running)
+                    success = True
+
+                elif action_type == "comment_follow":
+                    post_url = campaign.targeting.get("post_url", "")
+                    if not post_url:
+                        self.logger.warning("comment_follow requires post_url in targeting")
+                        break
+                    commenters = await self.adapter.get_post_commenters(post_url, limit=fetch_limit)
+                    if not commenters:
+                        self.logger.info("No commenters found on post")
+                        break
+                    for u in commenters:
+                        h = u.platform_id.lstrip("@")
+                        if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
+                            continue
+                        res = await self.adapter.follow(h)
+                        if res.success:
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                            actions_today += 1
+                            self.logger.info(f"✓ Followed commenter @{h}")
+                        await self.anti_detect.random_delay(lambda: self.running)
+                    success = True
+
+                elif action_type == "comment_dm":
+                    post_url = campaign.targeting.get("post_url", "")
+                    if not post_url:
+                        self.logger.warning("comment_dm requires post_url in targeting")
+                        break
+                    commenters = await self.adapter.get_post_commenters(post_url, limit=fetch_limit)
+                    if not commenters:
+                        self.logger.info("No commenters found on post")
+                        break
+                    for u in commenters:
+                        h = u.platform_id.lstrip("@")
+                        if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
+                            continue
+                        profile_data = {"username": h, "bio": ""}
+                        try:
+                            profile_data = await self.adapter.get_user_profile(h)
+                        except: pass
+                        msg = "Hello!"
+                        if self.generator:
+                            msg = await self.generator.generate_dm(
+                                profile_data, campaign.message_template, campaign.ai_instructions,
+                                bot_instructions=self.bot_instructions, ref_images=ref_images
+                            )
+                        res = await self.adapter.send_dm(h, msg)
+                        if res.success:
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
+                            actions_today += 1
+                            self.logger.info(f"✓ DM'd commenter @{h}")
+                        await self.anti_detect.random_delay(lambda: self.running)
+                    success = True
 
                 # Log and register
                 self.repo.log_action(ActionLog(
@@ -425,8 +540,8 @@ class CampaignExecutor:
 
         if not self.running:
             self.logger.info("Campaign stopped by user. Closing browser session.")
-            if hasattr(self.adapter, 'cleanup'):
-                await self.adapter.cleanup()
+            if hasattr(self.adapter, 'close'):
+                await self.adapter.close()
         else:
             self.logger.info("Campaign ended but browser session kept alive for next run.")
 
