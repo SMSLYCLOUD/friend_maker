@@ -6,11 +6,79 @@ import time
 from typing import Optional, List, Dict, Any
 
 from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
+from app.exceptions import BlockerDetected
 
 logger = logging.getLogger("SkyvernAdapter")
 
 SKYVERN_BASE_URL = os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
 INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "300"))
+
+# Prompt prefix to make Skyvern behave more human-like
+STEALTH_PROMPT_PREFIX = (
+    "Before taking any action: scroll down a little, wait 2-3 seconds, then scroll back up. "
+    "Move the mouse around randomly for a moment before clicking. "
+    "When typing, add small delays between characters (like a human would). "
+    "Do not rush through actions — take your time. "
+    "If you see a pop-up or overlay, close it by clicking outside or pressing Escape before proceeding. "
+)
+
+# Signals that indicate the task hit a blocker requiring human intervention
+BLOCKER_SIGNALS = [
+    # Generic authentication/login
+    "login page", "log in", "sign in", "sign up",
+    "create an account", "create account",
+    "phone number", "email verification",
+    "two-factor", "2fa", "otp",
+    "welcome back", "enter your password",
+    "remember me", "forgot password",
+    # Captcha/verification
+    "captcha", "verify you are human", "verification required",
+    "robot check", "bot check", "security check",
+    "prove you", "not a robot", "human verification",
+    "please verify", "verify your identity",
+    "turnstile", "recaptcha", "hcaptcha", "funcaptcha",
+    "image verification", "select all",
+    # Account status
+    "access denied", "blocked", "suspended",
+    "banned", "deactivated", "restricted",
+    "account disabled", "account suspended",
+    "temporarily locked", "temporarily blocked",
+    "too many attempts", "rate limit",
+    "try again later", "slow down",
+    # Cookie/consent
+    "cookie consent", "accept cookies",
+    "privacy policy", "accept and continue",
+    # Platform-specific: Instagram
+    "sorry, this page isn't available", "page not found",
+    "this account is private", "this user is private",
+    "confirm it's you", "suspicious activity",
+    # Platform-specific: Twitter/X
+    "something went wrong", "try again",
+    "unusual activity", "suspicious login",
+    "account locked", "verify your phone",
+    "confirm your identity", "unusual sign-in",
+    # Platform-specific: TikTok
+    "verify your account", "confirm your account",
+    "login required", "sign in to continue",
+    "this content is unavailable", "restricted account",
+    "age-restricted", "content not available",
+    # Platform-specific: Facebook
+    "content not available", "this content isn't available",
+    "log in to continue", "review your account",
+    "security notice", "suspicious activity detected",
+    "confirm your identity", "verify your account",
+    # Platform-specific: LinkedIn
+    "authentication required", "sign in to continue",
+    "verify your email", "confirm your email",
+    "account restricted", "suspicious activity",
+    # Platform-specific: YouTube/Google
+    "sign in to your google account", "verify it's you",
+    "google captcha", "unusual traffic",
+    # Cloudflare/challenge pages
+    "cloudflare", "checking your browser",
+    "attention required", "just a moment",
+    "browser verification", "challenge",
+]
 
 # Timestamp of last completed Skyvern task (module-level for adapter instances)
 _last_task_time: float = 0.0
@@ -47,6 +115,25 @@ class SkyvernAdapter(PlatformAdapter):
             return "; ".join(parts)
         except Exception:
             return ""
+
+    @staticmethod
+    def _get_stealth_headers() -> dict:
+        """Return HTTP headers that help avoid bot detection."""
+        return {
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+            "Cache-Control": "max-age=0",
+            "DNT": "1",
+        }
 
     async def _ensure_browser_session(self, session_data: Optional[str] = None):
         """Ensure we have a browser session ID for task reuse.
@@ -90,6 +177,39 @@ class SkyvernAdapter(PlatformAdapter):
             logger.info(f"Rate-limit guard: sleeping {wait:.0f}s before next task")
             await asyncio.sleep(wait)
 
+    def _check_for_blockers(self, result: dict, url: str = ""):
+        """Check Skyvern task output for blocker signals. Raises BlockerDetected if found."""
+        output = result.get("output")
+        if not output:
+            return
+
+        # Extract text to scan for blocker signals
+        text_parts = []
+        if isinstance(output, dict):
+            for v in output.values():
+                if isinstance(v, str):
+                    text_parts.append(v.lower())
+                elif isinstance(v, list):
+                    for item in v:
+                        if isinstance(item, str):
+                            text_parts.append(item.lower())
+                        elif isinstance(item, dict):
+                            text_parts.extend(str(val).lower() for val in item.values() if isinstance(val, str))
+        elif isinstance(output, str):
+            text_parts.append(output.lower())
+
+        combined = " ".join(text_parts)
+
+        for signal in BLOCKER_SIGNALS:
+            if signal in combined:
+                blocker_type = signal.replace(" ", "_")
+                logger.warning(f"Blocker detected: '{signal}' in task output for {url}")
+                raise BlockerDetected(
+                    blocker_type=blocker_type,
+                    message=f"Detected '{signal}' on page. Human intervention required.",
+                    url=url,
+                )
+
     async def _run_task_with_extraction(
         self, prompt: str, url: str, extraction_goal: str, extraction_schema: dict,
         poll_interval: float = 5.0, timeout: float = 600.0
@@ -100,8 +220,11 @@ class SkyvernAdapter(PlatformAdapter):
         await self._inter_task_wait()
         api_key = os.getenv("SKYVERN_API_KEY", "")
 
+        # Add stealth prompt prefix for human-like behavior
+        full_prompt = STEALTH_PROMPT_PREFIX + prompt
+
         payload = {
-            "prompt": prompt,
+            "prompt": full_prompt,
             "url": url,
             "data_extraction_goal": extraction_goal,
             "data_extraction_schema": extraction_schema,
@@ -111,7 +234,11 @@ class SkyvernAdapter(PlatformAdapter):
         if self._browser_session_id:
             payload["browser_session_id"] = self._browser_session_id
         if self._cookie_header:
-            payload["extra_http_headers"] = {"Cookie": self._cookie_header}
+            extra_headers = {"Cookie": self._cookie_header}
+            extra_headers.update(self._get_stealth_headers())
+            payload["extra_http_headers"] = extra_headers
+        else:
+            payload["extra_http_headers"] = self._get_stealth_headers()
         proxy_config = self._get_proxy_config()
         if proxy_config:
             payload["proxy"] = proxy_config
@@ -140,6 +267,9 @@ class SkyvernAdapter(PlatformAdapter):
 
         _last_task_time = time.monotonic()
         logger.info(f"Extraction task done: status={status}, output={'present' if result.get('output') else 'null'}")
+
+        # Check for blockers before returning
+        self._check_for_blockers(result, url)
 
         # Retry once if output is null (likely Groq 413 — screenshots too large)
         if not result.get("output") and status == "completed":
@@ -205,8 +335,11 @@ class SkyvernAdapter(PlatformAdapter):
         api_key = os.getenv("SKYVERN_API_KEY", "")
         proxy_config = self._get_proxy_config()
 
+        # Add stealth prompt prefix for human-like behavior
+        full_prompt = STEALTH_PROMPT_PREFIX + prompt
+
         payload: dict[str, Any] = {
-            "prompt": prompt,
+            "prompt": full_prompt,
             "wait_for_completion": False,
         }
         if url:
@@ -219,8 +352,12 @@ class SkyvernAdapter(PlatformAdapter):
         else:
             logger.warning("No browser session ID set - task will use fresh browser (may fail for logged-in pages)")
         if self._cookie_header:
-            payload["extra_http_headers"] = {"Cookie": self._cookie_header}
+            extra_headers = {"Cookie": self._cookie_header}
+            extra_headers.update(self._get_stealth_headers())
+            payload["extra_http_headers"] = extra_headers
             logger.info(f"Passing cookie header ({len(self._cookie_header)} chars)")
+        else:
+            payload["extra_http_headers"] = self._get_stealth_headers()
         if proxy_config:
             payload["proxy"] = proxy_config
             logger.info(f"Using proxy: {proxy_config['url'][:30]}...")
@@ -268,6 +405,9 @@ class SkyvernAdapter(PlatformAdapter):
                 logger.info(f"Skyvern task completed: status={status}, run_id={run_id}, output_keys={list(output.keys()) if isinstance(output, dict) else 'N/A'}")
 
                 pm.mark_success(provider_name)
+
+                # Check for blockers before returning
+                self._check_for_blockers(result, url or "")
 
                 if status == "failed":
                     error_msg = result.get("error", "Skyvern task failed")
