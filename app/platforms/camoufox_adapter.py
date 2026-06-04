@@ -67,13 +67,6 @@ class CamoufoxAdapter(PlatformAdapter):
             "headless": True,
             "os": ["windows", "macos"],
         }
-        if proxy_config:
-            launch_kwargs["proxy"] = {
-                "server": proxy_config["url"],
-            }
-            if proxy_config.get("username"):
-                launch_kwargs["proxy"]["username"] = proxy_config["username"]
-                launch_kwargs["proxy"]["password"] = proxy_config.get("password", "")
 
         logger.info(f"Launching Camoufox browser for {self.platform}...")
         self._camoufox = AsyncCamoufox(**launch_kwargs)
