@@ -413,12 +413,20 @@ class CamoufoxAdapter(PlatformAdapter):
             dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={numeric_id}"
             logger.info(f"send_dm: Navigating to DM: {dm_url}")
             await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
-            await self._human_delay(3, 5)
+
+            # Wait for DM page to fully load (chat unique ID indicator)
+            try:
+                await self._page.locator('p[data-e2e="chat-uniqueid"]').wait_for(state="visible", timeout=30000)
+                logger.info("send_dm: DM page loaded")
+            except:
+                logger.warning("send_dm: DM page load indicator not found, continuing anyway")
+
+            await self._human_delay(2, 4)
 
             # Wait for DM input box
             dm_input = self._page.locator('div[aria-label="Send a message..."][role="textbox"]')
             try:
-                await dm_input.wait_for(state="visible", timeout=15000)
+                await dm_input.wait_for(state="visible", timeout=30000)
             except:
                 # Check for warning messages
                 page_text = await self._extract_page_text()
@@ -430,11 +438,23 @@ class CamoufoxAdapter(PlatformAdapter):
                     "violated",
                     "temporarily prevented",
                     "Chat messages limit reached",
+                    "You are sending messages too fast",
+                    "This account can't send or receive messages",
+                    "The message couldn't be sent",
                 ]
                 for w in warnings:
                     if w.lower() in page_text.lower():
                         logger.warning(f"send_dm: DM blocked — {w}")
                         return ActionResult(success=False, action_type="dm", error=f"DM blocked: {w}")
+
+                # Also check for dm-warning element
+                try:
+                    warn_el = await self._page.query_selector('[data-e2e="dm-warning"]')
+                    if warn_el:
+                        warn_text = await warn_el.inner_text()
+                        logger.warning(f"send_dm: DM warning element — {warn_text}")
+                        return ActionResult(success=False, action_type="dm", error=f"DM warning: {warn_text}")
+                except: pass
 
                 logger.warning(f"send_dm: DM input not found at {self._page.url}")
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
@@ -446,13 +466,13 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._human_delay(0.5, 1)
 
             # Click send button
-            send_btn = self._page.locator('div[data-e2e="dm-icon-send"]').first
+            send_btn = self._page.locator('[class*="StyledSendButton"]').first
             try:
-                await send_btn.wait_for(state="visible", timeout=5000)
+                await send_btn.wait_for(state="visible", timeout=10000)
                 await send_btn.click(timeout=10000)
             except:
-                # Fallback: try Enter key
-                await dm_input.press("Enter")
+                # Fallback: use keyboard Enter (avoids stale locator after typing)
+                await self._page.keyboard.press("Enter")
 
             await self._human_delay(1, 2)
             logger.info(f"send_dm: DM sent to @{handle}")
