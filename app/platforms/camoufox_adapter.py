@@ -503,25 +503,30 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=30000)
             await self._human_delay(3, 5)
 
-            # Scroll down to load comments (TikTok lazy-loads)
-            for _ in range(5):
+            # Infinite scroll until no new comment links load
+            prev_count = 0
+            for i in range(20):
                 await self._page.mouse.wheel(0, 1200)
                 await self._human_delay(1.5, 2.5)
+                links = await self._page.query_selector_all('a[href*="/@"]')
+                curr_count = len(links)
+                if curr_count == prev_count and i > 2:
+                    break
+                prev_count = curr_count
 
-            # Try HTML extraction first — look for comment author links
-            usernames = []
+            # Extract commenters from HTML
             try:
                 links = await self._page.query_selector_all('a[href*="/@"]')
                 for link in links[:limit * 3]:
                     href = await link.get_attribute("href")
                     if href and "/@" in href:
                         username = href.split("/@")[-1].split("/")[0].split("?")[0]
-                        if username and len(username) > 1 and username not in usernames:
-                            usernames.append(username)
-                if usernames:
-                    logger.info(f"Extracted {len(usernames)} commenters from HTML")
-                    for u in usernames[:limit]:
-                        results.append(UserProfile(platform_id=u, username=u))
+                        if username and len(username) > 1:
+                            results.append(UserProfile(platform_id=username, username=username))
+                            if len(results) >= limit:
+                                break
+                if results:
+                    logger.info(f"Extracted {len(results)} commenters from HTML")
                     return results
             except Exception as e:
                 logger.warning(f"HTML commenter extraction failed: {e}")

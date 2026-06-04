@@ -223,13 +223,23 @@ class CampaignExecutor:
                             self.logger.warning(f"Failed to navigate to profile: {e}")
                             continue
 
-                        # Find post links on profile
+                        # Infinite scroll to load all posts
                         try:
-                            links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
+                            prev_count = 0
+                            for i in range(20):
+                                await self.adapter._page.mouse.wheel(0, 1200)
+                                await self.adapter._human_delay(1.5, 2.5)
+                                links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
+                                curr_count = len(links)
+                                if curr_count == prev_count and i > 2:
+                                    break
+                                prev_count = curr_count
+
                             import re
                             post_urls = []
                             seen_ids = set()
-                            for link in links[:30]:
+                            links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
+                            for link in links[:50]:
                                 href = await link.get_attribute("href")
                                 if not href:
                                     continue
