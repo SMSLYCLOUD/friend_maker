@@ -24,14 +24,14 @@ RUN cd /opt/noVNC/utils && npm install
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Camoufox browser as root (needs write access to site-packages)
-RUN python -m camoufox fetch
-
-# Create non-root user for security
+# Create non-root user FIRST so camoufox downloads to the right home
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/data /app/cookies /app/scratch /app/uploads && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/data /app/cookies /app/scratch /app/uploads /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser/.cache
+
+# Install Camoufox browser as appuser (persists in volume mount)
 USER appuser
+RUN python -m camoufox fetch
 
 # Grant appuser access to noVNC
 USER root
