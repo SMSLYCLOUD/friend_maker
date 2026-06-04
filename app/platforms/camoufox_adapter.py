@@ -610,16 +610,25 @@ class CamoufoxAdapter(PlatformAdapter):
             posts = []
             try:
                 links = await self._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
-                seen_urls = set()
-                for link in links[:limit * 3]:
+                seen_ids = set()
+                for link in links[:limit * 5]:
                     href = await link.get_attribute("href")
-                    if href and href not in seen_urls:
-                        if not href.startswith("http"):
-                            href = f"https://www.{self.platform}.com{href}"
-                        seen_urls.add(href)
-                        posts.append({"url": href, "caption": ""})
-                        if len(posts) >= limit:
-                            break
+                    if not href:
+                        continue
+                    # Extract video/photo ID for dedup
+                    import re
+                    vid_match = re.search(r'/(video|photo)/(\d+)', href)
+                    if not vid_match:
+                        continue
+                    vid_id = vid_match.group(2)
+                    if vid_id in seen_ids:
+                        continue
+                    seen_ids.add(vid_id)
+                    if not href.startswith("http"):
+                        href = f"https://www.{self.platform}.com{href}"
+                    posts.append({"url": href, "caption": ""})
+                    if len(posts) >= limit:
+                        break
                 if posts:
                     logger.info(f"Extracted {len(posts)} posts from HTML for @{handle}")
                     return posts
