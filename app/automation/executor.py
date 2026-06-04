@@ -438,9 +438,49 @@ class CampaignExecutor:
                             self.repo.register_contact(self.user_id, self.adapter.platform_name, handle, handle, action_type, campaign.id)
                             continue
 
-                    res = await self.adapter.follow(handle)
-                    success = res.success
-                    error = res.error
+                    # Check if private
+                    is_private = profile_data.get("is_private", False)
+
+                    # View stories (skip if private)
+                    if not is_private:
+                        try:
+                            await self.adapter.view_stories(handle)
+                            self.logger.info(f"Viewed stories for @{handle}")
+                        except: pass
+
+                    # Like recent posts (skip if private)
+                    if not is_private:
+                        try:
+                            user_posts = await self.adapter.get_user_recent_posts(handle, limit=2)
+                            for p in user_posts[:2]:
+                                p_url = p.get("url", "")
+                                if p_url:
+                                    await self.adapter.like_post(p_url)
+                                    self.logger.info(f"Liked post by @{handle}")
+                                    await self.anti_detect.random_delay(lambda: self.running)
+                        except: pass
+
+                    # Follow
+                    try:
+                        res = await self.adapter.follow(handle)
+                        success = res.success
+                        error = res.error
+                    except: pass
+                    await self.anti_detect.random_delay(lambda: self.running)
+
+                    # DM (skip if private)
+                    if not is_private:
+                        msg = "Hello!"
+                        if self.generator:
+                            msg = await self.generator.generate_dm(
+                                profile_data, campaign.message_template, campaign.ai_instructions,
+                                bot_instructions=self.bot_instructions, ref_images=ref_images
+                            )
+                        try:
+                            res = await self.adapter.send_dm(handle, msg)
+                            if res.success:
+                                self.logger.info(f"DM'd @{handle}")
+                        except: pass
 
                 elif action_type == "outreach":
                     profile_data = {"username": handle, "bio": ""}
