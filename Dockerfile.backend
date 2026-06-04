@@ -25,6 +25,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install-deps chromium
 
+# Install Camoufox browser as root (needs write access to site-packages)
+RUN python -m camoufox fetch
+
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/data /app/cookies /app/scratch /app/uploads && \
@@ -38,9 +41,6 @@ USER appuser
 
 # Install Playwright browsers for appuser
 RUN playwright install chromium
-
-# Install Camoufox browser (anti-detection Firefox)
-RUN python -m camoufox fetch
 
 # Install Node.js dependencies with proper permissions
 RUN npm init -y && npm install playwright-extra puppeteer-extra-plugin-stealth cloakbrowser playwright-core
