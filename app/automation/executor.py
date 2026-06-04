@@ -226,7 +226,7 @@ class CampaignExecutor:
                         # Infinite scroll to load all posts
                         try:
                             prev_count = 0
-                            for i in range(20):
+                            for i in range(100):
                                 await self.adapter._page.mouse.wheel(0, 1200)
                                 await self.adapter._human_delay(1.5, 2.5)
                                 links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')

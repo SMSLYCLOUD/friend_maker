@@ -505,7 +505,7 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # Infinite scroll until no new comment links load
             prev_count = 0
-            for i in range(20):
+            for i in range(100):
                 await self._page.mouse.wheel(0, 1200)
                 await self._human_delay(1.5, 2.5)
                 links = await self._page.query_selector_all('a[href*="/@"]')
