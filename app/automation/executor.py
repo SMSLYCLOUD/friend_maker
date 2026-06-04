@@ -293,6 +293,10 @@ class CampaignExecutor:
                                 if h.isdigit():
                                     self.logger.info(f"Skipping numeric ID @{h}")
                                     continue
+                                # Skip logged-in user's own account
+                                if self.adapter._current_username and h.lower() == self.adapter._current_username:
+                                    self.logger.info(f"Skipping logged-in account @{h}")
+                                    continue
                                 if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
                                     continue
                                 processed_commenters.add(h)

@@ -244,6 +244,23 @@ class CamoufoxAdapter(PlatformAdapter):
             self._check_for_blockers(text, home_url)
             logged_in = not any(w in text.lower() for w in ["log in", "sign in", "sign up"])
             logger.info(f"Auth check: logged_in={logged_in}")
+
+            # Extract logged-in username from page source
+            if logged_in:
+                try:
+                    import re
+                    page_source = await self._page.content()
+                    # Try various patterns TikTok uses
+                    match = re.search(r'"uniqueId":"([^"]+)"', page_source)
+                    if not match:
+                        match = re.search(r'"username":"([^"]+)"', page_source)
+                    if not match:
+                        match = re.search(r'"user":\{"uniqueId":"([^"]+)"', page_source)
+                    if match:
+                        self._current_username = match.group(1).lower()
+                        logger.info(f"Logged-in username: @{self._current_username}")
+                except: pass
+
             return logged_in
         except BlockerDetected:
             raise
@@ -1048,4 +1065,5 @@ class CamoufoxAdapter(PlatformAdapter):
         finally:
             self._page = None
             self._context = None
-            self._camoufox = None
+        self._camoufox = None
+        self._current_username: Optional[str] = None
