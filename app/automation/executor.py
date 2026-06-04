@@ -324,31 +324,31 @@ class CampaignExecutor:
                                 processed_commenters.add(h)
                                 self.logger.info(f"Processing commenter @{h}...")
 
-                                # Run safety check + profile scrape + screenshot in parallel
+                                # Safety check + profile scrape in parallel
                                 async def _scrape_profile():
                                     try:
                                         return await self.adapter.get_user_profile(h)
                                     except:
                                         return {"username": h, "bio": ""}
 
-                                async def _take_screenshot():
-                                    try:
-                                        ss = await self.adapter._page.screenshot(full_page=False)
-                                        return base64.b64encode(ss).decode("utf-8")
-                                    except:
-                                        return None
-
                                 async def _safety():
                                     return await self._safety_check(h, [source])
 
-                                profile_data, screenshot_b64, safety_ok = await asyncio.gather(
-                                    _scrape_profile(), _take_screenshot(), _safety()
+                                profile_data, safety_ok = await asyncio.gather(
+                                    _scrape_profile(), _safety()
                                 )
 
                                 if not safety_ok:
                                     self.logger.info(f"Skipping @{h}: safety check failed")
                                     self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                     continue
+
+                                # Screenshot AFTER profile scrape (page is now loaded)
+                                screenshot_b64 = None
+                                try:
+                                    ss = await self.adapter._page.screenshot(full_page=False)
+                                    screenshot_b64 = base64.b64encode(ss).decode("utf-8")
+                                except: pass
 
                                 # Run classifier with screenshot
                                 if self.classifier:
@@ -477,21 +477,18 @@ class CampaignExecutor:
                 error = None
 
                 if action_type == "growth":
-                    # Run profile scrape + screenshot in parallel
-                    async def _scrape():
-                        try:
-                            return await self.adapter.get_user_profile(handle)
-                        except:
-                            return {"username": handle, "bio": ""}
+                    # Profile scrape
+                    try:
+                        profile_data = await self.adapter.get_user_profile(handle)
+                    except:
+                        profile_data = {"username": handle, "bio": ""}
 
-                    async def _ss():
-                        try:
-                            s = await self.adapter._page.screenshot(full_page=False)
-                            return base64.b64encode(s).decode("utf-8")
-                        except:
-                            return None
-
-                    profile_data, screenshot_b64 = await asyncio.gather(_scrape(), _ss())
+                    # Screenshot AFTER profile scrape
+                    screenshot_b64 = None
+                    try:
+                        s = await self.adapter._page.screenshot(full_page=False)
+                        screenshot_b64 = base64.b64encode(s).decode("utf-8")
+                    except: pass
 
                     if self.classifier:
                         analysis = await self.classifier.classify(
@@ -553,22 +550,19 @@ class CampaignExecutor:
                         except: pass
 
                 elif action_type == "outreach":
-                    # Run profile scrape + screenshot in parallel
-                    async def _scrape_o():
-                        try:
-                            return await self.adapter.get_user_profile(handle)
-                        except:
-                            return {"username": handle, "bio": ""}
-
-                    async def _ss_o():
-                        try:
-                            s = await self.adapter._page.screenshot(full_page=False)
-                            return base64.b64encode(s).decode("utf-8")
-                        except:
-                            return None
-
-                    profile_data, screenshot_b64 = await asyncio.gather(_scrape_o(), _ss_o())
+                    # Profile scrape
+                    try:
+                        profile_data = await self.adapter.get_user_profile(handle)
+                    except:
+                        profile_data = {"username": handle, "bio": ""}
                     self.logger.info(f"Profile @{handle}: bio='{profile_data.get('bio', '')[:50]}', posts={len(profile_data.get('recent_posts', []))}")
+
+                    # Screenshot AFTER profile scrape
+                    screenshot_b64 = None
+                    try:
+                        s = await self.adapter._page.screenshot(full_page=False)
+                        screenshot_b64 = base64.b64encode(s).decode("utf-8")
+                    except: pass
 
                     if not safety_ok:
                         self.logger.info(f"Skipping @{handle}: safety check failed")
