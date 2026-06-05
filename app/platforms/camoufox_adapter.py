@@ -639,6 +639,30 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
+            # Close any inbox/notification overlays that TikTok opens by default
+            # The main div gets inert="true" when overlays are active
+            for _ in range(3):
+                try:
+                    # Check if main content is inert (overlay is active)
+                    is_inert = await self._page.evaluate(
+                        'document.querySelector("#app")?.getAttribute("inert") === "true"'
+                    )
+                    if is_inert:
+                        logger.info("get_post_commenters: Overlay detected (inert=true), pressing Escape to close")
+                        await self._page.keyboard.press("Escape")
+                        await self._human_delay(1, 2)
+                    else:
+                        break
+                except: break
+
+            # Also click on the main video area to dismiss any remaining overlays
+            try:
+                video_section = self._page.locator('section[aria-label*="full screen"], section[aria-label*="Watch"]').first
+                if await video_section.count() > 0:
+                    await video_section.click(timeout=3000)
+                    await self._human_delay(1, 2)
+            except: pass
+
             # Extract video owner from URL to exclude them
             video_owner = ""
             try:
@@ -1235,6 +1259,20 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._ensure_browser(self._session_data)
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
+
+            # Close any inbox/notification overlays
+            for _ in range(3):
+                try:
+                    is_inert = await self._page.evaluate(
+                        'document.querySelector("#app")?.getAttribute("inert") === "true"'
+                    )
+                    if is_inert:
+                        logger.info("like_post: Overlay detected, pressing Escape")
+                        await self._page.keyboard.press("Escape")
+                        await self._human_delay(1, 2)
+                    else:
+                        break
+                except: break
 
             # Try multiple selector strategies for video and photo posts
             like_btn = None
