@@ -749,7 +749,32 @@ class CamoufoxAdapter(PlatformAdapter):
             #     non-commenters from the header/sidebar (this was the root cause
             #     of the "stuck in a loop" bug). ---
             if not comment_links:
-                logger.warning("get_post_commenters: no comments found on this post (no container matched)")
+                # DEBUG: dump all data-e2e attributes on the page so we can see
+                # what TikTok is actually rendering
+                try:
+                    all_e2e = await self._page.query_selector_all('[data-e2e]')
+                    e2e_vals = []
+                    for el in all_e2e[:50]:
+                        try:
+                            val = await el.get_attribute("data-e2e")
+                            if val:
+                                e2e_vals.append(val)
+                        except: pass
+                    logger.warning(f"get_post_commenters: NO COMMENTS FOUND. Page data-e2e dump: {e2e_vals}")
+
+                    # Also dump all <section> tags (comment list is often in a section)
+                    sections = await self._page.query_selector_all('section')
+                    logger.warning(f"get_post_commenters: Found {len(sections)} <section> elements")
+                    for i, sec in enumerate(sections[:10]):
+                        try:
+                            aria = await sec.get_attribute("aria-label") or ""
+                            cls = (await sec.get_attribute("class") or "")[:60]
+                            child_count = await sec.evaluate("el => el.children.length")
+                            logger.warning(f"  section[{i}]: aria='{aria}' class='{cls}' children={child_count}")
+                        except: pass
+                except Exception as e:
+                    logger.error(f"get_post_commenters: debug dump failed: {e}")
+
                 return results
 
             # --- Phase 4: dedupe + filter ---
