@@ -1247,8 +1247,8 @@ class CampaignExecutor:
 
     async def _monitor_responses(self, campaign: Campaign):
         """Background task: check inbox for responses and send follow-ups."""
-        self.logger.info("Response monitor started. Checking inbox every 120s.")
-        check_interval = 120
+        self.logger.info("Response monitor started. Checking inbox every 30 minutes.")
+        check_interval = 1800
 
         while self.running:
             await asyncio.sleep(check_interval)
@@ -1262,6 +1262,11 @@ class CampaignExecutor:
 
             # Wait for main loop to fully settle after clearing _busy
             await asyncio.sleep(10)
+
+            # Re-check busy after waiting — main loop may have started navigating
+            if self._busy:
+                self.logger.info("Response monitor: main loop busy after settle, skipping.")
+                continue
 
             try:
                 self.logger.info("Checking inbox for responses...")
@@ -1367,8 +1372,8 @@ class CampaignExecutor:
 
     async def _monitor_follow_backs(self, campaign: Campaign):
         """Background task: check for follow-backs and DM those who followed back."""
-        self.logger.info("Follow-back monitor started. Checking every 180s.")
-        check_interval = 180
+        self.logger.info("Follow-back monitor started. Checking every 30 minutes.")
+        check_interval = 1800
 
         while self.running:
             await asyncio.sleep(check_interval)
@@ -1380,6 +1385,11 @@ class CampaignExecutor:
                 continue
 
             await asyncio.sleep(10)  # Settle time after _busy clears
+
+            # Re-check busy after waiting
+            if self._busy:
+                self.logger.info("Follow-back monitor: main loop busy after settle, skipping.")
+                continue
 
             try:
                 # Get pending follow-backs
