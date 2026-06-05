@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from typing import Optional, List, Dict, Any
 
@@ -415,102 +416,54 @@ class CamoufoxAdapter(PlatformAdapter):
             page_text = await self._extract_page_text()
             self._check_for_blockers(page_text, url)
 
-            # Try to open DM — click Message button on profile
-            msg_btn_clicked = False
-            msg_btn_selectors = [
-                'button:has-text("Message")',
-                '[data-e2e="message-button"]',
-                'div[role="button"]:has-text("Message")',
-                'a[href*="/direct"]',
-                '//p[text()="Send message"]',
-                '//div[contains(@class, "message")]//button',
-            ]
-            for sel in msg_btn_selectors:
+            # Extract user_id from page source JSON
+            page_source = await self._page.content()
+            user_id_match = re.search(r'"id"\s*:\s*"(\d{1,30})"', page_source)
+            if not user_id_match:
+                # Try alternate pattern
+                user_id_match = re.search(r'"userId"\s*:\s*"(\d{1,30})"', page_source)
+            if not user_id_match:
+                logger.warning(f"send_dm: Could not extract user_id for @{handle}")
+                return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
+
+            uid = user_id_match.group(1)
+            logger.info(f"send_dm: Got user_id={uid} for @{handle}")
+
+            # Navigate directly to DM page using user_id
+            dm_url = f"https://www.{self.platform}.com/direct/inbox?lang=en&u={uid}"
+            logger.info(f"send_dm: Navigating to DM page: {dm_url}")
+            await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
+
+            # Wait for DM page to load — check for chat-uniqueid or input box
+            dm_loaded = False
+            for attempt in range(5):
                 try:
-                    btn = self._page.locator(sel)
-                    if await btn.count() > 0:
-                        await btn.first.click(timeout=10000)
-                        logger.info(f"send_dm: Clicked Message button via '{sel}'")
-                        msg_btn_clicked = True
+                    # Check if we landed on login page
+                    if "/login" in self._page.url:
+                        logger.warning("send_dm: Redirected to login page — not logged in")
+                        return ActionResult(success=False, action_type="dm", error="Not logged in")
+
+                    # Check for DM page indicator
+                    chat_header = self._page.locator('p[data-e2e="chat-uniqueid"]')
+                    if await chat_header.count() > 0:
+                        dm_loaded = True
+                        logger.info("send_dm: DM page loaded (chat-uniqueid found)")
                         break
-                except: pass
 
-            if not msg_btn_clicked:
-                logger.warning(f"send_dm: No Message button found for @{handle}")
-                return ActionResult(success=False, action_type="dm", error="Message button not found")
-
-            # Wait for DM input — TikTok opens DM as overlay on same page
-            # First wait for any overlay/modal to appear
-            await asyncio.sleep(3)
-
-            # Try multiple selectors for the DM input
-            dm_input = None
-            dm_input_selectors = [
-                # Data-e2e selectors (most reliable if present)
-                'div[data-e2e="chat-input"]',
-                'div[data-e2e="message-input"]',
-                '[data-e2e="dm-input"]',
-                # Contenteditable divs (TikTok uses these for DM)
-                'div[contenteditable="true"][role="textbox"]',
-                'div[contenteditable="true"][data-placeholder]',
-                'div[contenteditable="true"][aria-label*="message" i]',
-                'div[contenteditable="true"][aria-label*="Send" i]',
-                # p tags with data-text (TikTok sometimes uses these)
-                'p[data-text="true"]',
-                # Generic contenteditable inside a modal/overlay
-                'div[class*="DivChat"] div[contenteditable="true"]',
-                'div[class*="chat"] div[contenteditable="true"]',
-                'div[class*="message"] div[contenteditable="true"]',
-                # Fallback: any contenteditable that's visible
-                'div[contenteditable="true"]',
-            ]
-
-            for sel in dm_input_selectors:
-                try:
-                    candidate = self._page.locator(sel)
-                    count = await candidate.count()
-                    if count > 0:
-                        # Check if any of them are visible
-                        for i in range(count):
-                            el = candidate.nth(i)
-                            if await el.is_visible():
-                                dm_input = el
-                                logger.info(f"send_dm: DM input found via '{sel}' (index {i})")
-                                break
-                    if dm_input:
+                    # Also try finding the input directly
+                    input_box = self._page.locator('div[aria-label="Send a message..."][role="textbox"]')
+                    if await input_box.count() > 0:
+                        dm_loaded = True
+                        logger.info("send_dm: DM page loaded (input box found)")
                         break
-                except:
-                    continue
 
-            if not dm_input:
-                # Last resort: try to find input by keyboard shortcut or by text
-                # Also try navigating to DM URL directly
-                try:
-                    dm_url = f"https://www.tiktok.com/direct/inbox?username={handle}"
-                    logger.info(f"send_dm: Trying DM URL directly: {dm_url}")
-                    await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=30000)
-                    await self._human_delay(3, 5)
-                    
-                    for sel in dm_input_selectors:
-                        try:
-                            candidate = self._page.locator(sel)
-                            count = await candidate.count()
-                            if count > 0:
-                                for i in range(count):
-                                    el = candidate.nth(i)
-                                    if await el.is_visible():
-                                        dm_input = el
-                                        logger.info(f"send_dm: DM input found on direct URL via '{sel}'")
-                                        break
-                            if dm_input:
-                                break
-                        except:
-                            continue
+                    await self._human_delay(2, 3)
                 except:
-                    pass
+                    await self._human_delay(2, 3)
 
-            if not dm_input:
-                # Check for warning messages before giving up
+            if not dm_loaded:
+                # Check for warning/error messages
                 page_text = await self._extract_page_text()
                 warnings = [
                     "Only friends can send messages",
@@ -529,35 +482,71 @@ class CamoufoxAdapter(PlatformAdapter):
                         logger.warning(f"send_dm: DM blocked — {w}")
                         return ActionResult(success=False, action_type="dm", error=f"DM blocked: {w}")
 
+                # Check for DM warning element
                 try:
-                    warn_el = await self._page.query_selector('[data-e2e="dm-warning"]')
-                    if warn_el:
+                    warn_el = self._page.locator('div[data-e2e="dm-warning"]')
+                    if await warn_el.count() > 0:
                         warn_text = await warn_el.inner_text()
-                        logger.warning(f"send_dm: DM warning element — {warn_text}")
+                        logger.warning(f"send_dm: DM warning — {warn_text}")
                         return ActionResult(success=False, action_type="dm", error=f"DM warning: {warn_text}")
                 except: pass
 
-                # Last resort: screenshot for debugging
                 try:
                     ss = await self._page.screenshot()
-                    logger.warning(f"send_dm: DM input not found. Screenshot saved. URL: {self._page.url}")
+                    logger.warning(f"send_dm: DM page not loaded. Screenshot saved. URL: {self._page.url}")
                 except: pass
 
+                return ActionResult(success=False, action_type="dm", error="DM page not loaded")
+
+            # Find the DM input box — exact selector from working TikTok bot
+            dm_input = None
+            input_selectors = [
+                'div[aria-label="Send a message..."][role="textbox"]',
+                'div[aria-label="Send a message"][role="textbox"]',
+                'div[aria-label*="Send a message"][role="textbox"]',
+                'div[data-e2e="chat-input"]',
+                'div[contenteditable="true"][role="textbox"]',
+            ]
+
+            for sel in input_selectors:
+                try:
+                    el = self._page.locator(sel)
+                    if await el.count() > 0 and await el.first.is_visible():
+                        dm_input = el.first
+                        logger.info(f"send_dm: Input found via '{sel}'")
+                        break
+                except:
+                    continue
+
+            if not dm_input:
+                logger.warning("send_dm: DM input not found on loaded DM page")
+                try:
+                    ss = await self._page.screenshot()
+                    logger.warning(f"send_dm: Screenshot saved. URL: {self._page.url}")
+                except: pass
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
 
-            # Type message using clipboard (faster, avoids char-by-char delay)
+            # Clear any existing text and type message
             logger.info(f"send_dm: Typing message ({len(message)} chars)")
             await dm_input.click()
-            await self._page.evaluate(f"navigator.clipboard.writeText({repr(message)})")
             await self._page.keyboard.press("Control+KeyA")
+            await self._page.keyboard.press("Backspace")
+            await self._human_delay(0.3, 0.5)
+
+            # Paste message via clipboard
+            await self._page.evaluate(f"navigator.clipboard.writeText({repr(message)})")
             await self._page.keyboard.press("Control+KeyV")
             await self._human_delay(0.5, 1)
 
-            # Click send button
+            # Click send button — StyledSendButton class from working bot
             send_btn = self._page.locator('[class*="StyledSendButton"]').first
             try:
-                await send_btn.wait_for(state="visible", timeout=10000)
-                await send_btn.click(timeout=10000)
+                if await send_btn.count() > 0:
+                    await send_btn.wait_for(state="visible", timeout=5000)
+                    await send_btn.click(timeout=5000)
+                else:
+                    # Fallback: press Enter
+                    await self._page.keyboard.press("Enter")
             except:
                 await self._page.keyboard.press("Enter")
 
