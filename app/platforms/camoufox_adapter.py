@@ -677,7 +677,9 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
-            await self._human_delay(3, 5)
+            # TikTok post pages load comments lazily via JS — give the page
+            # time to render the comment section before we try to find it.
+            await self._human_delay(5, 7)
 
             # Extract video owner from URL to exclude them
             video_owner = ""
@@ -685,37 +687,51 @@ class CamoufoxAdapter(PlatformAdapter):
                 video_owner = post_url.split("/@")[-1].split("/")[0].split("?")[0].lower()
             except: pass
 
-            # STEP 1: scope the search to the actual comment list container.
-            # The previous selectors ([class*="Comment"], [class*="comment"]) were
-            # too broad and matched the comment *counter* button in the action bar
-            # and the logged-in user's profile link in the header, returning
-            # 12 false-positive "commenters" that were all the logged-in user.
+            # --- Phase 1: deep scroll to trigger lazy comment loading ---
+            # Scroll the page so TikTok's JS loads comments below the fold.
+            # We scroll in steps and wait for new DOM nodes to appear.
+            for _ in range(8):
+                await self._page.mouse.wheel(0, 600)
+                await self._human_delay(1.5, 2.5)
+            await self._human_delay(2, 3)
+
+            # Now scroll back to top and re-enter the comment section
+            await self._page.evaluate("window.scrollTo(0, 0)")
+            await self._human_delay(1, 2)
+
+            # --- Phase 2: find the comment list container ---
             comment_container_selectors = [
                 '[data-e2e="comment-list"]',
                 '[class*="CommentListContainer"]',
                 '[class*="DivCommentList"]',
                 '[class*="comment-list"]',
+                '[data-e2e="browse-comment"]',
+                '[class*="DivCommentItemContainer"]',
+                '[class*="commentItemContainer"]',
             ]
             comment_links = []
             container_found = ""
+
             for sel in comment_container_selectors:
                 try:
                     container = self._page.locator(sel).first
                     if await container.count() > 0:
-                        # Get all user profile links INSIDE the container
                         links_in_container = await container.locator('a[href*="/@"]').all()
                         if links_in_container:
                             comment_links = links_in_container
                             container_found = sel
+                            logger.info(f"get_post_commenters: found container '{sel}' with {len(links_in_container)} links")
                             break
                 except: pass
 
-            # STEP 2: if no container found, try the older per-comment-item selectors
+            # --- Phase 2b: try per-comment-item selectors ---
             if not comment_links:
                 item_selectors = [
                     '[class*="CommentItemContainer"] a[href*="/@"]',
                     '[class*="DivCommentContentContainer"] a[href*="/@"]',
                     '[class*="DivCommentObjectWrapper"] a[href*="/@"]',
+                    '[class*="comment-item"] a[href*="/@"]',
+                    '[class*="CommentItem"] a[href*="/@"]',
                 ]
                 for sel in item_selectors:
                     try:
@@ -723,26 +739,11 @@ class CamoufoxAdapter(PlatformAdapter):
                         if links:
                             comment_links = links
                             container_found = sel
+                            logger.info(f"get_post_commenters: found item selector '{sel}' with {len(links)} links")
                             break
                     except: pass
 
-            # STEP 3: scroll inside the container to load more comments, then re-extract
-            if comment_links and container_found.startswith("["):
-                try:
-                    container_el = self._page.locator(container_found).first
-                    prev_count = 0
-                    for _ in range(15):
-                        await container_el.evaluate("el => el.scrollBy(0, 800)")
-                        await self._human_delay(1.0, 1.8)
-                        new_links = await container_el.locator('a[href*="/@"]').all()
-                        if len(new_links) == prev_count:
-                            break
-                        prev_count = len(new_links)
-                    comment_links = await container_el.locator('a[href*="/@"]').all()
-                except: pass
-
-            # STEP 4: if we still have nothing AND a comment button exists, click it
-            # (TikTok mobile/desktop sometimes loads comments in a modal)
+            # --- Phase 2c: click the comment button to open the panel ---
             if not comment_links:
                 for btn_sel in [
                     '[data-e2e="comment-icon"]',
@@ -752,18 +753,46 @@ class CamoufoxAdapter(PlatformAdapter):
                     try:
                         btn = self._page.locator(btn_sel).first
                         if await btn.count() > 0 and await btn.is_visible():
-                            await btn.click(timeout=3000)
-                            await self._human_delay(2, 3)
-                            comment_links = await self._page.query_selector_all('a[href*="/@"]')
+                            await btn.click(timeout=5000)
+                            await self._human_delay(3, 4)
+                            logger.info(f"get_post_commenters: clicked comment button '{btn_sel}', waiting for comments to load")
                             break
                     except: pass
+                # Re-check containers after opening the comment panel
+                for sel in comment_container_selectors + item_selectors:
+                    try:
+                        if sel.startswith('[data-e2e') or sel.startswith('[class*=comment-list'):
+                            container = self._page.locator(sel).first
+                            if await container.count() > 0:
+                                links_in_container = await container.locator('a[href*="/@"]').all()
+                                if links_in_container:
+                                    comment_links = links_in_container
+                                    container_found = sel
+                                    logger.info(f"get_post_commenters: after click, found '{sel}' with {len(links_in_container)} links")
+                                    break
+                    except: pass
 
-            # STEP 5: last-resort fallback — but warn loudly because this is the
-            # source of the "stuck in a loop" bug (matched header/sidebar links)
+            # --- Phase 2d: if we found a container, scroll inside it ---
+            if comment_links and container_found and container_found.startswith("["):
+                try:
+                    container_el = self._page.locator(container_found).first
+                    prev_count = 0
+                    for _ in range(20):
+                        await container_el.evaluate("el => el.scrollBy(0, 800)")
+                        await self._human_delay(1.0, 1.8)
+                        new_links = await container_el.locator('a[href*="/@"]').all()
+                        if len(new_links) == prev_count:
+                            break
+                        prev_count = len(new_links)
+                    comment_links = await container_el.locator('a[href*="/@"]').all()
+                    logger.info(f"get_post_commenters: after scroll, {len(comment_links)} links in container")
+                except: pass
+
+            # --- Phase 3: fallback — all a[href*=/@] with a loud warning ---
             if not comment_links:
                 logger.warning(
-                    f"get_post_commenters: no comment container found, "
-                    f"falling back to all a[href*=/@] (may include non-commenters)"
+                    f"get_post_commenters: no comment container found after full load+scroll, "
+                    f"falling back to all a[href*=/@]"
                 )
                 comment_links = await self._page.query_selector_all('a[href*="/@"]')
 
