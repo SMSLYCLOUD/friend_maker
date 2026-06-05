@@ -325,23 +325,20 @@ class CampaignExecutor:
                                 processed_commenters.add(h)
                                 self.logger.info(f"Processing commenter @{h}...")
 
-                                # Safety check + profile scrape in parallel
-                                async def _scrape_profile():
-                                    for attempt in range(3):
-                                        try:
-                                            return await self.adapter.get_user_profile(h)
-                                        except Exception as e:
-                                            self.logger.warning(f"Profile scrape @{h} failed (attempt {attempt+1}/3): {e}")
-                                            if attempt < 2:
-                                                await asyncio.sleep(5)
-                                    return {"username": h, "bio": ""}
+                                # Profile scrape first (safety check also navigates, can't parallel)
+                                for attempt in range(3):
+                                    try:
+                                        profile_data = await self.adapter.get_user_profile(h)
+                                        break
+                                    except Exception as e:
+                                        self.logger.warning(f"Profile scrape @{h} failed (attempt {attempt+1}/3): {e}")
+                                        if attempt < 2:
+                                            await asyncio.sleep(5)
+                                else:
+                                    profile_data = {"username": h, "bio": ""}
 
-                                async def _safety():
-                                    return await self._safety_check(h, [source])
-
-                                profile_data, safety_ok = await asyncio.gather(
-                                    _scrape_profile(), _safety()
-                                )
+                                # Safety check after profile scrape
+                                safety_ok = await self._safety_check(h, [source])
 
                                 if not safety_ok:
                                     self.logger.info(f"Skipping @{h}: safety check failed")
