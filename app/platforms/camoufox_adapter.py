@@ -1063,7 +1063,28 @@ class CamoufoxAdapter(PlatformAdapter):
                 except: pass
 
             if not like_btn:
-                logger.warning(f"like_post: No like button found on {post_url}")
+                # DEBUG: dump all buttons and interactive elements on the page
+                try:
+                    buttons = await self._page.query_selector_all('button')
+                    logger.warning(f"like_post: No like button found. Dumping {len(buttons)} buttons on page:")
+                    for i, btn in enumerate(buttons[:20]):
+                        try:
+                            aria = await btn.get_attribute("aria-label") or ""
+                            e2e = await btn.get_attribute("data-e2e") or ""
+                            cls = (await btn.get_attribute("class") or "")[:60]
+                            txt = (await btn.inner_text())[:40] if await btn.is_visible() else "[hidden]"
+                            logger.warning(f"  button[{i}]: aria-label='{aria}' data-e2e='{e2e}' class='{cls}' text='{txt}'")
+                        except: pass
+                    # Also dump all elements with data-e2e
+                    e2e_els = await self._page.query_selector_all('[data-e2e]')
+                    logger.warning(f"like_post: Found {len(e2e_els)} elements with data-e2e:")
+                    for i, el in enumerate(e2e_els[:30]):
+                        try:
+                            e2e = await el.get_attribute("data-e2e") or ""
+                            tag = await el.evaluate("el => el.tagName")
+                            logger.warning(f"  data-e2e[{i}]: <{tag}> data-e2e='{e2e}'")
+                        except: pass
+                except: pass
                 return ActionResult(success=False, action_type="like", error="Like button not found")
 
             # Try click, fallback to JS click
