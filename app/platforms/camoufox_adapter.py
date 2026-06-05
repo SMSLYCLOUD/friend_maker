@@ -1281,6 +1281,67 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"check_user_followers failed: {e}")
             return {"found": False, "matched_names": [], "follower_count": 0}
 
+    async def get_target_followers(self, username: str, max_scroll: int = 50) -> set:
+        """
+        Scrape a user's followers list into a set for O(1) lookups.
+        Returns a set of lowercase usernames.
+        """
+        followers = set()
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = username.lstrip("@")
+            url = f"https://www.{self.platform}.com/@{handle}"
+            logger.info(f"get_target_followers: Scraping followers of @{handle}")
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
+
+            # Click followers count
+            followers_selectors = [
+                '[data-e2e="followers-count"]',
+                'a[href*="/followers"]',
+                'strong[title="Followers"]',
+            ]
+            for sel in followers_selectors:
+                try:
+                    el = self._page.locator(sel).first
+                    if await el.count() > 0:
+                        await el.click(timeout=10000)
+                        logger.info(f"get_target_followers: Clicked followers via '{sel}'")
+                        await self._human_delay(2, 3)
+                        break
+                except: pass
+
+            # Infinite scroll and collect usernames
+            prev_count = 0
+            for i in range(max_scroll):
+                # Extract all visible follower links
+                links = await self._page.query_selector_all('a[href*="/@"]')
+                for link in links:
+                    try:
+                        href = await link.get_attribute("href")
+                        if href and "/@" in href:
+                            uname = href.split("/@")[-1].split("/")[0].split("?")[0].lower()
+                            if uname and len(uname) > 1 and not uname.isdigit():
+                                followers.add(uname)
+                    except: pass
+
+                if len(followers) == prev_count and i > 3:
+                    break
+                prev_count = len(followers)
+
+                # Scroll down
+                try:
+                    await self._page.mouse.wheel(0, 800)
+                    await self._human_delay(1, 2)
+                except: pass
+
+            logger.info(f"get_target_followers: Collected {len(followers)} follower usernames for @{handle}")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            logger.error(f"get_target_followers failed for @{handle}: {e}")
+        return followers
+
     def _parse_count_text(self, text: str) -> int:
         """Parse follower count text like '1.2K' or '12,345'."""
         if not text:
