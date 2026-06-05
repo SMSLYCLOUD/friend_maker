@@ -440,25 +440,74 @@ class CamoufoxAdapter(PlatformAdapter):
                 return ActionResult(success=False, action_type="dm", error="Message button not found")
 
             # Wait for DM input — TikTok opens DM as overlay on same page
+            # First wait for any overlay/modal to appear
+            await asyncio.sleep(3)
+
             # Try multiple selectors for the DM input
             dm_input = None
             dm_input_selectors = [
-                'div[aria-label="Send a message..."][role="textbox"]',
+                # Data-e2e selectors (most reliable if present)
+                'div[data-e2e="chat-input"]',
+                'div[data-e2e="message-input"]',
                 '[data-e2e="dm-input"]',
+                # Contenteditable divs (TikTok uses these for DM)
                 'div[contenteditable="true"][role="textbox"]',
-                'div[aria-label*="message" i][role="textbox"]',
-                'p[data-e2e="dm-input"]',
+                'div[contenteditable="true"][data-placeholder]',
+                'div[contenteditable="true"][aria-label*="message" i]',
+                'div[contenteditable="true"][aria-label*="Send" i]',
+                # p tags with data-text (TikTok sometimes uses these)
+                'p[data-text="true"]',
+                # Generic contenteditable inside a modal/overlay
+                'div[class*="DivChat"] div[contenteditable="true"]',
+                'div[class*="chat"] div[contenteditable="true"]',
+                'div[class*="message"] div[contenteditable="true"]',
+                # Fallback: any contenteditable that's visible
+                'div[contenteditable="true"]',
             ]
 
             for sel in dm_input_selectors:
                 try:
                     candidate = self._page.locator(sel)
-                    await candidate.wait_for(state="visible", timeout=15000)
-                    dm_input = candidate
-                    logger.info(f"send_dm: DM input found via '{sel}'")
-                    break
+                    count = await candidate.count()
+                    if count > 0:
+                        # Check if any of them are visible
+                        for i in range(count):
+                            el = candidate.nth(i)
+                            if await el.is_visible():
+                                dm_input = el
+                                logger.info(f"send_dm: DM input found via '{sel}' (index {i})")
+                                break
+                    if dm_input:
+                        break
                 except:
                     continue
+
+            if not dm_input:
+                # Last resort: try to find input by keyboard shortcut or by text
+                # Also try navigating to DM URL directly
+                try:
+                    dm_url = f"https://www.tiktok.com/direct/inbox?username={handle}"
+                    logger.info(f"send_dm: Trying DM URL directly: {dm_url}")
+                    await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=30000)
+                    await self._human_delay(3, 5)
+                    
+                    for sel in dm_input_selectors:
+                        try:
+                            candidate = self._page.locator(sel)
+                            count = await candidate.count()
+                            if count > 0:
+                                for i in range(count):
+                                    el = candidate.nth(i)
+                                    if await el.is_visible():
+                                        dm_input = el
+                                        logger.info(f"send_dm: DM input found on direct URL via '{sel}'")
+                                        break
+                            if dm_input:
+                                break
+                        except:
+                            continue
+                except:
+                    pass
 
             if not dm_input:
                 # Check for warning messages before giving up
