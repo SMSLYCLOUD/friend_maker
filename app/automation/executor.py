@@ -235,7 +235,7 @@ class CampaignExecutor:
 
                         try:
                             profile_url = f"https://www.tiktok.com/@{source}"
-                            await self.adapter._page.goto(profile_url, wait_until="domcontentloaded", timeout=30000)
+                            await self.adapter._page.goto(profile_url, wait_until="domcontentloaded", timeout=120000)
                             await self.adapter._human_delay(3, 5)
                         except Exception as e:
                             self.logger.warning(f"Failed to navigate to profile: {e}")
