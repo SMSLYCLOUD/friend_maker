@@ -1063,7 +1063,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 except: pass
 
             if not like_btn:
-                # DEBUG: dump all buttons and interactive elements on the page
+                # DEBUG: dump all buttons, SVGs, and interactive elements on the page
                 try:
                     buttons = await self._page.query_selector_all('button')
                     logger.warning(f"like_post: No like button found. Dumping {len(buttons)} buttons on page:")
@@ -1071,11 +1071,12 @@ class CamoufoxAdapter(PlatformAdapter):
                         try:
                             aria = await btn.get_attribute("aria-label") or ""
                             e2e = await btn.get_attribute("data-e2e") or ""
-                            cls = (await btn.get_attribute("class") or "")[:60]
-                            txt = (await btn.inner_text())[:40] if await btn.is_visible() else "[hidden]"
-                            logger.warning(f"  button[{i}]: aria-label='{aria}' data-e2e='{e2e}' class='{cls}' text='{txt}'")
+                            cls = (await btn.get_attribute("class") or "")[:80]
+                            txt = (await btn.inner_text())[:50] if await btn.is_visible() else "[hidden]"
+                            logger.warning(f"  button[{i}]: aria='{aria}' e2e='{e2e}' cls='{cls}' text='{txt}'")
                         except: pass
-                    # Also dump all elements with data-e2e
+
+                    # Dump all elements with data-e2e
                     e2e_els = await self._page.query_selector_all('[data-e2e]')
                     logger.warning(f"like_post: Found {len(e2e_els)} elements with data-e2e:")
                     for i, el in enumerate(e2e_els[:30]):
@@ -1084,7 +1085,39 @@ class CamoufoxAdapter(PlatformAdapter):
                             tag = await el.evaluate("el => el.tagName")
                             logger.warning(f"  data-e2e[{i}]: <{tag}> data-e2e='{e2e}'")
                         except: pass
-                except: pass
+
+                    # Dump all divs with aria-label (photo posts use divs, not buttons)
+                    aria_divs = await self._page.query_selector_all('div[aria-label]')
+                    logger.warning(f"like_post: Found {len(aria_divs)} divs with aria-label:")
+                    for i, el in enumerate(aria_divs[:20]):
+                        try:
+                            aria = await el.get_attribute("aria-label") or ""
+                            logger.warning(f"  div-aria[{i}]: aria-label='{aria}'")
+                        except: pass
+
+                    # Dump all SVGs inside clickable elements
+                    svgs = await self._page.query_selector_all('svg')
+                    logger.warning(f"like_post: Found {len(svgs)} SVGs on page")
+                    for i, svg in enumerate(svgs[:15]):
+                        try:
+                            parent_tag = await svg.evaluate("el => el.parentElement ? el.parentElement.tagName + '.' + (el.parentElement.className || '').substring(0,50) : 'none'")
+                            aria = await svg.get_attribute("aria-label") or ""
+                            logger.warning(f"  svg[{i}]: parent='{parent_tag}' aria='{aria}'")
+                        except: pass
+
+                    # Also check for any element with "like" in any attribute
+                    like_els = await self._page.query_selector_all('[class*="like" i], [class*="Like" i], [aria-label*="like" i], [aria-label*="Like" i]')
+                    logger.warning(f"like_post: Found {len(like_els)} elements with 'like' in class/aria:")
+                    for i, el in enumerate(like_els[:10]):
+                        try:
+                            tag = await el.evaluate("el => el.tagName")
+                            cls = (await el.get_attribute("class") or "")[:80]
+                            aria = await el.get_attribute("aria-label") or ""
+                            logger.warning(f"  like-el[{i}]: <{tag}> cls='{cls}' aria='{aria}'")
+                        except: pass
+
+                except Exception as e:
+                    logger.error(f"like_post: Debug dump failed: {e}")
                 return ActionResult(success=False, action_type="like", error="Like button not found")
 
             # Try click, fallback to JS click
