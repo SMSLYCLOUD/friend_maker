@@ -281,14 +281,11 @@ class CampaignExecutor:
 
                         self.logger.info(f"Found {len(post_urls)} unique posts on @{source}")
 
-                        # SAFETY CHECK: Scrape target's followers once for O(1) lookup per commenter
-                        self._target_followers_set = set()
+                        # Pre-scrape target keywords for safety check
+                        self._safety_keywords = []
                         if source:
-                            try:
-                                self._target_followers_set = await self.adapter.get_target_followers(source, max_scroll=50)
-                                self.logger.info(f"Safety check: scraped {len(self._target_followers_set)} followers from @{source}")
-                            except Exception as e:
-                                self.logger.warning(f"Failed to scrape target followers: {e} — skipping safety check")
+                            self._safety_keywords = [w.lower() for w in source.replace(".", " ").replace("_", " ").replace("-", " ").split() if len(w) >= 3]
+                            self.logger.info(f"Safety check: will look for keywords {self._safety_keywords} in commenters' followers")
 
                         processed_commenters = set()
                         for post_url in post_urls:
@@ -1456,21 +1453,25 @@ class CampaignExecutor:
 
     async def _safety_check(self, target_username: str, source_accounts: List[str]) -> bool:
         """
-        Universal safety check before any interaction.
-        If target_followers_set exists, check if target_username is in it (O(1)).
-        Otherwise return True (no data to check against).
+        Check if target accounts (like violinia.de) appear in this user's followers.
+        Scrolls through their followers list looking for keyword matches.
         Returns True if SAFE to interact, False if should SKIP.
         """
-        # Fast path: use pre-scraped followers set if available
-        if hasattr(self, '_target_followers_set') and self._target_followers_set:
-            if target_username.lower() in self._target_followers_set:
-                self.logger.warning(f"SAFETY SKIP @{target_username}: found in target's followers")
-                return False
-            self.logger.info(f"SAFETY OK @{target_username}: not in target's followers")
+        keywords = getattr(self, '_safety_keywords', [])
+        if not keywords:
             return True
 
-        # Fallback: old approach (shouldn't reach here normally)
-        return True
+        try:
+            result = await self.adapter.check_user_followers(target_username, keywords)
+            if result["found"]:
+                matched = [m["username"] for m in result["matched_names"]]
+                self.logger.warning(f"SAFETY SKIP @{target_username}: found target accounts in followers: {matched}")
+                return False
+            self.logger.info(f"SAFETY OK @{target_username}: no target accounts in followers")
+            return True
+        except Exception as e:
+            self.logger.warning(f"Safety check failed for @{target_username}: {e} — proceeding anyway")
+            return True
 
     def stop(self):
         self.running = False
