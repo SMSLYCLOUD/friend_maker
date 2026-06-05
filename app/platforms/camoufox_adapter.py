@@ -632,6 +632,62 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"Get group members failed: {e}")
         return results
 
+    async def _dismiss_overlay(self):
+        """Close any inbox/notification overlays that TikTok opens by default."""
+        for attempt in range(5):
+            try:
+                is_inert = await self._page.evaluate(
+                    'document.querySelector("#app")?.getAttribute("inert") === "true"'
+                )
+                if not is_inert:
+                    break
+                logger.info(f"Overlay detected (inert=true), attempt {attempt+1}")
+
+                # Strategy 1: Click the inbox icon to toggle off the panel
+                try:
+                    inbox_icon = self._page.locator('[data-e2e="inbox-icon"]').first
+                    if await inbox_icon.count() > 0:
+                        await inbox_icon.click(timeout=2000)
+                        await self._human_delay(1, 2)
+                        is_inert = await self._page.evaluate(
+                            'document.querySelector("#app")?.getAttribute("inert") === "true"'
+                        )
+                        if not is_inert:
+                            logger.info("Overlay closed by clicking inbox icon")
+                            break
+                except: pass
+
+                # Strategy 2: Click the video/watch section to shift focus
+                try:
+                    video_section = self._page.locator('section[aria-label*="full screen"], section[aria-label*="Watch"]').first
+                    if await video_section.count() > 0:
+                        await video_section.click(timeout=2000)
+                        await self._human_delay(1, 2)
+                except: pass
+
+                # Strategy 3: Remove inert attribute via JavaScript
+                try:
+                    removed = await self._page.evaluate('''() => {
+                        const app = document.querySelector("#app");
+                        if (app && app.getAttribute("inert") === "true") {
+                            app.removeAttribute("inert");
+                            app.removeAttribute("aria-hidden");
+                            app.removeAttribute("data-floating-ui-inert");
+                            return true;
+                        }
+                        return false;
+                    }''')
+                    if removed:
+                        logger.info("Removed inert via JS")
+                        await self._human_delay(1, 2)
+                        break
+                except: pass
+
+                # Strategy 4: Press Escape as last resort
+                await self._page.keyboard.press("Escape")
+                await self._human_delay(1, 2)
+            except: break
+
     async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
         results = []
         try:
@@ -639,29 +695,7 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
-            # Close any inbox/notification overlays that TikTok opens by default
-            # The main div gets inert="true" when overlays are active
-            for _ in range(3):
-                try:
-                    # Check if main content is inert (overlay is active)
-                    is_inert = await self._page.evaluate(
-                        'document.querySelector("#app")?.getAttribute("inert") === "true"'
-                    )
-                    if is_inert:
-                        logger.info("get_post_commenters: Overlay detected (inert=true), pressing Escape to close")
-                        await self._page.keyboard.press("Escape")
-                        await self._human_delay(1, 2)
-                    else:
-                        break
-                except: break
-
-            # Also click on the main video area to dismiss any remaining overlays
-            try:
-                video_section = self._page.locator('section[aria-label*="full screen"], section[aria-label*="Watch"]').first
-                if await video_section.count() > 0:
-                    await video_section.click(timeout=3000)
-                    await self._human_delay(1, 2)
-            except: pass
+            await self._dismiss_overlay()
 
             # Extract video owner from URL to exclude them
             video_owner = ""
@@ -1260,19 +1294,7 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Close any inbox/notification overlays
-            for _ in range(3):
-                try:
-                    is_inert = await self._page.evaluate(
-                        'document.querySelector("#app")?.getAttribute("inert") === "true"'
-                    )
-                    if is_inert:
-                        logger.info("like_post: Overlay detected, pressing Escape")
-                        await self._page.keyboard.press("Escape")
-                        await self._human_delay(1, 2)
-                    else:
-                        break
-                except: break
+            await self._dismiss_overlay()
 
             # Try multiple selector strategies for video and photo posts
             like_btn = None
