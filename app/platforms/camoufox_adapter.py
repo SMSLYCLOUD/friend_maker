@@ -717,10 +717,13 @@ class CamoufoxAdapter(PlatformAdapter):
 
             # --- Phase 2d: click comment button to open the panel ---
             if not comment_links:
+                clicked = False
+                # Try standard data-e2e selectors
                 for btn_sel in [
                     '[data-e2e="comment-icon"]',
                     '[data-e2e="browse-comment-icon"]',
                     'span[data-e2e="comment-icon"]',
+                    '[data-e2e="like-comment"]',
                 ]:
                     try:
                         btn = self._page.locator(btn_sel).first
@@ -728,8 +731,47 @@ class CamoufoxAdapter(PlatformAdapter):
                             await btn.click(timeout=5000)
                             await self._human_delay(3, 4)
                             logger.info(f"get_post_commenters: clicked '{btn_sel}', waiting for comments")
+                            clicked = True
                             break
                     except: pass
+
+                # Fallback: find comment button via aria-label on the action bar
+                if not clicked:
+                    try:
+                        comment_btns = await self._page.query_selector_all(
+                            '[aria-label*="comment" i], [aria-label*="Comment" i], '
+                            '[data-e2e*="comment"], span[role="img"][aria-label*="comment" i]'
+                        )
+                        for btn in comment_btns:
+                            try:
+                                if await btn.is_visible():
+                                    await btn.click(timeout=5000)
+                                    await self._human_delay(3, 4)
+                                    logger.info(f"get_post_commenters: clicked comment button via aria-label fallback")
+                                    clicked = True
+                                    break
+                            except: pass
+                    except: pass
+
+                # Fallback: click the 2nd child of SectionActionBarContainer (comment is usually 2nd)
+                if not clicked:
+                    try:
+                        action_bar = self._page.locator('section').filter(has_text='').first
+                        # Try finding action bar by class
+                        bars = await self._page.query_selector_all('section')
+                        for bar in bars:
+                            cls = await bar.get_attribute("class") or ""
+                            if "Action" in cls or "action" in cls:
+                                children = await bar.query_selector_all(':scope > *')
+                                if len(children) >= 2:
+                                    # Comment button is typically the 2nd child
+                                    await children[1].click(timeout=5000)
+                                    await self._human_delay(3, 4)
+                                    logger.info(f"get_post_commenters: clicked 2nd child of action bar section")
+                                    clicked = True
+                                    break
+                    except: pass
+
                 # Re-check containers after clicking
                 for sel in container_selectors + avatar_selectors:
                     try:
@@ -745,12 +787,29 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                     except: pass
 
+                # After clicking, also re-dump data-e2e to see what changed
+                if not comment_links:
+                    try:
+                        all_e2e_after = await self._page.query_selector_all('[data-e2e]')
+                        e2e_after = []
+                        for el in all_e2e_after[:50]:
+                            try:
+                                val = await el.get_attribute("data-e2e")
+                                if val:
+                                    e2e_after.append(val)
+                            except: pass
+                        logger.warning(f"get_post_commenters: after click, data-e2e dump: {e2e_after}")
+                        # Take another screenshot after clicking
+                        ss_path2 = os.path.join(os.path.dirname(__file__), "..", "..", "debug_post_after_click.png")
+                        await self._page.screenshot(path=ss_path2, full_page=False)
+                        logger.warning(f"get_post_commenters: Screenshot after click saved to {ss_path2}")
+                    except: pass
+
             # --- Phase 3: NO broad fallback. Return empty rather than extract
             #     non-commenters from the header/sidebar (this was the root cause
             #     of the "stuck in a loop" bug). ---
             if not comment_links:
-                # DEBUG: dump all data-e2e attributes on the page so we can see
-                # what TikTok is actually rendering
+                # DEBUG: dump all data-e2e attributes, section HTML, and screenshot
                 try:
                     all_e2e = await self._page.query_selector_all('[data-e2e]')
                     e2e_vals = []
@@ -762,7 +821,7 @@ class CamoufoxAdapter(PlatformAdapter):
                         except: pass
                     logger.warning(f"get_post_commenters: NO COMMENTS FOUND. Page data-e2e dump: {e2e_vals}")
 
-                    # Also dump all <section> tags (comment list is often in a section)
+                    # Dump all <section> tags with innerHTML for the action bar
                     sections = await self._page.query_selector_all('section')
                     logger.warning(f"get_post_commenters: Found {len(sections)} <section> elements")
                     for i, sec in enumerate(sections[:10]):
@@ -770,8 +829,40 @@ class CamoufoxAdapter(PlatformAdapter):
                             aria = await sec.get_attribute("aria-label") or ""
                             cls = (await sec.get_attribute("class") or "")[:60]
                             child_count = await sec.evaluate("el => el.children.length")
+                            inner = await sec.inner_html()
                             logger.warning(f"  section[{i}]: aria='{aria}' class='{cls}' children={child_count}")
+                            logger.warning(f"  section[{i}] innerHTML (first 2000): {inner[:2000]}")
                         except: pass
+
+                    # Dump all buttons / clickable elements that might be the comment button
+                    buttons = await self._page.query_selector_all('button, [role="button"], [data-e2e*="comment"], [aria-label*="comment" i], [aria-label*="Comment" i]')
+                    logger.warning(f"get_post_commenters: Found {len(buttons)} button/comment elements")
+                    for i, btn in enumerate(buttons[:20]):
+                        try:
+                            tag = await btn.evaluate("el => el.tagName")
+                            aria = await btn.get_attribute("aria-label") or ""
+                            e2e = await btn.get_attribute("data-e2e") or ""
+                            cls = (await btn.get_attribute("class") or "")[:60]
+                            text = (await btn.inner_text())[:50] if await btn.is_visible() else "[hidden]"
+                            logger.warning(f"  btn[{i}]: <{tag}> aria='{aria}' e2e='{e2e}' class='{cls}' text='{text}'")
+                        except: pass
+
+                    # Take a screenshot for visual inspection
+                    ss_path = os.path.join(os.path.dirname(__file__), "..", "..", "debug_post_page.png")
+                    await self._page.screenshot(path=ss_path, full_page=False)
+                    logger.warning(f"get_post_commenters: Screenshot saved to {ss_path}")
+
+                    # Dump the full outer HTML of the main content area
+                    main_html = await self._page.evaluate("""
+                        () => {
+                            const main = document.querySelector('[data-e2e="browse-main"]') 
+                                || document.querySelector('main')
+                                || document.querySelector('#app')
+                                || document.body;
+                            return main.outerHTML.substring(0, 5000);
+                        }
+                    """)
+                    logger.warning(f"get_post_commenters: Main content HTML (first 5000): {main_html}")
                 except Exception as e:
                     logger.error(f"get_post_commenters: debug dump failed: {e}")
 
