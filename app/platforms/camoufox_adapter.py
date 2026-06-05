@@ -410,68 +410,28 @@ class CamoufoxAdapter(PlatformAdapter):
             url = f"https://www.{self.platform}.com/@{handle}"
             logger.info(f"send_dm: Navigating to {url}")
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            await self._human_delay(3, 5)
+            await self._human_delay(5, 7)
 
             # Check for blockers
             page_text = await self._extract_page_text()
             self._check_for_blockers(page_text, url)
 
-            # PRIMARY: try clicking the Message button on the profile (most reliable,
-            # TikTok keeps the button even when direct URLs return 404).
-            msg_btn_clicked = False
-            try:
-                msg_btn_selectors = [
-                    'button:has-text("Message")',
-                    '[data-e2e="message-button"]',
-                    'div[role="button"]:has-text("Message")',
-                    '//p[text()="Send message"]',
-                    '//div[contains(@class, "message")]//button',
-                ]
-                for sel in msg_btn_selectors:
-                    try:
-                        if sel.startswith('//'):
-                            btn = self._page.locator(f'xpath={sel}').first
-                        else:
-                            btn = self._page.locator(sel).first
-                        if await btn.count() > 0 and await btn.is_visible():
-                            await btn.click(timeout=5000)
-                            msg_btn_clicked = True
-                            logger.info(f"send_dm: Clicked Message button via '{sel}'")
-                            break
-                    except: pass
-            except Exception as e:
-                logger.info(f"send_dm: Message button click attempt failed: {e}")
+            # Extract user_id from page source JSON (same pattern as working reference)
+            page_source = await self._page.content()
+            uid_match = re.search(r'(?<="userInfo":\{"user":\{"id":")\d{1,30}', page_source)
+            if not uid_match:
+                uid_match = re.search(r'"id"\s*:\s*"(\d{1,30})"', page_source)
+            if not uid_match:
+                logger.warning(f"send_dm: Could not extract user_id for @{handle}")
+                return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
+            uid = uid_match.group(1) if uid_match.lastindex else uid_match.group(0)
+            logger.info(f"send_dm: Got user_id={uid} for @{handle}")
 
-            if not msg_btn_clicked:
-                # FALLBACK: try direct DM URLs (TikTok's URL formats have changed
-                # multiple times; we try several to find one that doesn't 404).
-                page_source = await self._page.content()
-                uid = None
-                for pattern in (r'"id"\s*:\s*"(\d{1,30})"', r'"userId"\s*:\s*"(\d{1,30})"'):
-                    m = re.search(pattern, page_source)
-                    if m:
-                        uid = m.group(1)
-                        break
-                if not uid:
-                    logger.warning(f"send_dm: Could not extract user_id for @{handle}")
-                    return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
-                logger.info(f"send_dm: Got user_id={uid} for @{handle}")
-
-                dm_urls = [
-                    f"https://www.{self.platform}.com/direct/inbox?lang=en&u={uid}",
-                    f"https://www.{self.platform}.com/direct/inbox?username={handle}",
-                    f"https://www.{self.platform}.com/messages?u={uid}",
-                ]
-                for dm_url in dm_urls:
-                    logger.info(f"send_dm: Trying DM URL: {dm_url}")
-                    await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
-                    await self._human_delay(2, 3)
-                    if "/404" not in self._page.url:
-                        logger.info(f"send_dm: DM URL loaded (no 404)")
-                        break
-                    logger.warning(f"send_dm: URL 404'd, trying next format")
-
-            await self._human_delay(2, 3)
+            # Navigate to DM page using the correct /messages URL
+            dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={uid}"
+            logger.info(f"send_dm: Navigating to DM page: {dm_url}")
+            await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
 
             # Wait for DM page to load — check for chat-uniqueid or input box
             dm_loaded = False
@@ -677,8 +637,6 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
-            # TikTok post pages load comments lazily via JS — give the page
-            # time to render the comment section before we try to find it.
             await self._human_delay(5, 7)
 
             # Extract video owner from URL to exclude them
@@ -687,67 +645,81 @@ class CamoufoxAdapter(PlatformAdapter):
                 video_owner = post_url.split("/@")[-1].split("/")[0].split("?")[0].lower()
             except: pass
 
-            # --- Phase 1: deep scroll to trigger lazy comment loading ---
-            # Scroll the page so TikTok's JS loads comments below the fold.
-            # We scroll in steps and wait for new DOM nodes to appear.
-            for _ in range(8):
+            # --- Phase 1: scroll to trigger lazy comment loading ---
+            for _ in range(10):
                 await self._page.mouse.wheel(0, 600)
                 await self._human_delay(1.5, 2.5)
             await self._human_delay(2, 3)
-
-            # Now scroll back to top and re-enter the comment section
+            # Scroll back to top
             await self._page.evaluate("window.scrollTo(0, 0)")
             await self._human_delay(1, 2)
 
-            # --- Phase 2: find the comment list container ---
-            comment_container_selectors = [
-                '[data-e2e="comment-list"]',
-                '[class*="CommentListContainer"]',
-                '[class*="DivCommentList"]',
-                '[class*="comment-list"]',
-                '[data-e2e="browse-comment"]',
-                '[class*="DivCommentItemContainer"]',
-                '[class*="commentItemContainer"]',
-            ]
+            # --- Phase 2: find comment list container via data-e2e ---
             comment_links = []
             container_found = ""
 
-            for sel in comment_container_selectors:
+            # Primary: data-e2e comment list containers
+            container_selectors = [
+                '[data-e2e="browse-comment-list"]',
+                '[data-e2e="comment-list"]',
+            ]
+            for sel in container_selectors:
                 try:
                     container = self._page.locator(sel).first
                     if await container.count() > 0:
-                        links_in_container = await container.locator('a[href*="/@"]').all()
-                        if links_in_container:
-                            comment_links = links_in_container
+                        links = await container.locator('a[href*="/@"]').all()
+                        if links:
+                            comment_links = links
                             container_found = sel
-                            logger.info(f"get_post_commenters: found container '{sel}' with {len(links_in_container)} links")
+                            logger.info(f"get_post_commenters: found '{sel}' with {len(links)} user links")
                             break
                 except: pass
 
-            # --- Phase 2b: try per-comment-item selectors ---
+            # --- Phase 2b: find comment items via data-e2e comment-avatar ---
             if not comment_links:
-                item_selectors = [
-                    '[class*="CommentItemContainer"] a[href*="/@"]',
-                    '[class*="DivCommentContentContainer"] a[href*="/@"]',
-                    '[class*="DivCommentObjectWrapper"] a[href*="/@"]',
-                    '[class*="comment-item"] a[href*="/@"]',
-                    '[class*="CommentItem"] a[href*="/@"]',
+                avatar_selectors = [
+                    '[data-e2e="comment-avatar-1"]',
+                    '[data-e2e="comment-avatar-2"]',
+                    '[data-e2e="comment-avatar-3"]',
                 ]
-                for sel in item_selectors:
+                for sel in avatar_selectors:
                     try:
                         links = await self._page.query_selector_all(sel)
                         if links:
                             comment_links = links
                             container_found = sel
-                            logger.info(f"get_post_commenters: found item selector '{sel}' with {len(links)} links")
+                            logger.info(f"get_post_commenters: found avatar selector '{sel}' with {len(links)} links")
                             break
                     except: pass
 
-            # --- Phase 2c: click the comment button to open the panel ---
+            # --- Phase 2c: find comment items via data-e2e comment-level spans ---
+            if not comment_links:
+                for level_sel in ['[data-e2e="comment-level-1"]', '[data-e2e="comment-level-2"]']:
+                    try:
+                        spans = await self._page.query_selector_all(level_sel)
+                        if spans:
+                            # Navigate up to the parent comment wrapper, then find the user link
+                            for span in spans[:limit]:
+                                try:
+                                    parent = await span.evaluate_handle(
+                                        "el => el.closest('[data-e2e=\"comment-item\"]') || el.parentElement.parentElement"
+                                    )
+                                    if parent:
+                                        links_in_parent = await parent.query_selector_all('a[href*="/@"]')
+                                        if links_in_parent:
+                                            comment_links.extend(links_in_parent)
+                                except: pass
+                            if comment_links:
+                                container_found = level_sel
+                                logger.info(f"get_post_commenters: found {len(comment_links)} links via '{level_sel}'")
+                                break
+                    except: pass
+
+            # --- Phase 2d: click comment button to open the panel ---
             if not comment_links:
                 for btn_sel in [
                     '[data-e2e="comment-icon"]',
-                    'button[aria-label*="Comment" i]',
+                    '[data-e2e="browse-comment-icon"]',
                     'span[data-e2e="comment-icon"]',
                 ]:
                     try:
@@ -755,48 +727,32 @@ class CamoufoxAdapter(PlatformAdapter):
                         if await btn.count() > 0 and await btn.is_visible():
                             await btn.click(timeout=5000)
                             await self._human_delay(3, 4)
-                            logger.info(f"get_post_commenters: clicked comment button '{btn_sel}', waiting for comments to load")
+                            logger.info(f"get_post_commenters: clicked '{btn_sel}', waiting for comments")
                             break
                     except: pass
-                # Re-check containers after opening the comment panel
-                for sel in comment_container_selectors + item_selectors:
+                # Re-check containers after clicking
+                for sel in container_selectors + avatar_selectors:
                     try:
-                        if sel.startswith('[data-e2e') or sel.startswith('[class*=comment-list'):
+                        if sel.startswith('[data-e2e="comment-avatar'):
+                            links = await self._page.query_selector_all(sel)
+                        else:
                             container = self._page.locator(sel).first
-                            if await container.count() > 0:
-                                links_in_container = await container.locator('a[href*="/@"]').all()
-                                if links_in_container:
-                                    comment_links = links_in_container
-                                    container_found = sel
-                                    logger.info(f"get_post_commenters: after click, found '{sel}' with {len(links_in_container)} links")
-                                    break
+                            links = await container.locator('a[href*="/@"]').all() if await container.count() > 0 else []
+                        if links:
+                            comment_links = links
+                            container_found = sel
+                            logger.info(f"get_post_commenters: after click, found '{sel}' with {len(links)} links")
+                            break
                     except: pass
 
-            # --- Phase 2d: if we found a container, scroll inside it ---
-            if comment_links and container_found and container_found.startswith("["):
-                try:
-                    container_el = self._page.locator(container_found).first
-                    prev_count = 0
-                    for _ in range(20):
-                        await container_el.evaluate("el => el.scrollBy(0, 800)")
-                        await self._human_delay(1.0, 1.8)
-                        new_links = await container_el.locator('a[href*="/@"]').all()
-                        if len(new_links) == prev_count:
-                            break
-                        prev_count = len(new_links)
-                    comment_links = await container_el.locator('a[href*="/@"]').all()
-                    logger.info(f"get_post_commenters: after scroll, {len(comment_links)} links in container")
-                except: pass
-
-            # --- Phase 3: fallback — all a[href*=/@] with a loud warning ---
+            # --- Phase 3: NO broad fallback. Return empty rather than extract
+            #     non-commenters from the header/sidebar (this was the root cause
+            #     of the "stuck in a loop" bug). ---
             if not comment_links:
-                logger.warning(
-                    f"get_post_commenters: no comment container found after full load+scroll, "
-                    f"falling back to all a[href*=/@]"
-                )
-                comment_links = await self._page.query_selector_all('a[href*="/@"]')
+                logger.warning("get_post_commenters: no comments found on this post (no container matched)")
+                return results
 
-            # Dedupe + filter
+            # --- Phase 4: dedupe + filter ---
             seen = set()
             for link in comment_links[:limit * 5]:
                 try:
@@ -819,8 +775,10 @@ class CamoufoxAdapter(PlatformAdapter):
                     break
 
             if results:
-                logger.info(f"Extracted {len(results)} commenters from HTML (container: {container_found or 'fallback'})")
-                return results
+                logger.info(f"Extracted {len(results)} commenters (container: {container_found})")
+            else:
+                logger.info("get_post_commenters: found links but all filtered out (owner/duplicate)")
+            return results
 
             # LLM fallback
             text = await self._extract_page_text()
