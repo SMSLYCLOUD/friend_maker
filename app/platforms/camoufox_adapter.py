@@ -991,42 +991,63 @@ class CamoufoxAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="reply_dm", error=str(e))
 
     async def like_post(self, post_url: str) -> ActionResult:
-        """Like a post."""
+        """Like a post (works for both video and photo posts)."""
         try:
             await self._ensure_browser(self._session_data)
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Find and click the like/heart button
-            like_btn = self._page.locator(
-                "button[data-e2e='like-icon'], "
-                "button[data-e2e='like-button'], "
-                "span[data-e2e='like-icon'], "
-                "button[aria-label*='Like'], "
-                "button[aria-label*='like'], "
-                "[data-e2e='like-icon'], "
-                "[data-e2e='like-button']"
-            ).first
-            logger.info(f"like_post: Clicking like button on {post_url}")
+            # Try multiple selector strategies for video and photo posts
+            like_btn = None
+            selectors = [
+                # XPath: button containing span with like icon (works for both video + photo)
+                '//button[.//span[@data-e2e="browse-like-icon" or @data-e2e="like-icon"]]',
+                # CSS: direct data-e2e selectors
+                'button[data-e2e="like-icon"]',
+                'button[data-e2e="like-button"]',
+                '[data-e2e="like-icon"]',
+                '[data-e2e="like-button"]',
+                # Fallback: aria-label
+                'button[aria-label*="Like"]',
+                'button[aria-label*="like"]',
+            ]
 
-            # Try regular click first, fallback to JS click
+            for sel in selectors:
+                try:
+                    if sel.startswith('//'):
+                        el = self._page.locator(f'xpath={sel}').first
+                    else:
+                        el = self._page.locator(sel).first
+                    if await el.count() > 0:
+                        like_btn = el
+                        logger.info(f"like_post: Found like button via '{sel}'")
+                        break
+                except: pass
+
+            if not like_btn:
+                logger.warning(f"like_post: No like button found on {post_url}")
+                return ActionResult(success=False, action_type="like", error="Like button not found")
+
+            # Try click, fallback to JS click
             try:
                 await like_btn.click(timeout=10000, force=True)
             except Exception:
                 logger.info("like_post: Regular click failed, trying JS click")
-                await like_btn.evaluate("el => el.click()")
+                try:
+                    await like_btn.evaluate("el => el.click()")
+                except Exception as e2:
+                    logger.error(f"like_post: JS click also failed: {e2}")
+                    return ActionResult(success=False, action_type="like", error=str(e2))
 
             await self._human_delay(1, 2)
 
-            # Verify like was applied by checking aria-pressed
+            # Verify like was applied
             try:
                 is_liked = await like_btn.get_attribute("aria-pressed")
                 if is_liked == "true":
                     logger.info(f"like_post: Like confirmed (aria-pressed=true)")
-                    return ActionResult(success=True, action_type="like")
             except: pass
 
-            # If we got here, assume success (button was clicked)
             logger.info(f"like_post: Like clicked successfully")
             return ActionResult(success=True, action_type="like")
         except BlockerDetected:
