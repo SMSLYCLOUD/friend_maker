@@ -288,6 +288,8 @@ class CampaignExecutor:
                             self.logger.info(f"Safety check: will look for keywords {self._safety_keywords} in commenters' followers")
 
                         processed_commenters = set()
+                        consecutive_no_progress = 0
+                        MAX_NO_PROGRESS_POSTS = 5
                         for post_url in post_urls:
                             if not self.running or actions_today >= limit:
                                 break
@@ -303,10 +305,17 @@ class CampaignExecutor:
 
                             if not commenters:
                                 self.logger.info(f"No commenters on this post")
+                                consecutive_no_progress += 1
+                                if consecutive_no_progress >= MAX_NO_PROGRESS_POSTS:
+                                    self.logger.info(
+                                        f"{MAX_NO_PROGRESS_POSTS} consecutive posts with no commenters — stopping comment_engage"
+                                    )
+                                    break
                                 continue
 
                             self.logger.info(f"Found {len(commenters)} commenters")
 
+                            post_got_new = False
                             for u in commenters:
                                 if not self.running or actions_today >= limit:
                                     break
@@ -322,6 +331,7 @@ class CampaignExecutor:
                                     self.logger.info(f"Skipping logged-in account @{h}")
                                     continue
                                 if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
+                                    self.logger.info(f"Skipping @{h}: already contacted")
                                     continue
                                 processed_commenters.add(h)
                                 self.logger.info(f"Processing commenter @{h}...")
@@ -428,8 +438,23 @@ class CampaignExecutor:
 
                                 self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                 actions_today += 1
+                                post_got_new = True
                                 self.logger.info(f"✓ Completed engagement with @{h} ({actions_today}/{limit})")
                                 await self.anti_detect.random_delay(lambda: self.running)
+
+                            if post_got_new:
+                                consecutive_no_progress = 0
+                            else:
+                                consecutive_no_progress += 1
+                                self.logger.info(
+                                    f"No new commenters on this post "
+                                    f"({consecutive_no_progress}/{MAX_NO_PROGRESS_POSTS} consecutive)"
+                                )
+                                if consecutive_no_progress >= MAX_NO_PROGRESS_POSTS:
+                                    self.logger.info(
+                                        f"{MAX_NO_PROGRESS_POSTS} consecutive posts with no new commenters — stopping comment_engage"
+                                    )
+                                    break
                         continue
 
                     try:

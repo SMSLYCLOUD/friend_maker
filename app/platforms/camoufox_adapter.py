@@ -679,61 +679,121 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Infinite scroll until no new comment links load
-            prev_count = 0
-            for i in range(100):
-                await self._page.mouse.wheel(0, 1200)
-                await self._human_delay(1.5, 2.5)
-                links = await self._page.query_selector_all('a[href*="/@"]')
-                curr_count = len(links)
-                if curr_count == prev_count and i > 2:
-                    break
-                prev_count = curr_count
-
             # Extract video owner from URL to exclude them
             video_owner = ""
             try:
                 video_owner = post_url.split("/@")[-1].split("/")[0].split("?")[0].lower()
             except: pass
 
-            # Extract commenters from HTML — prefer comment section links
-            seen = set()
-            try:
-                # Try comment-section-specific selectors first
-                comment_links = await self._page.query_selector_all(
-                    '[class*="DivComment"] a[href*="/@"], '
-                    '[data-e2e="comment-username"] a[href*="/@"], '
-                    '[class*="Comment"] a[href*="/@"], '
-                    '[class*="comment"] a[href*="/@"]'
-                )
-                # Fallback to all links if comment-specific ones not found
-                if not comment_links:
-                    comment_links = await self._page.query_selector_all('a[href*="/@"]')
-
-                for link in comment_links[:limit * 5]:
-                    href = await link.get_attribute("href")
-                    if href and "/@" in href:
-                        username = href.split("/@")[-1].split("/")[0].split("?")[0]
-                        # Skip: too short, numeric-only, video owner, already seen
-                        if not username or len(username) < 2:
-                            continue
-                        if username.isdigit():
-                            continue
-                        if username.lower() == video_owner:
-                            continue
-                        if username in seen:
-                            continue
-                        seen.add(username)
-                        results.append(UserProfile(platform_id=username, username=username))
-                        if len(results) >= limit:
+            # STEP 1: scope the search to the actual comment list container.
+            # The previous selectors ([class*="Comment"], [class*="comment"]) were
+            # too broad and matched the comment *counter* button in the action bar
+            # and the logged-in user's profile link in the header, returning
+            # 12 false-positive "commenters" that were all the logged-in user.
+            comment_container_selectors = [
+                '[data-e2e="comment-list"]',
+                '[class*="CommentListContainer"]',
+                '[class*="DivCommentList"]',
+                '[class*="comment-list"]',
+            ]
+            comment_links = []
+            container_found = ""
+            for sel in comment_container_selectors:
+                try:
+                    container = self._page.locator(sel).first
+                    if await container.count() > 0:
+                        # Get all user profile links INSIDE the container
+                        links_in_container = await container.locator('a[href*="/@"]').all()
+                        if links_in_container:
+                            comment_links = links_in_container
+                            container_found = sel
                             break
-                if results:
-                    logger.info(f"Extracted {len(results)} commenters from HTML")
-                    return results
-            except Exception as e:
-                logger.warning(f"HTML commenter extraction failed: {e}")
+                except: pass
 
-            # Fallback to LLM
+            # STEP 2: if no container found, try the older per-comment-item selectors
+            if not comment_links:
+                item_selectors = [
+                    '[class*="CommentItemContainer"] a[href*="/@"]',
+                    '[class*="DivCommentContentContainer"] a[href*="/@"]',
+                    '[class*="DivCommentObjectWrapper"] a[href*="/@"]',
+                ]
+                for sel in item_selectors:
+                    try:
+                        links = await self._page.query_selector_all(sel)
+                        if links:
+                            comment_links = links
+                            container_found = sel
+                            break
+                    except: pass
+
+            # STEP 3: scroll inside the container to load more comments, then re-extract
+            if comment_links and container_found.startswith("["):
+                try:
+                    container_el = self._page.locator(container_found).first
+                    prev_count = 0
+                    for _ in range(15):
+                        await container_el.evaluate("el => el.scrollBy(0, 800)")
+                        await self._human_delay(1.0, 1.8)
+                        new_links = await container_el.locator('a[href*="/@"]').all()
+                        if len(new_links) == prev_count:
+                            break
+                        prev_count = len(new_links)
+                    comment_links = await container_el.locator('a[href*="/@"]').all()
+                except: pass
+
+            # STEP 4: if we still have nothing AND a comment button exists, click it
+            # (TikTok mobile/desktop sometimes loads comments in a modal)
+            if not comment_links:
+                for btn_sel in [
+                    '[data-e2e="comment-icon"]',
+                    'button[aria-label*="Comment" i]',
+                    'span[data-e2e="comment-icon"]',
+                ]:
+                    try:
+                        btn = self._page.locator(btn_sel).first
+                        if await btn.count() > 0 and await btn.is_visible():
+                            await btn.click(timeout=3000)
+                            await self._human_delay(2, 3)
+                            comment_links = await self._page.query_selector_all('a[href*="/@"]')
+                            break
+                    except: pass
+
+            # STEP 5: last-resort fallback — but warn loudly because this is the
+            # source of the "stuck in a loop" bug (matched header/sidebar links)
+            if not comment_links:
+                logger.warning(
+                    f"get_post_commenters: no comment container found, "
+                    f"falling back to all a[href*=/@] (may include non-commenters)"
+                )
+                comment_links = await self._page.query_selector_all('a[href*="/@"]')
+
+            # Dedupe + filter
+            seen = set()
+            for link in comment_links[:limit * 5]:
+                try:
+                    href = await link.get_attribute("href")
+                except: continue
+                if not href or "/@" not in href:
+                    continue
+                username = href.split("/@")[-1].split("/")[0].split("?")[0]
+                if not username or len(username) < 2:
+                    continue
+                if username.isdigit():
+                    continue
+                if username.lower() == video_owner:
+                    continue
+                if username in seen:
+                    continue
+                seen.add(username)
+                results.append(UserProfile(platform_id=username, username=username))
+                if len(results) >= limit:
+                    break
+
+            if results:
+                logger.info(f"Extracted {len(results)} commenters from HTML (container: {container_found or 'fallback'})")
+                return results
+
+            # LLM fallback
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
