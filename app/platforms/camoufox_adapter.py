@@ -416,24 +416,62 @@ class CamoufoxAdapter(PlatformAdapter):
             page_text = await self._extract_page_text()
             self._check_for_blockers(page_text, url)
 
-            # Extract user_id from page source JSON
-            page_source = await self._page.content()
-            user_id_match = re.search(r'"id"\s*:\s*"(\d{1,30})"', page_source)
-            if not user_id_match:
-                # Try alternate pattern
-                user_id_match = re.search(r'"userId"\s*:\s*"(\d{1,30})"', page_source)
-            if not user_id_match:
-                logger.warning(f"send_dm: Could not extract user_id for @{handle}")
-                return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
+            # PRIMARY: try clicking the Message button on the profile (most reliable,
+            # TikTok keeps the button even when direct URLs return 404).
+            msg_btn_clicked = False
+            try:
+                msg_btn_selectors = [
+                    'button:has-text("Message")',
+                    '[data-e2e="message-button"]',
+                    'div[role="button"]:has-text("Message")',
+                    '//p[text()="Send message"]',
+                    '//div[contains(@class, "message")]//button',
+                ]
+                for sel in msg_btn_selectors:
+                    try:
+                        if sel.startswith('//'):
+                            btn = self._page.locator(f'xpath={sel}').first
+                        else:
+                            btn = self._page.locator(sel).first
+                        if await btn.count() > 0 and await btn.is_visible():
+                            await btn.click(timeout=5000)
+                            msg_btn_clicked = True
+                            logger.info(f"send_dm: Clicked Message button via '{sel}'")
+                            break
+                    except: pass
+            except Exception as e:
+                logger.info(f"send_dm: Message button click attempt failed: {e}")
 
-            uid = user_id_match.group(1)
-            logger.info(f"send_dm: Got user_id={uid} for @{handle}")
+            if not msg_btn_clicked:
+                # FALLBACK: try direct DM URLs (TikTok's URL formats have changed
+                # multiple times; we try several to find one that doesn't 404).
+                page_source = await self._page.content()
+                uid = None
+                for pattern in (r'"id"\s*:\s*"(\d{1,30})"', r'"userId"\s*:\s*"(\d{1,30})"'):
+                    m = re.search(pattern, page_source)
+                    if m:
+                        uid = m.group(1)
+                        break
+                if not uid:
+                    logger.warning(f"send_dm: Could not extract user_id for @{handle}")
+                    return ActionResult(success=False, action_type="dm", error="Could not extract user_id")
+                logger.info(f"send_dm: Got user_id={uid} for @{handle}")
 
-            # Navigate directly to DM page using user_id
-            dm_url = f"https://www.{self.platform}.com/direct/inbox?lang=en&u={uid}"
-            logger.info(f"send_dm: Navigating to DM page: {dm_url}")
-            await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
-            await self._human_delay(3, 5)
+                dm_urls = [
+                    f"https://www.{self.platform}.com/direct/inbox?lang=en&u={uid}",
+                    f"https://www.{self.platform}.com/direct/inbox?username={handle}",
+                    f"https://www.{self.platform}.com/messages?u={uid}",
+                ]
+                for dm_url in dm_urls:
+                    logger.info(f"send_dm: Trying DM URL: {dm_url}")
+                    await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
+                    await self._human_delay(2, 3)
+                    if "/404" not in self._page.url:
+                        logger.info(f"send_dm: DM URL loaded (no 404)")
+                        break
+                    logger.warning(f"send_dm: URL 404'd, trying next format")
+
+            await self._human_delay(2, 3)
 
             # Wait for DM page to load — check for chat-uniqueid or input box
             dm_loaded = False
@@ -1045,9 +1083,15 @@ class CamoufoxAdapter(PlatformAdapter):
                 'button[data-e2e="like-button"]',
                 '[data-e2e="like-icon"]',
                 '[data-e2e="like-button"]',
-                # Fallback: aria-label
+                # Fallback: aria-label on button
                 'button[aria-label*="Like"]',
                 'button[aria-label*="like"]',
+                # Photo/carousel viewer: like icon is an SVG inside StyledIconWrapper
+                # (first StyledIconWrapper in the right action bar is the like heart)
+                'div[class*="StyledIconWrapper"]:first-of-type',
+                'div[class*="StyledIconWrapper"]:first-of-type svg',
+                # Generic action bar button (right-side icons on photo viewer)
+                '[class*="StyledActionBarButton"]:first-of-type',
             ]
 
             for sel in selectors:
