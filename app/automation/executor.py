@@ -327,10 +327,14 @@ class CampaignExecutor:
 
                                 # Safety check + profile scrape in parallel
                                 async def _scrape_profile():
-                                    try:
-                                        return await self.adapter.get_user_profile(h)
-                                    except:
-                                        return {"username": h, "bio": ""}
+                                    for attempt in range(3):
+                                        try:
+                                            return await self.adapter.get_user_profile(h)
+                                        except Exception as e:
+                                            self.logger.warning(f"Profile scrape @{h} failed (attempt {attempt+1}/3): {e}")
+                                            if attempt < 2:
+                                                await asyncio.sleep(5)
+                                    return {"username": h, "bio": ""}
 
                                 async def _safety():
                                     return await self._safety_check(h, [source])
@@ -387,8 +391,11 @@ class CampaignExecutor:
                                     for p in user_posts[:2]:
                                         url = p.get("url", "")
                                         if url:
-                                            await self.adapter.like_post(url)
-                                            self.logger.info(f"Liked post by @{h}")
+                                            res = await self.adapter.like_post(url)
+                                            if res.success:
+                                                self.logger.info(f"Liked post by @{h}")
+                                            else:
+                                                self.logger.warning(f"Failed to like post by @{h}: {res.error}")
                                             await self.anti_detect.random_delay(lambda: self.running)
                                 except: pass
 
@@ -478,11 +485,16 @@ class CampaignExecutor:
                 error = None
 
                 if action_type == "growth":
-                    # Profile scrape
-                    try:
-                        profile_data = await self.adapter.get_user_profile(handle)
-                    except:
-                        profile_data = {"username": handle, "bio": ""}
+                    # Profile scrape with retry
+                    profile_data = {"username": handle, "bio": ""}
+                    for attempt in range(3):
+                        try:
+                            profile_data = await self.adapter.get_user_profile(handle)
+                            break
+                        except Exception as e:
+                            self.logger.warning(f"Profile scrape @{handle} failed (attempt {attempt+1}/3): {e}")
+                            if attempt < 2:
+                                await asyncio.sleep(5)
 
                     # Screenshot AFTER profile scrape
                     screenshot_b64 = None
@@ -523,8 +535,11 @@ class CampaignExecutor:
                             for p in user_posts[:2]:
                                 p_url = p.get("url", "")
                                 if p_url:
-                                    await self.adapter.like_post(p_url)
-                                    self.logger.info(f"Liked post by @{handle}")
+                                    res = await self.adapter.like_post(p_url)
+                                    if res.success:
+                                        self.logger.info(f"Liked post by @{handle}")
+                                    else:
+                                        self.logger.warning(f"Failed to like post by @{handle}: {res.error}")
                                     await self.anti_detect.random_delay(lambda: self.running)
                         except: pass
 
@@ -551,11 +566,16 @@ class CampaignExecutor:
                         except: pass
 
                 elif action_type == "outreach":
-                    # Profile scrape
-                    try:
-                        profile_data = await self.adapter.get_user_profile(handle)
-                    except:
-                        profile_data = {"username": handle, "bio": ""}
+                    # Profile scrape with retry
+                    profile_data = {"username": handle, "bio": ""}
+                    for attempt in range(3):
+                        try:
+                            profile_data = await self.adapter.get_user_profile(handle)
+                            break
+                        except Exception as e:
+                            self.logger.warning(f"Profile scrape @{handle} failed (attempt {attempt+1}/3): {e}")
+                            if attempt < 2:
+                                await asyncio.sleep(5)
                     self.logger.info(f"Profile @{handle}: bio='{profile_data.get('bio', '')[:50]}', posts={len(profile_data.get('recent_posts', []))}")
 
                     # Screenshot AFTER profile scrape
@@ -605,8 +625,11 @@ class CampaignExecutor:
                             for p in user_posts[:2]:
                                 p_url = p.get("url", "")
                                 if p_url:
-                                    await self.adapter.like_post(p_url)
-                                    self.logger.info(f"Liked post by @{handle}")
+                                    res = await self.adapter.like_post(p_url)
+                                    if res.success:
+                                        self.logger.info(f"Liked post by @{handle}")
+                                    else:
+                                        self.logger.warning(f"Failed to like post by @{handle}: {res.error}")
                                     await self.anti_detect.random_delay(lambda: self.running)
                         except: pass
 
