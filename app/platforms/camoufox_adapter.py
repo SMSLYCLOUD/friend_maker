@@ -643,47 +643,57 @@ class CamoufoxAdapter(PlatformAdapter):
                     break
                 logger.info(f"Overlay detected (inert=true), attempt {attempt+1}")
 
-                # Strategy 1: Click the inbox icon to toggle off the panel
+                # Aggressive: remove inert + hide all floating UI overlays in one JS call
+                done = await self._page.evaluate('''() => {
+                    const app = document.querySelector("#app");
+                    if (!app) return false;
+
+                    // Remove inert from #app
+                    app.removeAttribute("inert");
+                    app.removeAttribute("aria-hidden");
+                    app.removeAttribute("data-floating-ui-inert");
+
+                    // Hide all floating-ui portals / overlays (TikTok uses these)
+                    document.querySelectorAll('[data-floating-ui-portal]').forEach(el => {
+                        el.style.display = "none";
+                    });
+                    document.querySelectorAll('[data-floating-ui-inert]').forEach(el => {
+                        el.style.display = "none";
+                    });
+
+                    // Find and hide the inbox panel specifically
+                    const inboxIcon = document.querySelector('[data-e2e="inbox-icon"]');
+                    if (inboxIcon) {
+                        let panel = inboxIcon.closest('[class*="Popup"], [class*="Modal"], [class*="Overlay"], [class*="Panel"], [role="dialog"]');
+                        if (panel) {
+                            panel.style.display = "none";
+                            panel.remove();
+                        }
+                    }
+
+                    // Hide any element with aria-modal="true" or role="dialog" that overlays content
+                    document.querySelectorAll('[aria-modal="true"], [role="dialog"]').forEach(el => {
+                        if (el.querySelector('[data-e2e="inbox-list"], [data-e2e="inbox-icon"]')) {
+                            el.style.display = "none";
+                            el.remove();
+                        }
+                    });
+
+                    return app.getAttribute("inert") !== "true";
+                }''')
+                if done:
+                    logger.info("Overlay removed via JS (inert + portal hide)")
+                    await self._human_delay(1, 2)
+                    break
+
+                # Fallback: click inbox icon to toggle
                 try:
                     inbox_icon = self._page.locator('[data-e2e="inbox-icon"]').first
                     if await inbox_icon.count() > 0:
                         await inbox_icon.click(timeout=2000)
                         await self._human_delay(1, 2)
-                        is_inert = await self._page.evaluate(
-                            'document.querySelector("#app")?.getAttribute("inert") === "true"'
-                        )
-                        if not is_inert:
-                            logger.info("Overlay closed by clicking inbox icon")
-                            break
                 except: pass
 
-                # Strategy 2: Click the video/watch section to shift focus
-                try:
-                    video_section = self._page.locator('section[aria-label*="full screen"], section[aria-label*="Watch"]').first
-                    if await video_section.count() > 0:
-                        await video_section.click(timeout=2000)
-                        await self._human_delay(1, 2)
-                except: pass
-
-                # Strategy 3: Remove inert attribute via JavaScript
-                try:
-                    removed = await self._page.evaluate('''() => {
-                        const app = document.querySelector("#app");
-                        if (app && app.getAttribute("inert") === "true") {
-                            app.removeAttribute("inert");
-                            app.removeAttribute("aria-hidden");
-                            app.removeAttribute("data-floating-ui-inert");
-                            return true;
-                        }
-                        return false;
-                    }''')
-                    if removed:
-                        logger.info("Removed inert via JS")
-                        await self._human_delay(1, 2)
-                        break
-                except: pass
-
-                # Strategy 4: Press Escape as last resort
                 await self._page.keyboard.press("Escape")
                 await self._human_delay(1, 2)
             except: break
