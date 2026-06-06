@@ -274,7 +274,7 @@ class CampaignExecutor:
                                 # e.g. /@7286426392387486752/video/... -> /@violinia.de/video/...
                                 numeric_match = re.search(r'/@(\d+)/', href)
                                 if numeric_match:
-                                    href = href.replace(f"/@{numeric_match.group(1)}/", f"/@{handle}/")
+                                    href = href.replace(f"/@{numeric_match.group(1)}/", f"/@{source}/")
                                 post_urls.append(href)
                         except Exception as e:
                             self.logger.warning(f"Failed to find post links: {e}")
