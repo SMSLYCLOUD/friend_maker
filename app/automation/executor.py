@@ -270,6 +270,11 @@ class CampaignExecutor:
                                 seen_ids.add(vid_id)
                                 if not href.startswith("http"):
                                     href = f"https://www.tiktok.com{href}"
+                                # Normalize: replace numeric user ID with the actual handle
+                                # e.g. /@7286426392387486752/video/... -> /@violinia.de/video/...
+                                numeric_match = re.search(r'/@(\d+)/', href)
+                                if numeric_match:
+                                    href = href.replace(f"/@{numeric_match.group(1)}/", f"/@{handle}/")
                                 post_urls.append(href)
                         except Exception as e:
                             self.logger.warning(f"Failed to find post links: {e}")
