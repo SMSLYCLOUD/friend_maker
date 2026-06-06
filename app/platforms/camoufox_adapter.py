@@ -703,14 +703,50 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
 
-            # Navigate to blank first to clear TikTok's SPA state (inbox overlay etc.)
-            await self._page.goto("about:blank", wait_until="commit", timeout=10000)
-            await self._human_delay(1, 2)
+            # Inject MutationObserver to auto-remove inert whenever TikTok re-applies it
+            await self._page.evaluate('''() => {
+                if (window.__inertObserver) return;
+                window.__inertObserver = true;
+                const observer = new MutationObserver((mutations) => {
+                    for (const m of mutations) {
+                        if (m.type === "attributes" && m.attributeName === "inert") {
+                            const el = m.target;
+                            if (el.id === "app" && el.getAttribute("inert") === "true") {
+                                el.removeAttribute("inert");
+                                el.removeAttribute("aria-hidden");
+                                el.removeAttribute("data-floating-ui-inert");
+                            }
+                        }
+                    }
+                });
+                const app = document.querySelector("#app");
+                if (app) {
+                    observer.observe(app, { attributes: true, attributeFilter: ["inert"] });
+                }
+                // Also remove floating-ui portals that cause inert
+                document.querySelectorAll('[data-floating-ui-portal]').forEach(el => el.remove());
+                // Remove inert now if present
+                if (app && app.getAttribute("inert") === "true") {
+                    app.removeAttribute("inert");
+                    app.removeAttribute("aria-hidden");
+                    app.removeAttribute("data-floating-ui-inert");
+                }
+            }''')
 
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
-            await self._dismiss_overlay()
+            # Re-inject observer after navigation (page reloaded)
+            await self._page.evaluate('''() => {
+                const app = document.querySelector("#app");
+                if (app && app.getAttribute("inert") === "true") {
+                    app.removeAttribute("inert");
+                    app.removeAttribute("aria-hidden");
+                    app.removeAttribute("data-floating-ui-inert");
+                }
+                document.querySelectorAll('[data-floating-ui-portal]').forEach(el => el.remove());
+            }''')
+            await self._human_delay(1, 2)
 
             # Extract video owner from URL to exclude them
             video_owner = ""
@@ -1306,15 +1342,20 @@ class CamoufoxAdapter(PlatformAdapter):
         """Like a post (works for both video and photo posts)."""
         try:
             await self._ensure_browser(self._session_data)
-
-            # Navigate to blank first to clear TikTok's SPA state
-            await self._page.goto("about:blank", wait_until="commit", timeout=10000)
-            await self._human_delay(1, 2)
-
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            await self._dismiss_overlay()
+            # Remove overlay: strip inert + floating-ui portals
+            await self._page.evaluate('''() => {
+                const app = document.querySelector("#app");
+                if (app && app.getAttribute("inert") === "true") {
+                    app.removeAttribute("inert");
+                    app.removeAttribute("aria-hidden");
+                    app.removeAttribute("data-floating-ui-inert");
+                }
+                document.querySelectorAll('[data-floating-ui-portal]').forEach(el => el.remove());
+            }''')
+            await self._human_delay(1, 2)
 
             # Try multiple selector strategies for video and photo posts
             like_btn = None
