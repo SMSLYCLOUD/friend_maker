@@ -702,6 +702,11 @@ class CamoufoxAdapter(PlatformAdapter):
         results = []
         try:
             await self._ensure_browser(self._session_data)
+
+            # Navigate to blank first to clear TikTok's SPA state (inbox overlay etc.)
+            await self._page.goto("about:blank", wait_until="commit", timeout=10000)
+            await self._human_delay(1, 2)
+
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
@@ -1301,6 +1306,11 @@ class CamoufoxAdapter(PlatformAdapter):
         """Like a post (works for both video and photo posts)."""
         try:
             await self._ensure_browser(self._session_data)
+
+            # Navigate to blank first to clear TikTok's SPA state
+            await self._page.goto("about:blank", wait_until="commit", timeout=10000)
+            await self._human_delay(1, 2)
+
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
