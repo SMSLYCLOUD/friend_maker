@@ -1347,12 +1347,19 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 follower_count = self._parse_count_text(count_text)
             except: pass
 
+            # Wait for drawer to render content
+            try:
+                await self._page.wait_for_selector('a[href*="/@"]', timeout=8000)
+                await self._human_delay(2, 3)
+            except:
+                await self._human_delay(1, 2)
+
             matched = []
             seen = set()
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
 
             # Scroll + scrape loop
-            for scroll_i in range(60):
+            for scroll_i in range(80):
                 current_links = set(await self._page.evaluate("""
                     () => {
                         const results = [];
@@ -1417,7 +1424,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 if matched:
                     break
 
-                if not new_found and scroll_i > 2:
+                if not new_found and scroll_i > 8:
                     # Fallback page text check before giving up
                     page_text = (await self._page.evaluate("document.body.innerText")).lower()
                     for search_name in search_lower:
@@ -1428,10 +1435,36 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                     if matched:
                         break
 
-                # Aggressive scroll: scroll EVERY scrollable element + window
+                # Scroll the followers drawer
+                # TikTok uses virtual scrolling — CSS scrollBy alone doesn't trigger it,
+                # but mouse wheel + JS scroll events + scrollTop setting together do
                 try:
+                    drawer = self._page.locator('div[class*="DivRelationList"], div[class*="DivScrollContainer"], div[data-e2e*="relation"]').first
+                    if await drawer.count() > 0:
+                        box = await drawer.bounding_box()
+                        if box:
+                            await self._page.mouse.move(box.x + box.width // 2, box.y + box.height // 2)
+                            for _ in range(3):
+                                await self._page.mouse.wheel(0, 800)
+                                await self._human_delay(0.2, 0.5)
+
+                    # Also do JS scroll + dispatch scroll/wheel events as fallback
                     await self._page.evaluate("""
                         () => {
+                            const drawContainers = document.querySelectorAll(
+                                'div[class*="DivRelationList"], div[class*="DivScrollContainer"], div[class*="DivFollowerList"], div[data-e2e*="relation"], div[class*="relation-list"]'
+                            );
+                            for (const dc of drawContainers) {
+                                const maxScroll = dc.scrollHeight - dc.clientHeight || 0;
+                                if (maxScroll > 0) {
+                                    dc.scrollTop = Math.min(dc.scrollTop + 800, maxScroll);
+                                } else {
+                                    dc.scrollTop = 20000;
+                                }
+                                dc.dispatchEvent(new Event('scroll', {bubbles: true}));
+                                dc.dispatchEvent(new WheelEvent('wheel', {deltaY: 2000, bubbles: true, cancelable: true}));
+                            }
+                            // Fallback: any scrollable element
                             const targets = new Set();
                             targets.add(window);
                             targets.add(document.body);
@@ -1449,8 +1482,9 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                             }
                         }
                     """)
-                    await self._human_delay(1, 2)
-                except: pass
+                    await self._human_delay(2, 3)
+                except Exception as e:
+                    logger.warning(f"check_user_followers: scroll error: {e}")
 
             logger.info(f"check_user_followers: @{handle} has {follower_count} followers, found {len(matched)} matches")
             return {
