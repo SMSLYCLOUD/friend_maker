@@ -156,17 +156,17 @@ Return JSON only:
         # Follower count filters
         followers = _parse_follower_count(profile_data.get("follower_count") or profile_data.get("followers"))
 
-        m = re.search(r'(?:skip|min|minimum|less than|under|below)\s+(\d+)\s*(?:k)?\s*(?:followers?)?', instructions_lower)
+        m = re.search(r'(?:less than|under|below|min|minimum|skip).{0,40}?(\d+)\s*(k)?\s*(?:follower|fans)', instructions_lower)
         if m:
             min_f = int(m.group(1))
-            if "k" in m.group(0): min_f *= 1000
+            if m.group(2) or "k" in m.group(0): min_f *= 1000
             if 0 < followers < min_f:
                 return f"followers_below_{min_f}"
 
-        m = re.search(r'(?:skip|max|maximum|more than|over|above|greater than)\s+(\d+)\s*(?:k)?\s*(?:followers?)?', instructions_lower)
+        m = re.search(r'(?:more than|over|above|greater than|max|maximum|skip).{0,40}?(\d+)\s*(k)?\s*(?:follower|fans)', instructions_lower)
         if m:
             max_f = int(m.group(1))
-            if "k" in m.group(0): max_f *= 1000
+            if m.group(2) or "k" in m.group(0): max_f *= 1000
             if followers > max_f:
                 return f"followers_above_{max_f}"
 
@@ -174,6 +174,35 @@ Return JSON only:
         if any(kw in instructions_lower for kw in ["skip private", "private accounts", "no private"]):
             if profile_data.get("is_private"):
                 return "private_account"
+
+        # No profile photo
+        if any(kw in instructions_lower for kw in ["no profile photo", "no profile pic", "no profile picture", "no photo", "no picture"]):
+            has_pic = bool(profile_data.get("profile_pic_url") or profile_data.get("avatar_url"))
+            if not has_pic:
+                return "no_profile_photo"
+
+        # No bio
+        if any(kw in instructions_lower for kw in ["no bio", "empty bio", "no description", "no about"]):
+            bio = (profile_data.get("bio") or "").strip()
+            if not bio:
+                return "no_bio"
+
+        # Bio keywords
+        bio_kw_match = re.search(r'bio containing(?:\s*:)?\s*(.+?)(?:\n|$)', instructions_lower)
+        if bio_kw_match:
+            bio = (profile_data.get("bio") or "").lower()
+            keywords = [k.strip() for k in bio_kw_match.group(1).split(",") if k.strip()]
+            for kw in keywords:
+                if kw and kw in bio:
+                    return f"bio_contains_{kw}"
+
+        # Verified accounts
+        if any(kw in instructions_lower for kw in [
+            "skip verified", "verified accounts", "no verified", "skip blue check",
+            "skip verified/blue-check", "verified/blue-check",
+        ]):
+            if profile_data.get("is_verified"):
+                return "verified_account"
 
         return None
 
@@ -203,7 +232,23 @@ Return JSON only:
         # Step 2: LLM verification with screenshot (if available)
         filter_criteria = self._extract_filter_criteria(combined)
 
-        prompt = f"""You are a social media profile classifier. Analyze this profile and decide if it should be SKIPPED.
+        decision_rules = []
+        if filter_criteria:
+            decision_rules.append("You MUST check EACH filtering rule below against the profile data and screenshot:")
+            for line in filter_criteria.split("\n"):
+                line = line.strip()
+                if line:
+                    decision_rules.append(f"- RULE: \"{line}\" → if this rule matches the profile, set should_skip=true")
+            decision_rules.append("")
+        decision_rules.append("- If profile looks like a bot/spam → skip")
+        if screenshot_b64:
+            decision_rules.append("- If rules say 'male only' and screenshot shows a female profile → skip")
+            decision_rules.append("- If you CANNOT determine gender from the screenshot → DO NOT skip based on gender")
+        decision_rules.append("- If no screenshot available and gender is unclear → DO NOT skip")
+        if not filter_criteria:
+            decision_rules.append("- If no filtering rules are set above → do NOT skip (score >= 0.5)")
+
+        prompt = f"""You are a social media profile classifier. Analyze this profile and decide if it should be SKIPPED or engaged with.
 
 Profile Data:
 Username: {profile_data.get('username')}
@@ -212,18 +257,10 @@ Display Name: {profile_data.get('display_name', 'N/A')}
 Follower Count: {profile_data.get('follower_count', profile_data.get('followers', 'N/A'))}
 Is Private: {profile_data.get('is_private', False)}
 
-{"FILTERING RULES — you MUST enforce these:" if filter_criteria else ""}
-{filter_criteria}
-
-{"A screenshot of the profile is attached. Use it to determine:" if screenshot_b64 else ""}
-{"- Gender (from profile picture and display name)" if screenshot_b64 else ""}
-{"- Whether this looks like a real person or a bot/spam account" if screenshot_b64 else ""}
+{"A screenshot of the profile is attached. Use it to check rules about gender, profile photo, or bot detection." if screenshot_b64 else ""}
 
 DECISION RULES:
-- If rules say "male only" and you can clearly see this is a female profile → skip
-- If profile looks like a bot/spam → skip
-- If you CANNOT determine gender from the screenshot → DO NOT skip (proceed)
-- If no screenshot available and gender is unclear → DO NOT skip
+{chr(10).join(decision_rules)}
 
 Return JSON only (no markdown):
 {{"should_skip": false, "skip_reason": null, "match_score": 0.5, "niche": "", "account_type": "", "gender_guess": "unknown", "reasoning": "brief explanation"}}"""
