@@ -902,8 +902,25 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            for _ in range(15):
-                await self._page.mouse.wheel(0, 1000)
+            for _ in range(30):
+                await self._page.evaluate("""
+                    () => {
+                        const sel = 'a[href*="/video/"], a[href*="/photo/"]';
+                        const links = document.querySelectorAll(sel);
+                        for (const link of links) {
+                            let el = link.parentElement;
+                            while (el && el !== document.body) {
+                                if (el.scrollHeight > el.offsetHeight + 10) {
+                                    el.scrollBy(0, 800);
+                                    return;
+                                }
+                                el = el.parentElement;
+                            }
+                        }
+                        window.scrollBy(0, 800);
+                        document.documentElement.scrollBy(0, 800);
+                    }
+                """)
                 await self._human_delay(0.8, 1.5)
 
             posts = []
