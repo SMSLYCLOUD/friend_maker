@@ -5,6 +5,7 @@ decision logic live in `BaseCamoufoxAdapter`. This file only contains
 TikTok-specific URL builders, selectors, and `authenticate()` quirks.
 """
 
+import asyncio
 import json
 import logging
 import os
