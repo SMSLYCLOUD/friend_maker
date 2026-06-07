@@ -608,17 +608,43 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                     await self._human_delay(2, 3)
                     await self._dismiss_overlay()
 
+                    comment_container = None
                     for sel in comment_panel_selectors:
                         try:
-                            container = self._page.locator(sel).first
-                            if await container.count() > 0:
-                                links = await container.locator('a[href*="/@"]').all()
+                            c = self._page.locator(sel).first
+                            if await c.count() > 0:
+                                links = await c.locator('a[href*="/@"]').all()
                                 if links:
                                     comment_links = links
+                                    comment_container = c
                                     container_found = sel
                                     logger.info(f"get_post_commenters: after click, found '{sel}' with {len(links)} links")
                                     break
                         except: pass
+
+                    # Scroll the comment panel to load more comments
+                    if comment_container and container_found:
+                        for scroll_i in range(20):
+                            try:
+                                await self._page.evaluate("""
+                                    (sel) => {
+                                        const c = document.querySelector(sel);
+                                        if (!c) return;
+                                        const s = c.querySelector(':scope > div') || c;
+                                        if (s.scrollHeight > s.offsetHeight) {
+                                            s.scrollTop = s.scrollHeight;
+                                        }
+                                    }
+                                """, container_found)
+                                await self._human_delay(1.5, 2.5)
+                                new_links = await comment_container.locator('a[href*="/@"]').all()
+                                if len(new_links) <= len(comment_links):
+                                    if scroll_i > 3:
+                                        break
+                                comment_links = new_links
+                            except:
+                                break
+                        logger.info(f"get_post_commenters: after scroll, '{container_found}' has {len(comment_links)} links")
 
                     if not comment_links:
                         for avatar_sel in [
@@ -860,9 +886,9 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            for _ in range(5):
-                await self._page.mouse.wheel(0, 1200)
-                await self._human_delay(1.5, 2.5)
+            for _ in range(15):
+                await self._page.mouse.wheel(0, 1000)
+                await self._human_delay(0.8, 1.5)
 
             posts = []
             try:
