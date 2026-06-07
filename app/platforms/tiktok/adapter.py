@@ -1214,8 +1214,19 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
+            # Snapshot all profile links BEFORE opening the drawer
+            before_links = set(await self._page.evaluate("""
+                () => {
+                    const links = document.querySelectorAll('a[href*="/@"]');
+                    return Array.from(links).map(l => {
+                        const href = l.getAttribute('href') || '';
+                        const parts = href.split('/@');
+                        return parts.length >= 2 ? parts[1].split('?')[0].split('/')[0].toLowerCase() : '';
+                    }).filter(u => u && u.length > 1 && !/^\\d+$/.test(u));
+                }
+            """))
+
             followers_clicked = False
-            # Try clicking the follower count element (direct or via JS)
             for sel in ['[data-e2e="followers-count"]', 'strong[title="Followers"]', 'a[href*="/followers"]', 'span:has-text("Followers")']:
                 try:
                     el = self._page.locator(sel).first
@@ -1245,56 +1256,42 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
 
             matched = []
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
-            seen = set()
 
+            # Dedicated follower drawer scroll + scrape loop
             for scroll_i in range(30):
-                try:
-                    items = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="follow-item"], div[class*="FollowerItem"], div[data-e2e="user-card"]')
-                    if not items:
-                        items = await self._page.query_selector_all('a[href*="/@"]')
-                except:
-                    items = []
+                # Extract all profile links that appeared AFTER the drawer opened
+                current_links = set(await self._page.evaluate("""
+                    () => {
+                        const links = document.querySelectorAll('a[href*="/@"]');
+                        return Array.from(links).map(l => {
+                            const href = l.getAttribute('href') || '';
+                            const parts = href.split('/@');
+                            return parts.length >= 2 ? parts[1].split('?')[0].split('/')[0].toLowerCase() : '';
+                        }).filter(u => u && u.length > 1 && !/^\\d+$/.test(u));
+                    }
+                """))
 
                 new_found = False
-                for item in items:
-                    try:
-                        link = await item.query_selector('a[href*="/@"]') if await item.evaluate("el => el.tagName") != "A" else item
-                        if not link:
-                            continue
-                        href = await link.get_attribute("href")
-                        if not href or "/@" not in href:
-                            continue
-                        item_username = href.split("/@")[1].split("?")[0].split("/").lower()
-                        if not item_username or len(item_username) <= 1 or item_username.isdigit():
-                            continue
-                        if item_username in seen:
-                            continue
-                        # Skip the profile owner themself
-                        if item_username == handle.lower():
-                            continue
-                        seen.add(item_username)
-                        new_found = True
+                for username in current_links:
+                    if username in before_links or username == handle.lower():
+                        continue
+                    if username in seen:
+                        continue
+                    seen.add(username)
+                    new_found = True
 
-                        display_name = ""
-                        try:
-                            name_el = await item.query_selector('p[class*="nickname"], span[class*="nickname"], h3, h4')
-                            if name_el:
-                                display_name = (await name_el.inner_text()).lower()
-                        except: pass
-
-                        combined = f"{item_username} {display_name}".replace(".", " ").replace("_", " ").replace("-", " ")
-                        for search_name in search_lower:
-                            search_words = search_name.split()
-                            if len(search_words) >= 2:
-                                matches = sum(1 for w in search_words if w in combined)
-                                if matches >= len(search_words) - 1:
-                                    matched.append({"username": item_username, "display_name": display_name, "matched_search": search_name})
-                                    logger.info(f"check_user_followers: FOUND match '@{item_username}' ({display_name}) for '{search_name}'")
-                            else:
-                                if search_words[0] in combined and len(search_words[0]) >= 3:
-                                    matched.append({"username": item_username, "display_name": display_name, "matched_search": search_name})
-                                    logger.info(f"check_user_followers: FOUND match '@{item_username}' ({display_name}) for '{search_name}'")
-                    except: pass
+                    combined = username.replace(".", " ").replace("_", " ").replace("-", " ")
+                    for search_name in search_lower:
+                        search_words = search_name.split()
+                        if len(search_words) >= 2:
+                            m = sum(1 for w in search_words if w in combined)
+                            if m >= len(search_words) - 1:
+                                matched.append({"username": username, "display_name": "", "matched_search": search_name})
+                                logger.info(f"check_user_followers: FOUND match '@{username}' for '{search_name}'")
+                        else:
+                            if search_words[0] in combined and len(search_words[0]) >= 3:
+                                matched.append({"username": username, "display_name": "", "matched_search": search_name})
+                                logger.info(f"check_user_followers: FOUND match '@{username}' for '{search_name}'")
 
                 if matched:
                     break
@@ -1303,17 +1300,18 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                     break
 
                 try:
-                    # Find and scroll the drawer container via JS
                     await self._page.evaluate("""
                         () => {
-                            const divs = document.querySelectorAll('div');
-                            for (const d of divs) {
-                                if (d.scrollHeight > d.offsetHeight + 50 && d.offsetHeight > 300) {
-                                    d.scrollTop = d.scrollHeight;
-                                    return;
+                            // Scroll the followers drawer (right-side panel)
+                            const panel = document.querySelector('div[class*="Relation" i], div[class*="Follower" i], div[class*="Following" i], div[class*="Drawer" i], div[class*="Panel" i]');
+                            if (panel) {
+                                const scrollContainer = panel.querySelector(':scope > div');
+                                if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.offsetHeight) {
+                                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                                } else if (panel.scrollHeight > panel.offsetHeight) {
+                                    panel.scrollTop = panel.scrollHeight;
                                 }
                             }
-                            window.scrollBy(0, 800);
                         }
                     """)
                     await self._human_delay(1, 2)
