@@ -1255,6 +1255,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             except: pass
 
             matched = []
+            seen = set()
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
 
             # Dedicated follower drawer scroll + scrape loop
