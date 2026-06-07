@@ -256,19 +256,13 @@ class BaseCamoufoxAdapter(PlatformAdapter):
                     }
 
                     document.querySelectorAll('[data-floating-ui-portal]').forEach(el => {
-                        el.style.display = "none";
-                        el.remove();
-                    });
-                    document.querySelectorAll('[data-floating-ui-inert]').forEach(el => {
-                        el.style.display = "none";
+                        if (el.querySelector('.TUXModal-overlay, [class*="Modal-overlay"], [class*="modal-overlay"]')) {
+                            el.style.display = "none";
+                            el.remove();
+                        }
                     });
 
                     document.querySelectorAll('.TUXModal-overlay, [class*="Modal-overlay"], [class*="modal-overlay"]').forEach(el => {
-                        el.style.display = "none";
-                        el.remove();
-                    });
-
-                    document.querySelectorAll('[aria-modal="true"], [role="dialog"]').forEach(el => {
                         el.style.display = "none";
                         el.remove();
                     });

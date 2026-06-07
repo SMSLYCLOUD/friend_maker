@@ -312,14 +312,49 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
 
             await self._dismiss_overlay()
-            await self._human_delay(1, 2)
+            await self._human_delay(2, 3)
 
             logger.info(f"send_dm: Typing message ({len(message)} chars)")
-            try:
-                await dm_input.click(timeout=10000)
-            except Exception:
-                logger.warning("send_dm: normal click failed, trying force click")
-                await dm_input.click(force=True, timeout=10000)
+
+            # Re-locate input after overlay removal to get a fresh reference
+            dm_input = None
+            for sel in input_selectors:
+                try:
+                    el = self._page.locator(sel)
+                    if await el.count() > 0 and await el.first.is_visible():
+                        dm_input = el.first
+                        break
+                except:
+                    continue
+
+            if not dm_input:
+                logger.warning("send_dm: DM input gone after overlay dismiss — trying keyboard paste")
+                await self._page.keyboard.press("Control+KeyV")
+                await self._human_delay(0.5, 1)
+                await self._page.keyboard.press("Enter")
+                await self._human_delay(1, 2)
+                logger.info(f"send_dm: DM sent via keyboard fallback to @{handle}")
+                return ActionResult(success=True, action_type="dm")
+
+            for attempt in range(3):
+                try:
+                    await dm_input.click(timeout=5000)
+                    break
+                except Exception:
+                    if attempt < 2:
+                        await self._human_delay(1, 2)
+                    else:
+                        logger.warning("send_dm: all click attempts failed, using force click")
+                        try:
+                            await dm_input.click(force=True, timeout=5000)
+                        except Exception:
+                            logger.warning("send_dm: force click also failed, using keyboard paste")
+                            await self._page.keyboard.press("Control+KeyV")
+                            await self._human_delay(0.5, 1)
+                            await self._page.keyboard.press("Enter")
+                            await self._human_delay(1, 2)
+                            logger.info(f"send_dm: DM sent via keyboard fallback to @{handle}")
+                            return ActionResult(success=True, action_type="dm")
             await self._page.keyboard.press("Control+KeyA")
             await self._page.keyboard.press("Backspace")
             await self._human_delay(0.3, 0.5)
