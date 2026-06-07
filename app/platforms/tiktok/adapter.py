@@ -1319,6 +1319,27 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
+            follower_usernames = []
+            api_received = asyncio.Event()
+
+            async def _capture_followers(response):
+                nonlocal follower_usernames
+                if '/api/user/list/' not in response.url:
+                    return
+                try:
+                    body = await response.json()
+                    user_list = body.get('userList', [])
+                    for u in user_list:
+                        uid = (u.get('uniqueId') or '').lower()
+                        if uid:
+                            follower_usernames.append(uid)
+                    if 'userList' in body:
+                        api_received.set()
+                except:
+                    pass
+
+            self._page.on('response', _capture_followers)
+
             followers_clicked = False
             for sel in ['[data-e2e="followers-count"]', 'strong[title="Followers"]', 'a[href*="/followers"]', 'span:has-text("Followers")']:
                 try:
@@ -1333,160 +1354,95 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                             }""", sel)
                         followers_clicked = True
                         logger.info(f"check_user_followers: Clicked followers via '{sel}'")
-                        await self._human_delay(2, 3)
                         break
                 except: pass
 
-            if not followers_clicked:
+            if followers_clicked:
+                try:
+                    await asyncio.wait_for(api_received.wait(), timeout=8)
+                    await self._human_delay(1, 2)
+                except asyncio.TimeoutError:
+                    logger.warning(f"check_user_followers: API response not received for @{handle}")
+                    await self._human_delay(2, 3)
+            else:
                 logger.warning(f"check_user_followers: Could not open followers list for @{handle}")
+                self._page.remove_listener('response', _capture_followers)
                 return {"found": False, "matched_names": [], "follower_count": 0}
 
-            follower_count = 0
+            self._page.remove_listener('response', _capture_followers)
+
+            # If API didn't return data, try fallback: fetch via page context
+            if not follower_usernames:
+                logger.info(f"check_user_followers: API interception empty, trying direct fetch...")
+                follower_usernames = await self._page.evaluate("""
+                    async () => {
+                        try {
+                            const resp = await fetch('/api/user/list/?sourceType=1&count=50&aid=1988', {
+                                credentials: 'include',
+                                headers: {'Accept': 'application/json'}
+                            });
+                            const data = await resp.json();
+                            return (data.userList || []).map(u => (u.uniqueId || '').toLowerCase()).filter(Boolean);
+                        } catch(e) {
+                            return [];
+                        }
+                    }
+                """)
+
+            # Try a second request if we got nothing (maybe need specific ID params)
+            if not follower_usernames:
+                follower_usernames = await self._page.evaluate("""
+                    async () => {
+                        try {
+                            // Find the profile owner's IDs from the page
+                            const scripts = document.querySelectorAll('script');
+                            let userId = '', secUid = '';
+                            for (const s of scripts) {
+                                const t = s.textContent || '';
+                                const m = t.match(/"userInfo":\\{"user":\\{"id":"(\\d+)","secUid":"([^"]+)"/);
+                                if (m) { userId = m[1]; secUid = m[2]; break; }
+                            }
+                            if (!userId) return [];
+                            const allUsers = [];
+                            let cursor = 0;
+                            for (let pg = 0; pg < 3; pg++) {
+                                const url = `/api/user/list/?userId=${userId}&secUid=${secUid}&count=50&type=follower&cursor=${cursor}&aid=1988&sourceType=1`;
+                                const resp = await fetch(url, {credentials: 'include', headers: {'Accept': 'application/json'}});
+                                const data = await resp.json();
+                                (data.userList || []).forEach(u => {
+                                    if (u.uniqueId) allUsers.push(u.uniqueId.toLowerCase());
+                                });
+                                if (!data.hasMore) break;
+                                cursor = data.cursor;
+                            }
+                            return allUsers;
+                        } catch(e) { return []; }
+                    }
+                """)
+
+            search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
+            matched = []
+            for uname in follower_usernames:
+                combined = uname.replace(".", " ").replace("_", " ").replace("-", " ")
+                for search_name in search_lower:
+                    search_words = search_name.split()
+                    if len(search_words) >= 2:
+                        m = sum(1 for w in search_words if w in combined)
+                        if m >= len(search_words):
+                            matched.append({"username": uname, "display_name": "", "matched_search": search_name})
+                            logger.info(f"check_user_followers: FOUND match '@{uname}' for '{search_name}'")
+                    else:
+                        if search_words[0] in combined and len(search_words[0]) >= 3:
+                            matched.append({"username": uname, "display_name": "", "matched_search": search_name})
+                            logger.info(f"check_user_followers: FOUND match '@{uname}' for '{search_name}'")
+
+            follower_count = len(follower_usernames)
             try:
                 count_text = await self._page.locator('[data-e2e="followers-count"]').first.inner_text()
                 follower_count = self._parse_count_text(count_text)
             except: pass
 
-            # Wait for drawer to render content
-            try:
-                await self._page.wait_for_selector('a[href*="/@"]', timeout=8000)
-                await self._human_delay(2, 3)
-            except:
-                await self._human_delay(1, 2)
-
-            matched = []
-            seen = set()
-            search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
-
-            # Scroll + scrape loop
-            for scroll_i in range(80):
-                current_links = set(await self._page.evaluate("""
-                    () => {
-                        const results = [];
-                        // 1. Standard profile links
-                        document.querySelectorAll('a[href*="/@"]').forEach(link => {
-                            const href = link.getAttribute('href') || '';
-                            const parts = href.split('/@');
-                            if (parts.length >= 2) {
-                                results.push(parts[1].split('?')[0].split('/')[0].toLowerCase());
-                            }
-                        });
-                        // 2. Elements with e2e data attributes suggesting follower items
-                        document.querySelectorAll('[data-e2e*="follower"] span, [class*="FollowerItem"] span, [class*="follower"] span').forEach(el => {
-                            const t = el.textContent.trim().toLowerCase();
-                            if (t && t.length >= 3 && !t.includes(' ') && /^[a-zA-Z0-9._]+$/.test(t)) {
-                                results.push(t);
-                            }
-                        });
-                        // 3. Any clickable element whose text looks like a @username handle
-                        document.querySelectorAll('a, div, span').forEach(el => {
-                            const text = el.textContent.trim();
-                            const atMatch = text.match(/^@([a-zA-Z0-9._]{3,})$/);
-                            if (atMatch) results.push(atMatch[1].toLowerCase());
-                        });
-                        return [...new Set(results)].filter(u => u && u.length > 1 && !/^\\d+$/.test(u));
-                    }
-                """))
-
-                new_found = False
-                for username in current_links:
-                    if username == handle.lower():
-                        continue
-                    if self._current_username and username == self._current_username:
-                        continue
-                    if username in seen:
-                        continue
-                    seen.add(username)
-                    new_found = True
-
-                    combined = username.replace(".", " ").replace("_", " ").replace("-", " ")
-                    for search_name in search_lower:
-                        search_words = search_name.split()
-                        if len(search_words) >= 2:
-                            m = sum(1 for w in search_words if w in combined)
-                            if m >= len(search_words):
-                                matched.append({"username": username, "display_name": "", "matched_search": search_name})
-                                logger.info(f"check_user_followers: FOUND match '@{username}' for '{search_name}'")
-                        else:
-                            if search_words[0] in combined and len(search_words[0]) >= 3:
-                                matched.append({"username": username, "display_name": "", "matched_search": search_name})
-                                logger.info(f"check_user_followers: FOUND match '@{username}' for '{search_name}'")
-
-                # Fallback: search raw page text for keywords
-                if not matched:
-                    page_text = (await self._page.evaluate("document.body.innerText")).lower()
-                    for search_name in search_lower:
-                        if search_name in page_text:
-                            matched.append({"username": "", "display_name": "", "matched_search": search_name, "matched_in_page_text": True})
-                            logger.info(f"check_user_followers: FOUND keyword '{search_name}' in page text")
-                            break
-
-                if matched:
-                    break
-
-                if not new_found and scroll_i > 8:
-                    # Fallback page text check before giving up
-                    page_text = (await self._page.evaluate("document.body.innerText")).lower()
-                    for search_name in search_lower:
-                        if search_name in page_text:
-                            matched.append({"username": "", "display_name": "", "matched_search": search_name, "matched_in_page_text": True})
-                            logger.info(f"check_user_followers: FOUND keyword '{search_name}' in page text (exit safeguard)")
-                            break
-                    if matched:
-                        break
-
-                # Scroll the followers drawer
-                # TikTok uses virtual scrolling — CSS scrollBy alone doesn't trigger it,
-                # but mouse wheel + JS scroll events + scrollTop setting together do
-                try:
-                    drawer = self._page.locator('div[class*="DivRelationList"], div[class*="DivScrollContainer"], div[data-e2e*="relation"]').first
-                    if await drawer.count() > 0:
-                        box = await drawer.bounding_box()
-                        if box:
-                            await self._page.mouse.move(box.x + box.width // 2, box.y + box.height // 2)
-                            for _ in range(3):
-                                await self._page.mouse.wheel(0, 800)
-                                await self._human_delay(0.2, 0.5)
-
-                    # Also do JS scroll + dispatch scroll/wheel events as fallback
-                    await self._page.evaluate("""
-                        () => {
-                            const drawContainers = document.querySelectorAll(
-                                'div[class*="DivRelationList"], div[class*="DivScrollContainer"], div[class*="DivFollowerList"], div[data-e2e*="relation"], div[class*="relation-list"]'
-                            );
-                            for (const dc of drawContainers) {
-                                const maxScroll = dc.scrollHeight - dc.clientHeight || 0;
-                                if (maxScroll > 0) {
-                                    dc.scrollTop = Math.min(dc.scrollTop + 800, maxScroll);
-                                } else {
-                                    dc.scrollTop = 20000;
-                                }
-                                dc.dispatchEvent(new Event('scroll', {bubbles: true}));
-                                dc.dispatchEvent(new WheelEvent('wheel', {deltaY: 2000, bubbles: true, cancelable: true}));
-                            }
-                            // Fallback: any scrollable element
-                            const targets = new Set();
-                            targets.add(window);
-                            targets.add(document.body);
-                            targets.add(document.documentElement);
-                            document.querySelectorAll('*').forEach(el => {
-                                try {
-                                    const ov = window.getComputedStyle(el).overflowY;
-                                    if ((ov === 'auto' || ov === 'scroll') && el.scrollHeight > el.offsetHeight + 5) {
-                                        targets.add(el);
-                                    }
-                                } catch (e) {}
-                            });
-                            for (const t of targets) {
-                                try { t.scrollBy(0, 1200); } catch(e) {}
-                            }
-                        }
-                    """)
-                    await self._human_delay(2, 3)
-                except Exception as e:
-                    logger.warning(f"check_user_followers: scroll error: {e}")
-
-            logger.info(f"check_user_followers: @{handle} has {follower_count} followers, found {len(matched)} matches")
+            logger.info(f"check_user_followers: @{handle} has {follower_count} followers API, found {len(matched)} matches")
             return {
                 "found": len(matched) > 0,
                 "matched_names": matched,
