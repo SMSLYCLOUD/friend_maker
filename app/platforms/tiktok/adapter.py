@@ -452,34 +452,6 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
         try:
             await self._ensure_browser(self._session_data)
 
-            # Inject MutationObserver to auto-remove inert whenever TikTok re-applies it
-            await self._page.evaluate('''() => {
-                if (window.__inertObserver) return;
-                window.__inertObserver = true;
-                const observer = new MutationObserver((mutations) => {
-                    for (const m of mutations) {
-                        if (m.type === "attributes" && m.attributeName === "inert") {
-                            const el = m.target;
-                            if (el.id === "app" && el.getAttribute("inert") === "true") {
-                                el.removeAttribute("inert");
-                                el.removeAttribute("aria-hidden");
-                                el.removeAttribute("data-floating-ui-inert");
-                            }
-                        }
-                    }
-                });
-                const app = document.querySelector("#app");
-                if (app) {
-                    observer.observe(app, { attributes: true, attributeFilter: ["inert"] });
-                }
-                document.querySelectorAll('[data-floating-ui-portal]').forEach(el => el.remove());
-                if (app && app.getAttribute("inert") === "true") {
-                    app.removeAttribute("inert");
-                    app.removeAttribute("aria-hidden");
-                    app.removeAttribute("data-floating-ui-inert");
-                }
-            }''')
-
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
@@ -494,26 +466,24 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             }''')
             await self._human_delay(1, 2)
 
+            await self._dismiss_overlay()
+
             video_owner = ""
             try:
                 video_owner = post_url.split("/@")[-1].split("/")[0].split("?")[0].lower()
             except: pass
 
-            for _ in range(10):
-                await self._page.mouse.wheel(0, 600)
-                await self._human_delay(1.5, 2.5)
-            await self._human_delay(2, 3)
-            await self._page.evaluate("window.scrollTo(0, 0)")
-            await self._human_delay(1, 2)
-
             comment_links = []
             container_found = ""
 
-            container_selectors = [
-                '[data-e2e="browse-comment-list"]',
+            comment_panel_selectors = [
                 '[data-e2e="comment-list"]',
+                '[data-e2e="browse-comment-list"]',
+                'div[class*="DivCommentList"]',
             ]
-            for sel in container_selectors:
+
+            # First try to find comments already visible (unlikely but check)
+            for sel in comment_panel_selectors:
                 try:
                     container = self._page.locator(sel).first
                     if await container.count() > 0:
@@ -525,177 +495,120 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                             break
                 except: pass
 
+            # Find and click the comment button in the target video's action bar
             if not comment_links:
-                avatar_selectors = [
-                    '[data-e2e="comment-avatar-1"]',
-                    '[data-e2e="comment-avatar-2"]',
-                    '[data-e2e="comment-avatar-3"]',
-                ]
-                for sel in avatar_selectors:
+                action_bar = None
+                sections = await self._page.query_selector_all('section')
+                for sec in sections:
                     try:
-                        links = await self._page.query_selector_all(sel)
-                        if links:
-                            comment_links = links
-                            container_found = sel
-                            logger.info(f"get_post_commenters: found avatar selector '{sel}' with {len(links)} links")
+                        cls = await sec.get_attribute("class") or ""
+                        if "SectionActionBarContainer" in cls:
+                            action_bar = sec
                             break
                     except: pass
 
-            if not comment_links:
-                for level_sel in ['[data-e2e="comment-level-1"]', '[data-e2e="comment-level-2"]']:
-                    try:
-                        spans = await self._page.query_selector_all(level_sel)
-                        if spans:
-                            for span in spans[:limit]:
-                                try:
-                                    parent = await span.evaluate_handle(
-                                        "el => el.closest('[data-e2e=\"comment-item\"]') || el.parentElement.parentElement"
-                                    )
-                                    if parent:
-                                        links_in_parent = await parent.query_selector_all('a[href*="/@"]')
-                                        if links_in_parent:
-                                            comment_links.extend(links_in_parent)
-                                except: pass
-                            if comment_links:
-                                container_found = level_sel
-                                logger.info(f"get_post_commenters: found {len(comment_links)} links via '{level_sel}'")
-                                break
-                    except: pass
-
-            if not comment_links:
-                clicked = False
-                for btn_sel in [
-                    '[data-e2e="comment-icon"]',
-                    '[data-e2e="browse-comment-icon"]',
-                    'span[data-e2e="comment-icon"]',
-                    '[data-e2e="like-comment"]',
-                ]:
-                    try:
-                        btn = self._page.locator(btn_sel).first
-                        if await btn.count() > 0 and await btn.is_visible():
-                            await btn.click(timeout=5000)
-                            await self._human_delay(3, 4)
-                            logger.info(f"get_post_commenters: clicked '{btn_sel}', waiting for comments")
-                            clicked = True
-                            break
-                    except: pass
-
-                if not clicked:
-                    try:
-                        comment_btns = await self._page.query_selector_all(
-                            '[aria-label*="comment" i], [aria-label*="Comment" i], '
-                            '[data-e2e*="comment"], span[role="img"][aria-label*="comment" i]'
-                        )
-                        for btn in comment_btns:
-                            try:
-                                if await btn.is_visible():
-                                    await btn.click(timeout=5000)
-                                    await self._human_delay(3, 4)
-                                    logger.info(f"get_post_commenters: clicked comment button via aria-label fallback")
-                                    clicked = True
-                                    break
-                            except: pass
-                    except: pass
-
-                if not clicked:
-                    try:
-                        bars = await self._page.query_selector_all('section')
-                        for bar in bars:
-                            cls = await bar.get_attribute("class") or ""
-                            if "Action" in cls or "action" in cls:
-                                children = await bar.query_selector_all(':scope > *')
-                                if len(children) >= 2:
-                                    await children[1].click(timeout=5000)
-                                    await self._human_delay(3, 4)
-                                    logger.info(f"get_post_commenters: clicked 2nd child of action bar section")
-                                    clicked = True
-                                    break
-                    except: pass
-
-                for sel in container_selectors + avatar_selectors:
-                    try:
-                        if sel.startswith('[data-e2e="comment-avatar'):
-                            links = await self._page.query_selector_all(sel)
-                        else:
-                            container = self._page.locator(sel).first
-                            links = await container.locator('a[href*="/@"]').all() if await container.count() > 0 else []
-                        if links:
-                            comment_links = links
-                            container_found = sel
-                            logger.info(f"get_post_commenters: after click, found '{sel}' with {len(links)} links")
-                            break
-                    except: pass
-
-                if not comment_links:
-                    try:
-                        all_e2e_after = await self._page.query_selector_all('[data-e2e]')
-                        e2e_after = []
-                        for el in all_e2e_after[:50]:
-                            try:
-                                val = await el.get_attribute("data-e2e")
-                                if val:
-                                    e2e_after.append(val)
-                            except: pass
-                        logger.warning(f"get_post_commenters: after click, data-e2e dump: {e2e_after}")
-                        ss_path2 = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug_post_after_click.png")
-                        await self._page.screenshot(path=ss_path2, full_page=False)
-                        logger.warning(f"get_post_commenters: Screenshot after click saved to {ss_path2}")
-                    except: pass
-
-            if not comment_links:
-                try:
-                    all_e2e = await self._page.query_selector_all('[data-e2e]')
-                    e2e_vals = []
-                    for el in all_e2e[:50]:
+                if action_bar:
+                    comment_btn = None
+                    buttons = await action_bar.query_selector_all('button')
+                    for btn in buttons:
                         try:
-                            val = await el.get_attribute("data-e2e")
-                            if val:
-                                e2e_vals.append(val)
-                        except: pass
-                    logger.warning(f"get_post_commenters: NO COMMENTS FOUND. Page data-e2e dump: {e2e_vals}")
-
-                    sections = await self._page.query_selector_all('section')
-                    logger.warning(f"get_post_commenters: Found {len(sections)} <section> elements")
-                    for i, sec in enumerate(sections[:10]):
-                        try:
-                            aria = await sec.get_attribute("aria-label") or ""
-                            cls = (await sec.get_attribute("class") or "")[:60]
-                            child_count = await sec.evaluate("el => el.children.length")
-                            inner = await sec.inner_html()
-                            logger.warning(f"  section[{i}]: aria='{aria}' class='{cls}' children={child_count}")
-                            logger.warning(f"  section[{i}] innerHTML (first 2000): {inner[:2000]}")
-                        except: pass
-
-                    buttons = await self._page.query_selector_all('button, [role="button"], [data-e2e*="comment"], [aria-label*="comment" i], [aria-label*="Comment" i]')
-                    logger.warning(f"get_post_commenters: Found {len(buttons)} button/comment elements")
-                    for i, btn in enumerate(buttons[:20]):
-                        try:
-                            tag = await btn.evaluate("el => el.tagName")
                             aria = await btn.get_attribute("aria-label") or ""
-                            e2e = await btn.get_attribute("data-e2e") or ""
-                            cls = (await btn.get_attribute("class") or "")[:60]
-                            text = (await btn.inner_text())[:50] if await btn.is_visible() else "[hidden]"
-                            logger.warning(f"  btn[{i}]: <{tag}> aria='{aria}' e2e='{e2e}' class='{cls}' text='{text}'")
+                            if "comment" in aria.lower():
+                                comment_btn = btn
+                                break
                         except: pass
 
-                    ss_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug_post_page.png")
-                    await self._page.screenshot(path=ss_path, full_page=False)
-                    logger.warning(f"get_post_commenters: Screenshot saved to {ss_path}")
+                    if not comment_btn:
+                        children = await action_bar.query_selector_all(':scope > div')
+                        if len(children) >= 3:
+                            inner_btn = await children[2].query_selector('button')
+                            if inner_btn:
+                                comment_btn = inner_btn
 
-                    main_html = await self._page.evaluate("""
-                        () => {
-                            const main = document.querySelector('[data-e2e="browse-main"]')
-                                || document.querySelector('main')
-                                || document.querySelector('#app')
-                                || document.body;
-                            return main.outerHTML.substring(0, 5000);
-                        }
-                    """)
-                    logger.warning(f"get_post_commenters: Main content HTML (first 5000): {main_html}")
-                except Exception as e:
-                    logger.error(f"get_post_commenters: debug dump failed: {e}")
+                    if not comment_btn:
+                        all_children = await action_bar.query_selector_all(':scope > *')
+                        if len(all_children) >= 3:
+                            inner_btn = await all_children[2].query_selector('button')
+                            if inner_btn:
+                                comment_btn = inner_btn
 
-                return results
+                    if comment_btn:
+                        await comment_btn.click(timeout=5000)
+                        await self._human_delay(3, 4)
+                        logger.info("get_post_commenters: clicked comment button in target video action bar")
+                        clicked = True
+                    else:
+                        logger.warning("get_post_commenters: no comment button found in action bar")
+                        clicked = False
+                else:
+                    logger.warning("get_post_commenters: no action bar section found")
+                    clicked = False
+
+                # Fallback: try global comment button selectors
+                if not clicked:
+                    for btn_sel in [
+                        'button[aria-label*="comment" i]',
+                        'button[aria-label*="Comment" i]',
+                        '[data-e2e="comment-icon"]',
+                        '[data-e2e="browse-comment-icon"]',
+                    ]:
+                        try:
+                            btn = self._page.locator(btn_sel).first
+                            if await btn.count() > 0 and await btn.is_visible():
+                                await btn.click(timeout=5000)
+                                await self._human_delay(3, 4)
+                                logger.info(f"get_post_commenters: clicked fallback '{btn_sel}'")
+                                clicked = True
+                                break
+                        except: pass
+
+                if clicked:
+                    await self._human_delay(2, 3)
+                    await self._dismiss_overlay()
+
+                    for sel in comment_panel_selectors:
+                        try:
+                            container = self._page.locator(sel).first
+                            if await container.count() > 0:
+                                links = await container.locator('a[href*="/@"]').all()
+                                if links:
+                                    comment_links = links
+                                    container_found = sel
+                                    logger.info(f"get_post_commenters: after click, found '{sel}' with {len(links)} links")
+                                    break
+                        except: pass
+
+                    if not comment_links:
+                        for avatar_sel in [
+                            '[data-e2e="comment-avatar-1"]',
+                            '[data-e2e="comment-avatar-2"]',
+                            '[data-e2e="comment-avatar-3"]',
+                        ]:
+                            try:
+                                links = await self._page.query_selector_all(avatar_sel)
+                                if links:
+                                    comment_links = links
+                                    container_found = avatar_sel
+                                    logger.info(f"get_post_commenters: found avatar '{avatar_sel}' with {len(links)}")
+                                    break
+                            except: pass
+
+                    if not comment_links:
+                        try:
+                            comment_items = await self._page.query_selector_all('[data-e2e="comment-item"]')
+                            if not comment_items:
+                                comment_items = await self._page.query_selector_all('div[class*="CommentItem"]')
+                            for item in comment_items[:limit * 3]:
+                                links = await item.query_selector_all('a[href*="/@"]')
+                                for link in links:
+                                    href = await link.get_attribute("href")
+                                    if href and "/@" in href:
+                                        username = href.split("/@")[-1].split("/")[0].split("?")[0]
+                                        if username and username != video_owner and not username.isdigit():
+                                            comment_links.append(link)
+                            if comment_links:
+                                logger.info(f"get_post_commenters: found {len(comment_links)} via comment-item")
+                        except: pass
 
             seen = set()
             for link in comment_links[:limit * 5]:
@@ -720,9 +633,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
 
             if results:
                 logger.info(f"Extracted {len(results)} commenters (container: {container_found})")
-            else:
-                logger.info("get_post_commenters: found links but all filtered out (owner/duplicate)")
-            return results
+                return results
 
             # LLM fallback
             text = await self._extract_page_text()
@@ -744,6 +655,9 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                     username=item.get("username", ""),
                     display_name=item.get("display_name"),
                 ))
+
+            if not results:
+                logger.info("No commenters found on this post")
         except BlockerDetected:
             raise
         except Exception as e:
