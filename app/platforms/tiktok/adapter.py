@@ -5,7 +5,6 @@ decision logic live in `BaseCamoufoxAdapter`. This file only contains
 TikTok-specific URL builders, selectors, and `authenticate()` quirks.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -1320,106 +1319,56 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            follower_usernames = []
-            api_received = asyncio.Event()
-
-            async def _capture_followers(response):
-                nonlocal follower_usernames
-                if '/api/user/list/' not in response.url:
-                    return
-                try:
-                    body = await response.json()
-                    user_list = body.get('userList', [])
-                    for u in user_list:
-                        uid = (u.get('uniqueId') or '').lower()
-                        if uid:
-                            follower_usernames.append(uid)
-                    if 'userList' in body:
-                        api_received.set()
-                except:
-                    pass
-
-            self._page.on('response', _capture_followers)
-
-            followers_clicked = False
-            for sel in ['[data-e2e="followers-count"]', 'strong[title="Followers"]', 'a[href*="/followers"]', 'span:has-text("Followers")']:
-                try:
-                    el = self._page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        try:
-                            await el.click(timeout=5000, force=True)
-                        except:
-                            await self._page.evaluate("""(sel) => {
-                                const el = document.querySelector(sel);
-                                if (el) el.dispatchEvent(new Event("click", {bubbles: true}));
-                            }""", sel)
-                        followers_clicked = True
-                        logger.info(f"check_user_followers: Clicked followers via '{sel}'")
-                        break
-                except: pass
-
-            if followers_clicked:
-                try:
-                    await asyncio.wait_for(api_received.wait(), timeout=8)
-                    await self._human_delay(1, 2)
-                except asyncio.TimeoutError:
-                    logger.warning(f"check_user_followers: API response not received for @{handle}")
-                    await self._human_delay(2, 3)
-            else:
-                logger.warning(f"check_user_followers: Could not open followers list for @{handle}")
-                self._page.remove_listener('response', _capture_followers)
-                return {"found": False, "matched_names": [], "follower_count": 0}
-
-            self._page.remove_listener('response', _capture_followers)
-
-            # If API didn't return data, try fallback: fetch via page context
-            if not follower_usernames:
-                logger.info(f"check_user_followers: API interception empty, trying direct fetch...")
-                follower_usernames = await self._page.evaluate("""
-                    async () => {
-                        try {
+            # Fetch follower list directly via TikTok's internal API from page context
+            # This uses the page's cookies/auth automatically
+            follower_usernames = await self._page.evaluate("""
+                async () => {
+                    try {
+                        // 1. Extract profile owner's IDs from page scripts
+                        const scripts = document.querySelectorAll('script');
+                        let userId = '', secUid = '';
+                        for (const s of scripts) {
+                            const t = s.textContent || '';
+                            const m = t.match(/"userInfo":\\{"user":\\{"id":"(\\d+)","secUid":"([^"]+)"/);
+                            if (m) { userId = m[1]; secUid = m[2]; break; }
+                        }
+                        // Fallback: try window.__INITIAL_STATE__
+                        if (!userId && window.__INITIAL_STATE__) {
+                            const u = window.__INITIAL_STATE__?.UserModule?.user;
+                            if (u) { userId = u.id; secUid = u.secUid; }
+                        }
+                        if (!userId) {
+                            // Try without specific IDs (uses logged-in user's context)
                             const resp = await fetch('/api/user/list/?sourceType=1&count=50&aid=1988', {
                                 credentials: 'include',
                                 headers: {'Accept': 'application/json'}
                             });
                             const data = await resp.json();
                             return (data.userList || []).map(u => (u.uniqueId || '').toLowerCase()).filter(Boolean);
-                        } catch(e) {
-                            return [];
                         }
-                    }
-                """)
+                        // 2. Paginate through follower list
+                        const allUsers = [];
+                        let cursor = 0;
+                        for (let pg = 0; pg < 5; pg++) {
+                            const url = `/api/user/list/?userId=${userId}&secUid=${secUid}&count=50&type=follower&cursor=${cursor}&aid=1988&sourceType=1`;
+                            const resp = await fetch(url, {credentials: 'include', headers: {'Accept': 'application/json'}});
+                            const data = await resp.json();
+                            (data.userList || []).forEach(u => {
+                                if (u.uniqueId) allUsers.push(u.uniqueId.toLowerCase());
+                            });
+                            if (!data.hasMore) break;
+                            cursor = data.cursor;
+                        }
+                        return allUsers;
+                    } catch(e) { return []; }
+                }
+            """)
 
-            # Try a second request if we got nothing (maybe need specific ID params)
-            if not follower_usernames:
-                follower_usernames = await self._page.evaluate("""
-                    async () => {
-                        try {
-                            // Find the profile owner's IDs from the page
-                            const scripts = document.querySelectorAll('script');
-                            let userId = '', secUid = '';
-                            for (const s of scripts) {
-                                const t = s.textContent || '';
-                                const m = t.match(/"userInfo":\\{"user":\\{"id":"(\\d+)","secUid":"([^"]+)"/);
-                                if (m) { userId = m[1]; secUid = m[2]; break; }
-                            }
-                            if (!userId) return [];
-                            const allUsers = [];
-                            let cursor = 0;
-                            for (let pg = 0; pg < 3; pg++) {
-                                const url = `/api/user/list/?userId=${userId}&secUid=${secUid}&count=50&type=follower&cursor=${cursor}&aid=1988&sourceType=1`;
-                                const resp = await fetch(url, {credentials: 'include', headers: {'Accept': 'application/json'}});
-                                const data = await resp.json();
-                                (data.userList || []).forEach(u => {
-                                    if (u.uniqueId) allUsers.push(u.uniqueId.toLowerCase());
-                                });
-                                if (!data.hasMore) break;
-                                cursor = data.cursor;
-                            }
-                            return allUsers;
-                        } catch(e) { return []; }
-                    }
-                """)
+            follower_count = len(follower_usernames)
+            try:
+                count_text = await self._page.locator('[data-e2e="followers-count"]').first.inner_text()
+                follower_count = self._parse_count_text(count_text)
+            except: pass
 
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
             matched = []
@@ -1436,12 +1385,6 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                         if search_words[0] in combined and len(search_words[0]) >= 3:
                             matched.append({"username": uname, "display_name": "", "matched_search": search_name})
                             logger.info(f"check_user_followers: FOUND match '@{uname}' for '{search_name}'")
-
-            follower_count = len(follower_usernames)
-            try:
-                count_text = await self._page.locator('[data-e2e="followers-count"]').first.inner_text()
-                follower_count = self._parse_count_text(count_text)
-            except: pass
 
             logger.info(f"check_user_followers: @{handle} has {follower_count} followers API, found {len(matched)} matches")
             return {
