@@ -1273,18 +1273,6 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Snapshot all profile links BEFORE opening the drawer
-            before_links = set(await self._page.evaluate("""
-                () => {
-                    const links = document.querySelectorAll('a[href*="/@"]');
-                    return Array.from(links).map(l => {
-                        const href = l.getAttribute('href') || '';
-                        const parts = href.split('/@');
-                        return parts.length >= 2 ? parts[1].split('?')[0].split('/')[0].toLowerCase() : '';
-                    }).filter(u => u && u.length > 1 && !/^\\d+$/.test(u));
-                }
-            """))
-
             followers_clicked = False
             for sel in ['[data-e2e="followers-count"]', 'strong[title="Followers"]', 'a[href*="/followers"]', 'span:has-text("Followers")']:
                 try:
@@ -1317,9 +1305,8 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             seen = set()
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
 
-            # Dedicated follower drawer scroll + scrape loop
+            # Scroll + scrape loop
             for scroll_i in range(30):
-                # Extract all profile links that appeared AFTER the drawer opened
                 current_links = set(await self._page.evaluate("""
                     () => {
                         const links = document.querySelectorAll('a[href*="/@"]');
@@ -1333,7 +1320,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
 
                 new_found = False
                 for username in current_links:
-                    if username in before_links or username == handle.lower():
+                    if username == handle.lower():
                         continue
                     if username in seen:
                         continue
@@ -1362,16 +1349,19 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 try:
                     await self._page.evaluate("""
                         () => {
-                            // Scroll the followers drawer (right-side panel)
-                            const panel = document.querySelector('div[class*="Relation" i], div[class*="Follower" i], div[class*="Following" i], div[class*="Drawer" i], div[class*="Panel" i]');
-                            if (panel) {
-                                const scrollContainer = panel.querySelector(':scope > div');
-                                if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.offsetHeight) {
-                                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
-                                } else if (panel.scrollHeight > panel.offsetHeight) {
-                                    panel.scrollTop = panel.scrollHeight;
+                            const links = document.querySelectorAll('a[href*="/@"]');
+                            for (const link of links) {
+                                let el = link.parentElement;
+                                while (el && el !== document.body) {
+                                    if (el.scrollHeight > el.offsetHeight + 10) {
+                                        el.scrollBy(0, 800);
+                                        return;
+                                    }
+                                    el = el.parentElement;
                                 }
                             }
+                            window.scrollBy(0, 800);
+                            document.documentElement.scrollBy(0, 800);
                         }
                     """)
                     await self._human_delay(1, 2)
