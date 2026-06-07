@@ -1215,17 +1215,18 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._human_delay(3, 5)
 
             followers_clicked = False
-            followers_selectors = [
-                '[data-e2e="followers-count"]',
-                'a[href*="/followers"]',
-                'strong[title="Followers"]',
-                'span:has-text("Followers")',
-            ]
-            for sel in followers_selectors:
+            # Try clicking the follower count element (direct or via JS)
+            for sel in ['[data-e2e="followers-count"]', 'strong[title="Followers"]', 'a[href*="/followers"]', 'span:has-text("Followers")']:
                 try:
                     el = self._page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=10000)
+                    if await el.count() > 0 and await el.is_visible():
+                        try:
+                            await el.click(timeout=5000, force=True)
+                        except:
+                            await self._page.evaluate("""(sel) => {
+                                const el = document.querySelector(sel);
+                                if (el) el.dispatchEvent(new Event("click", {bubbles: true}));
+                            }""", sel)
                         followers_clicked = True
                         logger.info(f"check_user_followers: Clicked followers via '{sel}'")
                         await self._human_delay(2, 3)
@@ -1238,19 +1239,17 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
 
             follower_count = 0
             try:
-                count_el = self._page.locator('[data-e2e="followers-count"]').first
-                if await count_el.count() > 0:
-                    count_text = await count_el.inner_text()
-                    follower_count = self._parse_count_text(count_text)
+                count_text = await self._page.locator('[data-e2e="followers-count"]').first.inner_text()
+                follower_count = self._parse_count_text(count_text)
             except: pass
 
             matched = []
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
-
             seen = set()
-            for scroll_i in range(20):
+
+            for scroll_i in range(30):
                 try:
-                    items = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="follow-item"], div[class*="FollowerItem"]')
+                    items = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="follow-item"], div[class*="FollowerItem"], div[data-e2e="user-card"]')
                     if not items:
                         items = await self._page.query_selector_all('a[href*="/@"]')
                 except:
@@ -1266,7 +1265,12 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                         if not href or "/@" not in href:
                             continue
                         item_username = href.split("/@")[1].split("?")[0].split("/").lower()
+                        if not item_username or len(item_username) <= 1 or item_username.isdigit():
+                            continue
                         if item_username in seen:
+                            continue
+                        # Skip the profile owner themself
+                        if item_username == handle.lower():
                             continue
                         seen.add(item_username)
                         new_found = True
@@ -1299,7 +1303,19 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                     break
 
                 try:
-                    await self._page.mouse.wheel(0, 800)
+                    # Find and scroll the drawer container via JS
+                    await self._page.evaluate("""
+                        () => {
+                            const divs = document.querySelectorAll('div');
+                            for (const d of divs) {
+                                if (d.scrollHeight > d.offsetHeight + 50 && d.offsetHeight > 300) {
+                                    d.scrollTop = d.scrollHeight;
+                                    return;
+                                }
+                            }
+                            window.scrollBy(0, 800);
+                        }
+                    """)
                     await self._human_delay(1, 2)
                 except: pass
 
@@ -1357,7 +1373,18 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 prev_count = len(followers)
 
                 try:
-                    await self._page.mouse.wheel(0, 800)
+                    await self._page.evaluate("""
+                        () => {
+                            const divs = document.querySelectorAll('div');
+                            for (const d of divs) {
+                                if (d.scrollHeight > d.offsetHeight + 50 && d.offsetHeight > 300) {
+                                    d.scrollTop = d.scrollHeight;
+                                    return;
+                                }
+                            }
+                            window.scrollBy(0, 800);
+                        }
+                    """)
                     await self._human_delay(1, 2)
                 except: pass
 
