@@ -1306,15 +1306,32 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
 
             # Scroll + scrape loop
-            for scroll_i in range(30):
+            for scroll_i in range(60):
                 current_links = set(await self._page.evaluate("""
                     () => {
-                        const links = document.querySelectorAll('a[href*="/@"]');
-                        return Array.from(links).map(l => {
-                            const href = l.getAttribute('href') || '';
+                        const results = [];
+                        // 1. Standard profile links
+                        document.querySelectorAll('a[href*="/@"]').forEach(link => {
+                            const href = link.getAttribute('href') || '';
                             const parts = href.split('/@');
-                            return parts.length >= 2 ? parts[1].split('?')[0].split('/')[0].toLowerCase() : '';
-                        }).filter(u => u && u.length > 1 && !/^\\d+$/.test(u));
+                            if (parts.length >= 2) {
+                                results.push(parts[1].split('?')[0].split('/')[0].toLowerCase());
+                            }
+                        });
+                        // 2. Elements with e2e data attributes suggesting follower items
+                        document.querySelectorAll('[data-e2e*="follower"] span, [class*="FollowerItem"] span, [class*="follower"] span').forEach(el => {
+                            const t = el.textContent.trim().toLowerCase();
+                            if (t && t.length >= 3 && !t.includes(' ') && /^[a-zA-Z0-9._]+$/.test(t)) {
+                                results.push(t);
+                            }
+                        });
+                        // 3. Any clickable element whose text looks like a @username handle
+                        document.querySelectorAll('a, div, span').forEach(el => {
+                            const text = el.textContent.trim();
+                            const atMatch = text.match(/^@([a-zA-Z0-9._]{3,})$/);
+                            if (atMatch) results.push(atMatch[1].toLowerCase());
+                        });
+                        return [...new Set(results)].filter(u => u && u.length > 1 && !/^\\d+$/.test(u));
                     }
                 """))
 
@@ -1342,28 +1359,48 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                                 matched.append({"username": username, "display_name": "", "matched_search": search_name})
                                 logger.info(f"check_user_followers: FOUND match '@{username}' for '{search_name}'")
 
+                # Fallback: search raw page text for keywords
+                if not matched:
+                    page_text = (await self._page.evaluate("document.body.innerText")).lower()
+                    for search_name in search_lower:
+                        if search_name in page_text:
+                            matched.append({"username": "", "display_name": "", "matched_search": search_name, "matched_in_page_text": True})
+                            logger.info(f"check_user_followers: FOUND keyword '{search_name}' in page text")
+                            break
+
                 if matched:
                     break
 
                 if not new_found and scroll_i > 2:
-                    break
+                    # Fallback page text check before giving up
+                    page_text = (await self._page.evaluate("document.body.innerText")).lower()
+                    for search_name in search_lower:
+                        if search_name in page_text:
+                            matched.append({"username": "", "display_name": "", "matched_search": search_name, "matched_in_page_text": True})
+                            logger.info(f"check_user_followers: FOUND keyword '{search_name}' in page text (exit safeguard)")
+                            break
+                    if matched:
+                        break
 
+                # Aggressive scroll: scroll EVERY scrollable element + window
                 try:
                     await self._page.evaluate("""
                         () => {
-                            const links = document.querySelectorAll('a[href*="/@"]');
-                            for (const link of links) {
-                                let el = link.parentElement;
-                                while (el && el !== document.body) {
-                                    if (el.scrollHeight > el.offsetHeight + 10) {
-                                        el.scrollBy(0, 800);
-                                        return;
+                            const targets = new Set();
+                            targets.add(window);
+                            targets.add(document.body);
+                            targets.add(document.documentElement);
+                            document.querySelectorAll('*').forEach(el => {
+                                try {
+                                    const ov = window.getComputedStyle(el).overflowY;
+                                    if ((ov === 'auto' || ov === 'scroll') && el.scrollHeight > el.offsetHeight + 5) {
+                                        targets.add(el);
                                     }
-                                    el = el.parentElement;
-                                }
+                                } catch (e) {}
+                            });
+                            for (const t of targets) {
+                                try { t.scrollBy(0, 1200); } catch(e) {}
                             }
-                            window.scrollBy(0, 800);
-                            document.documentElement.scrollBy(0, 800);
                         }
                     """)
                     await self._human_delay(1, 2)
