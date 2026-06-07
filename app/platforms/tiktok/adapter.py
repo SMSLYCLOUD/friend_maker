@@ -623,19 +623,28 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                         except: pass
 
                     # Scroll the comment panel to load more comments
-                    if comment_container and container_found:
-                        for scroll_i in range(20):
+                    if comment_container:
+                        for scroll_i in range(25):
                             try:
                                 await self._page.evaluate("""
-                                    (sel) => {
-                                        const c = document.querySelector(sel);
-                                        if (!c) return;
-                                        const s = c.querySelector(':scope > div') || c;
-                                        if (s.scrollHeight > s.offsetHeight) {
-                                            s.scrollTop = s.scrollHeight;
+                                    () => {
+                                        // Try scrolling the comment container
+                                        const containers = document.querySelectorAll('div[class*="DivCommentList"], [data-e2e="comment-list"], [data-e2e="browse-comment-list"]');
+                                        let scrolled = false;
+                                        for (const c of containers) {
+                                            const all = [c, ...c.querySelectorAll('div')];
+                                            for (const el of all) {
+                                                if (el.scrollHeight > el.offsetHeight + 10) {
+                                                    el.scrollTop = el.scrollHeight;
+                                                    scrolled = true;
+                                                    return;
+                                                }
+                                            }
                                         }
+                                        // Fallback: scroll the page body
+                                        if (!scrolled) window.scrollBy(0, 800);
                                     }
-                                """, container_found)
+                                """)
                                 await self._human_delay(1.5, 2.5)
                                 new_links = await comment_container.locator('a[href*="/@"]').all()
                                 if len(new_links) <= len(comment_links):
