@@ -1322,6 +1322,8 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 for username in current_links:
                     if username == handle.lower():
                         continue
+                    if self._current_username and username == self._current_username:
+                        continue
                     if username in seen:
                         continue
                     seen.add(username)
