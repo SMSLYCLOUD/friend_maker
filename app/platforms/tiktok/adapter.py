@@ -624,7 +624,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
 
                     # Scroll to load more comments
                     if comment_container:
-                        for scroll_i in range(25):
+                        for scroll_i in range(50):
                             try:
                                 await self._page.evaluate("""
                                     () => {
@@ -635,14 +635,14 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                                             let el = c;
                                             while (el && el !== document.body) {
                                                 if (el.scrollHeight > el.offsetHeight + 10) {
-                                                    el.scrollBy(0, 500);
+                                                    el.scrollBy(0, 800);
                                                     return;
                                                 }
                                                 el = el.parentElement;
                                             }
                                         }
-                                        window.scrollBy(0, 500);
-                                        document.documentElement.scrollBy(0, 500);
+                                        window.scrollBy(0, 800);
+                                        document.documentElement.scrollBy(0, 800);
                                     }
                                 """)
                                 for load_sel in ['span:has-text("Load more")', 'span:has-text("Show more")', 'div:has-text("Load more")', 'button:has-text("View")']:
@@ -902,7 +902,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            for _ in range(30):
+            for _ in range(60):
                 await self._page.evaluate("""
                     () => {
                         const sel = 'a[href*="/video/"], a[href*="/photo/"]';
@@ -911,17 +911,17 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                             let el = link.parentElement;
                             while (el && el !== document.body) {
                                 if (el.scrollHeight > el.offsetHeight + 10) {
-                                    el.scrollBy(0, 800);
+                                    el.scrollBy(0, 1200);
                                     return;
                                 }
                                 el = el.parentElement;
                             }
                         }
-                        window.scrollBy(0, 800);
-                        document.documentElement.scrollBy(0, 800);
+                        window.scrollBy(0, 1200);
+                        document.documentElement.scrollBy(0, 1200);
                     }
                 """)
-                await self._human_delay(0.8, 1.5)
+                await self._human_delay(0.5, 1.0)
 
             posts = []
             try:
