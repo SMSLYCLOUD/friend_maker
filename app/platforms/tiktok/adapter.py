@@ -1334,7 +1334,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                         search_words = search_name.split()
                         if len(search_words) >= 2:
                             m = sum(1 for w in search_words if w in combined)
-                            if m >= len(search_words) - 1:
+                            if m >= len(search_words):
                                 matched.append({"username": username, "display_name": "", "matched_search": search_name})
                                 logger.info(f"check_user_followers: FOUND match '@{username}' for '{search_name}'")
                         else:
