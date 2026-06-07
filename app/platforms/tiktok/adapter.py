@@ -622,29 +622,36 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                                     break
                         except: pass
 
-                    # Scroll the comment panel to load more comments
+                    # Scroll to load more comments
                     if comment_container:
                         for scroll_i in range(25):
                             try:
+                                # Try scrolling via multiple mechanisms
                                 await self._page.evaluate("""
                                     () => {
-                                        // Try scrolling the comment container
-                                        const containers = document.querySelectorAll('div[class*="DivCommentList"], [data-e2e="comment-list"], [data-e2e="browse-comment-list"]');
-                                        let scrolled = false;
+                                        const sel = 'div[class*="DivCommentList"], [data-e2e="comment-list"], [data-e2e="browse-comment-list"]';
+                                        const containers = document.querySelectorAll(sel);
                                         for (const c of containers) {
                                             const all = [c, ...c.querySelectorAll('div')];
                                             for (const el of all) {
                                                 if (el.scrollHeight > el.offsetHeight + 10) {
-                                                    el.scrollTop = el.scrollHeight;
-                                                    scrolled = true;
+                                                    el.scrollBy(0, 500);
                                                     return;
                                                 }
                                             }
                                         }
-                                        // Fallback: scroll the page body
-                                        if (!scrolled) window.scrollBy(0, 800);
+                                        window.scrollBy(0, 500);
+                                        document.documentElement.scrollBy(0, 500);
                                     }
                                 """)
+                                # Try clicking any "load more" / "show more" button
+                                for load_sel in ['span:has-text("Load more")', 'span:has-text("Show more")', 'div:has-text("Load more")', 'button:has-text("View")']:
+                                    try:
+                                        btn = self._page.locator(load_sel).first
+                                        if await btn.count() > 0 and await btn.is_visible():
+                                            await btn.click(timeout=3000, force=True)
+                                            await self._human_delay(1, 1.5)
+                                    except: pass
                                 await self._human_delay(1.5, 2.5)
                                 new_links = await comment_container.locator('a[href*="/@"]').all()
                                 if len(new_links) <= len(comment_links):
