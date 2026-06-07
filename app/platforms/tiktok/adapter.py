@@ -626,25 +626,25 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                     if comment_container:
                         for scroll_i in range(25):
                             try:
-                                # Try scrolling via multiple mechanisms
                                 await self._page.evaluate("""
                                     () => {
                                         const sel = 'div[class*="DivCommentList"], [data-e2e="comment-list"], [data-e2e="browse-comment-list"]';
                                         const containers = document.querySelectorAll(sel);
                                         for (const c of containers) {
-                                            const all = [c, ...c.querySelectorAll('div')];
-                                            for (const el of all) {
+                                            // Walk up parent chain to find scrollable ancestor
+                                            let el = c;
+                                            while (el && el !== document.body) {
                                                 if (el.scrollHeight > el.offsetHeight + 10) {
                                                     el.scrollBy(0, 500);
                                                     return;
                                                 }
+                                                el = el.parentElement;
                                             }
                                         }
                                         window.scrollBy(0, 500);
                                         document.documentElement.scrollBy(0, 500);
                                     }
                                 """)
-                                # Try clicking any "load more" / "show more" button
                                 for load_sel in ['span:has-text("Load more")', 'span:has-text("Show more")', 'div:has-text("Load more")', 'button:has-text("View")']:
                                     try:
                                         btn = self._page.locator(load_sel).first
