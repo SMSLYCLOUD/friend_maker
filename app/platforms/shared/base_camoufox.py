@@ -244,61 +244,48 @@ class BaseCamoufoxAdapter(PlatformAdapter):
     # ── Overlay dismissal (shared with all Camoufox adapters) ────────────
 
     async def _dismiss_overlay(self):
-        """Close any inbox/notification overlays that the platform opens by default."""
+        """Close any inbox/notification/DM overlays that the platform opens by default."""
         for attempt in range(5):
             try:
-                is_inert = await self._page.evaluate(
-                    'document.querySelector("#app")?.getAttribute("inert") === "true"'
-                )
-                if not is_inert:
-                    break
-                logger.info(f"Overlay detected (inert=true), attempt {attempt+1}")
-
-                done = await self._page.evaluate('''() => {
+                removed = await self._page.evaluate('''() => {
                     const app = document.querySelector("#app");
-                    if (!app) return false;
-
-                    app.removeAttribute("inert");
-                    app.removeAttribute("aria-hidden");
-                    app.removeAttribute("data-floating-ui-inert");
+                    if (app) {
+                        app.removeAttribute("inert");
+                        app.removeAttribute("aria-hidden");
+                        app.removeAttribute("data-floating-ui-inert");
+                    }
 
                     document.querySelectorAll('[data-floating-ui-portal]').forEach(el => {
                         el.style.display = "none";
+                        el.remove();
                     });
                     document.querySelectorAll('[data-floating-ui-inert]').forEach(el => {
                         el.style.display = "none";
                     });
 
-                    const inboxIcon = document.querySelector('[data-e2e="inbox-icon"]');
-                    if (inboxIcon) {
-                        let panel = inboxIcon.closest('[class*="Popup"], [class*="Modal"], [class*="Overlay"], [class*="Panel"], [role="dialog"]');
-                        if (panel) {
-                            panel.style.display = "none";
-                            panel.remove();
-                        }
-                    }
-
-                    document.querySelectorAll('[aria-modal="true"], [role="dialog"]').forEach(el => {
-                        if (el.querySelector('[data-e2e="inbox-list"], [data-e2e="inbox-icon"]')) {
-                            el.style.display = "none";
-                            el.remove();
-                        }
+                    document.querySelectorAll('.TUXModal-overlay, [class*="Modal-overlay"], [class*="modal-overlay"]').forEach(el => {
+                        el.style.display = "none";
+                        el.remove();
                     });
 
-                    return app.getAttribute("inert") !== "true";
+                    document.querySelectorAll('[aria-modal="true"], [role="dialog"]').forEach(el => {
+                        el.style.display = "none";
+                        el.remove();
+                    });
+
+                    return true;
                 }''')
-                if done:
-                    logger.info("Overlay removed via JS (inert + portal hide)")
-                    await self._human_delay(1, 2)
+
+                if removed:
+                    await self._human_delay(0.5, 1)
+
+                is_inert = await self._page.evaluate(
+                    'document.querySelector("#app")?.getAttribute("inert") === "true"'
+                )
+                if not is_inert:
                     break
 
-                try:
-                    inbox_icon = self._page.locator('[data-e2e="inbox-icon"]').first
-                    if await inbox_icon.count() > 0:
-                        await inbox_icon.click(timeout=2000)
-                        await self._human_delay(1, 2)
-                except: pass
-
+                logger.info(f"Overlay still present (inert=true), attempt {attempt+1}")
                 await self._page.keyboard.press("Escape")
                 await self._human_delay(1, 2)
             except: break

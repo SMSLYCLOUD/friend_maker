@@ -311,8 +311,15 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 logger.warning("send_dm: DM input not found on loaded DM page")
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
 
+            await self._dismiss_overlay()
+            await self._human_delay(1, 2)
+
             logger.info(f"send_dm: Typing message ({len(message)} chars)")
-            await dm_input.click()
+            try:
+                await dm_input.click(timeout=10000)
+            except Exception:
+                logger.warning("send_dm: normal click failed, trying force click")
+                await dm_input.click(force=True, timeout=10000)
             await self._page.keyboard.press("Control+KeyA")
             await self._page.keyboard.press("Backspace")
             await self._human_delay(0.3, 0.5)
