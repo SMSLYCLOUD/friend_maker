@@ -336,42 +336,68 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                 logger.info(f"send_dm: DM sent via keyboard fallback to @{handle}")
                 return ActionResult(success=True, action_type="dm")
 
-            for attempt in range(3):
-                try:
-                    await dm_input.click(timeout=5000)
-                    break
-                except Exception:
-                    if attempt < 2:
-                        await self._human_delay(1, 2)
-                    else:
-                        logger.warning("send_dm: all click attempts failed, using force click")
-                        try:
-                            await dm_input.click(force=True, timeout=5000)
-                        except Exception:
-                            logger.warning("send_dm: force click also failed, using keyboard paste")
-                            await self._page.keyboard.press("Control+KeyV")
-                            await self._human_delay(0.5, 1)
-                            await self._page.keyboard.press("Enter")
-                            await self._human_delay(1, 2)
-                            logger.info(f"send_dm: DM sent via keyboard fallback to @{handle}")
-                            return ActionResult(success=True, action_type="dm")
-            await self._page.keyboard.press("Control+KeyA")
-            await self._page.keyboard.press("Backspace")
+            # Force-click input (overlay always intercepts regular click)
+            try:
+                await dm_input.click(force=True, timeout=5000)
+            except Exception:
+                logger.warning("send_dm: force click failed, using keyboard paste")
+                await self._page.keyboard.press("Control+KeyV")
+                await self._human_delay(0.5, 1)
+                await self._page.keyboard.press("Enter")
+                await self._human_delay(1, 2)
+                logger.info(f"send_dm: DM sent via keyboard fallback to @{handle}")
+                return ActionResult(success=True, action_type="dm")
             await self._human_delay(0.3, 0.5)
 
-            await self._page.evaluate(f"navigator.clipboard.writeText({repr(message)})")
-            await self._page.keyboard.press("Control+KeyV")
-            await self._human_delay(0.5, 1)
+            # Insert text directly via DOM (bypasses clipboard which fails in Camoufox)
+            await dm_input.evaluate(f"""el => {{
+                el.focus();
+                el.textContent = {repr(message)};
+                el.dispatchEvent(new Event('input', {{ bubbles: true, cancelable: true }}));
+                el.dispatchEvent(new Event('change', {{ bubbles: true, cancelable: true }}));
+            }}""")
+            await self._human_delay(0.5, 0.8)
 
-            send_btn = self._page.locator('[class*="StyledSendButton"]').first
-            try:
-                if await send_btn.count() > 0:
-                    await send_btn.wait_for(state="visible", timeout=5000)
-                    await send_btn.click(timeout=5000)
-                else:
-                    await self._page.keyboard.press("Enter")
-            except:
+            # Send via Enter (standard TikTok behavior — Enter sends, Shift+Enter = newline)
+            await self._page.keyboard.press("Enter")
+            await self._human_delay(1, 1.5)
+
+            # Verify it sent — check if input is empty (message was sent) or has a send attempt
+            input_empty = await dm_input.evaluate("el => el.textContent.trim() === ''")
+            if input_empty:
+                logger.info(f"send_dm: DM sent to @{handle} (input empty after Enter)")
+                return ActionResult(success=True, action_type="dm")
+
+            # Enter didn't work — try clicking send button with broad selectors
+            logger.warning("send_dm: Enter didn't clear input, trying send button")
+            send_selectors = [
+                'button[data-e2e="send-button"]',
+                'button[aria-label="Send"]',
+                'div[aria-label="Send"]',
+                '[class*="SendButton"]',
+                '[class*="send-button"]',
+                '[class*="send_btn"]',
+                '[data-e2e="send-message"]',
+                'button[class*="send"]',
+                'svg[class*="send"]',
+                'button:has(svg)',
+            ]
+            sent = False
+            for sel in send_selectors:
+                try:
+                    btn = self._page.locator(sel).first
+                    if await btn.count() > 0 and await btn.is_visible():
+                        await btn.click(timeout=5000)
+                        sent = True
+                        logger.info(f"send_dm: Sent via button '{sel}'")
+                        break
+                except:
+                    continue
+
+            if not sent:
+                logger.warning("send_dm: send button not found, pressing Enter again")
                 await self._page.keyboard.press("Enter")
+                await self._human_delay(1, 1.5)
 
             await self._human_delay(1, 2)
             logger.info(f"send_dm: DM sent to @{handle}")
