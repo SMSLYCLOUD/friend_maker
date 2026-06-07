@@ -1,257 +1,62 @@
-import asyncio
+"""TikTok adapter using Camoufox (patched Firefox) for anti-detection.
+
+All browser lifecycle, human-like helpers, blocker detection, and LLM
+decision logic live in `BaseCamoufoxAdapter`. This file only contains
+TikTok-specific URL builders, selectors, and `authenticate()` quirks.
+"""
+
 import json
 import logging
 import os
 import random
 import re
-import time
 from typing import Optional, List, Dict, Any
 
-from playwright.async_api import async_playwright, Page, BrowserContext
+from playwright.async_api import Page
 
-from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 from app.exceptions import BlockerDetected
+from app.platforms.base import ActionResult, UserProfile
+from app.platforms.shared.base_camoufox import BaseCamoufoxAdapter
 
-logger = logging.getLogger("CamoufoxAdapter")
-
-STEALTH_PROMPT_PREFIX = (
-    "Before taking any action: scroll down a little, wait 2-3 seconds, then scroll back up. "
-    "Move the mouse around randomly for a moment before clicking. "
-    "When typing, add small delays between characters (like a human would). "
-    "Do not rush through actions — take your time. "
-)
-
-BLOCKER_SIGNALS = [
-    "login page", "log in", "sign in", "sign up",
-    "captcha", "verify you are human", "verification required",
-    "robot check", "bot check", "security check",
-    "access denied", "blocked", "suspended",
-    "two-factor", "2fa", "otp",
-    "sorry, this page isn't available",
-    "something went wrong",
-    "confirm it's you", "suspicious activity",
-    "verify your account", "login required",
-    "cloudflare", "checking your browser",
-    "attention required", "just a moment",
-]
+logger = logging.getLogger("TikTokCamoufoxAdapter")
 
 
-def _get_provider_manager():
-    from app.llm.provider_manager import get_provider_manager
-    return get_provider_manager()
+class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
+    """Anti-detection adapter for TikTok using Camoufox + Playwright."""
 
+    platform_name: str = "tiktok"
+    platform_label: str = "tiktok"
 
-class CamoufoxAdapter(PlatformAdapter):
-    """Anti-detection adapter using Camoufox (patched Firefox) + Playwright."""
-
-    platform_name: str = "camoufox"
-
-    def __init__(self, platform: str, **kwargs):
-        self.platform = platform.lower()
-        self.platform_name = platform.lower()
-        self._playwright = None
-        self._context: Optional[BrowserContext] = None
-        self._page: Optional[Page] = None
-        self._session_data: Optional[str] = None
-        self._camoufox = None
-
-    async def _ensure_browser(self, session_data: Optional[str] = None):
-        """Launch Camoufox browser if not already running."""
-        if self._page and not self._page.is_closed():
-            return
-
-        self._session_data = session_data
-        proxy_config = self._get_proxy_config()
-
-        from camoufox.async_api import AsyncCamoufox
-
-        launch_kwargs = {
-            "headless": True,
-            "os": ["windows", "macos"],
-        }
-
-        logger.info(f"Launching Camoufox browser for {self.platform}...")
-        self._camoufox = AsyncCamoufox(**launch_kwargs)
-        try:
-            self._context = await self._camoufox.__aenter__()
-        except Exception as e:
-            logger.warning(f"Camoufox launch failed, retrying without proxy: {e}")
-            self._camoufox = AsyncCamoufox(headless=True, os=["windows", "macos"])
-            self._context = await self._camoufox.__aenter__()
-
-        # Camoufox may return Browser or BrowserContext — get the context either way
-        if hasattr(self._context, 'new_context'):
-            self._context = await self._context.new_context()
-
-        if session_data:
-            await self._load_cookies(session_data)
-
-        self._page = await self._context.new_page()
-        logger.info("Camoufox browser ready")
-
-    async def _load_cookies(self, session_data: str):
-        """Load cookies from session data into the browser context."""
-        try:
-            cookies = json.loads(session_data)
-            if isinstance(cookies, list) and cookies:
-                await self._context.add_cookies(cookies)
-                logger.info(f"Loaded {len(cookies)} cookies")
-        except Exception as e:
-            logger.warning(f"Failed to load cookies: {e}")
-
-    async def _get_cookies(self) -> str:
-        """Export current cookies as JSON string."""
-        try:
-            cookies = await self._context.cookies()
-            return json.dumps(cookies)
-        except Exception:
-            return "[]"
-
-    async def _run_with_retry(self, fn, *args, **kwargs):
-        """Run a function, restarting the browser if it died."""
-        for attempt in range(3):
-            try:
-                if self._page and self._page.is_closed():
-                    logger.warning("Page closed, restarting browser...")
-                    await self._ensure_browser(self._session_data)
-                return await fn(*args, **kwargs)
-            except Exception as e:
-                error_str = str(e).lower()
-                is_browser_dead = (
-                    "closed" in error_str
-                    or "disconnected" in error_str
-                    or "handler is closed" in error_str
-                    or "target closed" in error_str
-                )
-                is_nav_abort = "ns_binding_aborted" in error_str
-                if (is_browser_dead or is_nav_abort) and attempt < 2:
-                    logger.warning(f"Navigation failed (attempt {attempt + 1}): {e}")
-                    if is_browser_dead:
-                        self._page = None
-                        self._context = None
-                        await self._ensure_browser(self._session_data)
-                    else:
-                        await self._human_delay(3, 5)
-                    continue
-                raise
+    # ── URL helpers ────────────────────────────────────────────────────
 
     @staticmethod
-    def _get_proxy_config() -> Optional[dict]:
-        url = os.getenv("SKYVERN_PROXY_URL", "").strip()
-        if not url:
-            return None
-        # Ensure scheme is present for Firefox
-        if not url.startswith(("http://", "https://", "socks5://")):
-            url = f"http://{url}"
-        username = os.getenv("SKYVERN_PROXY_USERNAME", "").strip()
-        password = os.getenv("SKYVERN_PROXY_PASSWORD", "").strip()
-        config = {"url": url}
-        if username:
-            config["username"] = username
-            config["password"] = password
-        return config
+    def _profile_url(handle: str) -> str:
+        return f"https://www.tiktok.com/@{handle.lstrip('@')}"
 
-    def _check_for_blockers(self, text: str, url: str = ""):
-        """Check page text for blocker signals."""
-        lower = text.lower()
-        for signal in BLOCKER_SIGNALS:
-            if signal in lower:
-                raise BlockerDetected(
-                    blocker_type=signal.replace(" ", "_"),
-                    message=f"Detected '{signal}' on page. Human intervention required.",
-                    url=url,
-                )
+    @staticmethod
+    def _post_url(handle: str, post_id: str) -> str:
+        return f"https://www.tiktok.com/@{handle.lstrip('@')}/video/{post_id}"
 
-    async def _human_delay(self, min_s: float = 1.0, max_s: float = 3.0):
-        """Random delay to mimic human behavior."""
-        delay = random.uniform(min_s, max_s)
-        await asyncio.sleep(delay)
+    # ── Authentication ────────────────────────────────────────────────
 
-    async def _human_scroll(self):
-        """Random scroll to look human."""
-        for _ in range(random.randint(1, 3)):
-            amount = random.randint(100, 400)
-            direction = 1 if random.random() > 0.3 else -1
-            await self._page.mouse.wheel(0, amount * direction)
-            await asyncio.sleep(random.uniform(0.3, 0.8))
-
-    async def _human_move_mouse(self):
-        """Move mouse to a random position."""
-        x = random.randint(100, 800)
-        y = random.randint(100, 600)
-        await self._page.mouse.move(x, y, steps=random.randint(5, 15))
-        await asyncio.sleep(random.uniform(0.3, 0.7))
-
-    async def _navigate(self, url: str):
-        """Navigate to URL with human-like behavior."""
-        async def _do_navigate():
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            await self._human_delay(3, 5)
-            await self._human_scroll()
-            await self._human_move_mouse()
-        await self._run_with_retry(_do_navigate)
-
-    async def _extract_page_text(self) -> str:
-        """Extract visible text from the page."""
-        async def _do_extract():
-            try:
-                return await self._page.inner_text("body")
-            except Exception:
-                return ""
-        return await self._run_with_retry(_do_extract)
-
-    def _llm_decide(self, page_text: str, prompt: str) -> str:
-        """Ask the LLM what to do based on page content."""
-        pm = _get_provider_manager()
-        provider = pm.get_next_provider()
-        if not provider:
-            return ""
-
-        full_prompt = (
-            f"You are looking at a {self.platform} page.\n"
-            f"Page text (first 2000 chars): {page_text[:2000]}\n\n"
-            f"Task: {prompt}\n\n"
-            f"Respond with a JSON object describing what to do. "
-            f"For example: {{\"action\": \"click\", \"selector\": \"button Follow\"}} or "
-            f"{{\"action\": \"type\", \"selector\": \"input[name=username]\", \"text\": \"hello\"}} or "
-            f"{{\"action\": \"extract\", \"data\": {{...}}}}"
-        )
-
-        try:
-            import httpx
-            resp = httpx.post(
-                f"{provider.config.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {provider.config.api_key}"},
-                json={
-                    "model": provider.config.model,
-                    "messages": [{"role": "user", "content": full_prompt}],
-                    "temperature": 0.3,
-                },
-                timeout=120,
-            )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
-            return content
-        except Exception as e:
-            logger.error(f"LLM decision failed: {e}")
-            return ""
-
-    async def authenticate(self, session_data: Optional[str], username: Optional[str] = None, password: Optional[str] = None) -> bool:
+    async def authenticate(
+        self,
+        session_data: Optional[str],
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> bool:
         try:
             await self._ensure_browser(session_data)
-            home_url = f"https://www.{self.platform}.com"
+            home_url = "https://www.tiktok.com/"
             await self._navigate(home_url)
             text = await self._extract_page_text()
             self._check_for_blockers(text, home_url)
             logged_in = not any(w in text.lower() for w in ["log in", "sign in", "sign up"])
             logger.info(f"Auth check: logged_in={logged_in}")
 
-            # Extract logged-in username from page source
             if logged_in:
                 try:
-                    import re
                     page_source = await self._page.content()
-                    # Try various patterns TikTok uses
                     match = re.search(r'"uniqueId":"([^"]+)"', page_source)
                     if not match:
                         match = re.search(r'"username":"([^"]+)"', page_source)
@@ -269,16 +74,17 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"Authentication failed: {e}")
             return False
 
+    # ── User discovery ─────────────────────────────────────────────────
+
     async def search_users(self, query: str, limit: int = 20, context: str = "") -> List[UserProfile]:
         results = []
         try:
             await self._ensure_browser(self._session_data)
-            url = f"https://www.{self.platform}.com/search?q={query}"
+            url = f"https://www.tiktok.com/search?q={query}"
             await self._navigate(url)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Use LLM to extract user data from page
             llm_response = self._llm_decide(
                 text,
                 f"Extract the first {limit} user profiles. Return JSON: {{\"users\": [{{\"username\": \"...\", \"display_name\": \"...\"}}]}}"
@@ -306,30 +112,25 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-
-            # Navigate directly to followers page
-            url = f"https://www.{self.platform}.com/@{handle}/followers"
+            url = f"https://www.tiktok.com/@{handle}/followers"
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Scroll down to load more followers (TikTok lazy-loads heavily)
             prev_count = 0
             for i in range(15):
                 await self._page.mouse.wheel(0, 1500)
                 await self._human_delay(1.5, 2.5)
-                # Count current links to detect if new content loaded
                 links = await self._page.query_selector_all('a[href*="/@"]')
                 curr_count = len(links)
                 if curr_count == prev_count and i > 3:
-                    break  # No new content loaded, stop scrolling
+                    break
                 prev_count = curr_count
 
             text = await self._extract_page_text()
 
-            # Try to extract usernames from page HTML
             usernames = []
             try:
                 links = await self._page.query_selector_all('a[href*="/@"]')
@@ -342,13 +143,11 @@ class CamoufoxAdapter(PlatformAdapter):
             except Exception as e:
                 logger.warning(f"HTML extraction failed: {e}")
 
-            # If HTML extraction got results, use them
             if usernames:
                 for u in usernames[:limit]:
                     results.append(UserProfile(platform_id=u, username=u))
                 logger.info(f"Extracted {len(results)} followers from HTML")
             else:
-                # Fallback to LLM
                 llm_response = self._llm_decide(
                     text,
                     f"Extract follower usernames from this TikTok followers page. Return JSON: {{\"usernames\": [\"user1\", \"user2\"]}}"
@@ -359,23 +158,23 @@ class CamoufoxAdapter(PlatformAdapter):
                         results.append(UserProfile(platform_id=u, username=u))
                 except (json.JSONDecodeError, TypeError):
                     logger.warning("LLM extraction also failed")
-
         except BlockerDetected:
             raise
         except Exception as e:
             logger.error(f"Get followers failed: {e}")
         return results
 
+    # ── Follow / unfollow ─────────────────────────────────────────────
+
     async def follow(self, user_id: str) -> ActionResult:
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._navigate(url)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Try clicking Follow button
             follow_btn = self._page.get_by_role("button", name="Follow").first
             await follow_btn.click(timeout=15000)
             await self._human_delay(1, 2)
@@ -389,7 +188,7 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._navigate(url)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
@@ -403,20 +202,20 @@ class CamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="unfollow", error=str(e))
 
+    # ── Direct messages ───────────────────────────────────────────────
+
     async def send_dm(self, user_id: str, message: str) -> ActionResult:
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             logger.info(f"send_dm: Navigating to {url}")
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
-            # Check for blockers
             page_text = await self._extract_page_text()
             self._check_for_blockers(page_text, url)
 
-            # Extract user_id from page source JSON (same pattern as working reference)
             page_source = await self._page.content()
             uid_match = re.search(r'(?<="userInfo":\{"user":\{"id":")\d{1,30}', page_source)
             if not uid_match:
@@ -427,29 +226,24 @@ class CamoufoxAdapter(PlatformAdapter):
             uid = uid_match.group(1) if uid_match.lastindex else uid_match.group(0)
             logger.info(f"send_dm: Got user_id={uid} for @{handle}")
 
-            # Navigate to DM page using the correct /messages URL
-            dm_url = f"https://www.{self.platform}.com/messages?lang=en&u={uid}"
+            dm_url = f"https://www.tiktok.com/messages?lang=en&u={uid}"
             logger.info(f"send_dm: Navigating to DM page: {dm_url}")
             await self._page.goto(dm_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Wait for DM page to load — check for chat-uniqueid or input box
             dm_loaded = False
             for attempt in range(5):
                 try:
-                    # Check if we landed on login page
                     if "/login" in self._page.url:
                         logger.warning("send_dm: Redirected to login page — not logged in")
                         return ActionResult(success=False, action_type="dm", error="Not logged in")
 
-                    # Check for DM page indicator
                     chat_header = self._page.locator('p[data-e2e="chat-uniqueid"]')
                     if await chat_header.count() > 0:
                         dm_loaded = True
                         logger.info("send_dm: DM page loaded (chat-uniqueid found)")
                         break
 
-                    # Also try finding the input directly
                     input_box = self._page.locator('div[aria-label="Send a message..."][role="textbox"]')
                     if await input_box.count() > 0:
                         dm_loaded = True
@@ -461,7 +255,6 @@ class CamoufoxAdapter(PlatformAdapter):
                     await self._human_delay(2, 3)
 
             if not dm_loaded:
-                # Check for warning/error messages
                 page_text = await self._extract_page_text()
                 warnings = [
                     "Only friends can send messages",
@@ -480,7 +273,6 @@ class CamoufoxAdapter(PlatformAdapter):
                         logger.warning(f"send_dm: DM blocked — {w}")
                         return ActionResult(success=False, action_type="dm", error=f"DM blocked: {w}")
 
-                # Check for DM warning element
                 try:
                     warn_el = self._page.locator('div[data-e2e="dm-warning"]')
                     if await warn_el.count() > 0:
@@ -490,13 +282,12 @@ class CamoufoxAdapter(PlatformAdapter):
                 except: pass
 
                 try:
-                    ss = await self._page.screenshot()
-                    logger.warning(f"send_dm: DM page not loaded. Screenshot saved. URL: {self._page.url}")
+                    await self._page.screenshot()
+                    logger.warning(f"send_dm: DM page not loaded. URL: {self._page.url}")
                 except: pass
 
                 return ActionResult(success=False, action_type="dm", error="DM page not loaded")
 
-            # Find the DM input box — exact selector from working TikTok bot
             dm_input = None
             input_selectors = [
                 'div[aria-label="Send a message..."][role="textbox"]',
@@ -518,32 +309,24 @@ class CamoufoxAdapter(PlatformAdapter):
 
             if not dm_input:
                 logger.warning("send_dm: DM input not found on loaded DM page")
-                try:
-                    ss = await self._page.screenshot()
-                    logger.warning(f"send_dm: Screenshot saved. URL: {self._page.url}")
-                except: pass
                 return ActionResult(success=False, action_type="dm", error="DM input not found")
 
-            # Clear any existing text and type message
             logger.info(f"send_dm: Typing message ({len(message)} chars)")
             await dm_input.click()
             await self._page.keyboard.press("Control+KeyA")
             await self._page.keyboard.press("Backspace")
             await self._human_delay(0.3, 0.5)
 
-            # Paste message via clipboard
             await self._page.evaluate(f"navigator.clipboard.writeText({repr(message)})")
             await self._page.keyboard.press("Control+KeyV")
             await self._human_delay(0.5, 1)
 
-            # Click send button — StyledSendButton class from working bot
             send_btn = self._page.locator('[class*="StyledSendButton"]').first
             try:
                 if await send_btn.count() > 0:
                     await send_btn.wait_for(state="visible", timeout=5000)
                     await send_btn.click(timeout=5000)
                 else:
-                    # Fallback: press Enter
                     await self._page.keyboard.press("Enter")
             except:
                 await self._page.keyboard.press("Enter")
@@ -554,13 +337,41 @@ class CamoufoxAdapter(PlatformAdapter):
         except BlockerDetected:
             raise
         except Exception as e:
-            logger.error(f"send_dm FAILED for @{handle}: {e}")
+            logger.error(f"send_dm FAILED for @{user_id}: {e}")
             return ActionResult(success=False, action_type="dm", error=str(e))
+
+    async def reply_to_dm(self, user_id: str, message: str) -> ActionResult:
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = user_id.lstrip("@")
+            await self._navigate(f"https://www.tiktok.com/direct/t/{handle}")
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text)
+
+            msg_input = self._page.locator("textarea, div[contenteditable='true'], div[data-e2e='message-input']").first
+            await msg_input.click(timeout=15000)
+            await self._human_delay(0.5, 1)
+
+            for char in message:
+                await msg_input.type(char, delay=random.randint(50, 150))
+            await self._human_delay(0.5, 1)
+
+            send_btn = self._page.get_by_role("button", name="Send").first
+            await send_btn.click(timeout=15000)
+            await self._human_delay(1, 2)
+            return ActionResult(success=True, action_type="reply_dm")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="reply_dm", error=str(e))
+
+    # ── Inbox / conversations ──────────────────────────────────────────
 
     async def check_inbox(self, limit: int = 10) -> List[Dict[str, Any]]:
         try:
             await self._ensure_browser(self._session_data)
-            await self._navigate(f"https://www.{self.platform}.com/direct/inbox")
+            await self._navigate("https://www.tiktok.com/direct/inbox")
             text = await self._extract_page_text()
             self._check_for_blockers(text)
 
@@ -583,7 +394,7 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            await self._navigate(f"https://www.{self.platform}.com/direct/t/{handle}")
+            await self._navigate(f"https://www.tiktok.com/direct/t/{handle}")
             text = await self._extract_page_text()
             self._check_for_blockers(text)
 
@@ -601,6 +412,8 @@ class CamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             logger.error(f"Read conversation failed: {e}")
             return []
+
+    # ── Groups ────────────────────────────────────────────────────────
 
     async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
         results = []
@@ -632,71 +445,7 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"Get group members failed: {e}")
         return results
 
-    async def _dismiss_overlay(self):
-        """Close any inbox/notification overlays that TikTok opens by default."""
-        for attempt in range(5):
-            try:
-                is_inert = await self._page.evaluate(
-                    'document.querySelector("#app")?.getAttribute("inert") === "true"'
-                )
-                if not is_inert:
-                    break
-                logger.info(f"Overlay detected (inert=true), attempt {attempt+1}")
-
-                # Aggressive: remove inert + hide all floating UI overlays in one JS call
-                done = await self._page.evaluate('''() => {
-                    const app = document.querySelector("#app");
-                    if (!app) return false;
-
-                    // Remove inert from #app
-                    app.removeAttribute("inert");
-                    app.removeAttribute("aria-hidden");
-                    app.removeAttribute("data-floating-ui-inert");
-
-                    // Hide all floating-ui portals / overlays (TikTok uses these)
-                    document.querySelectorAll('[data-floating-ui-portal]').forEach(el => {
-                        el.style.display = "none";
-                    });
-                    document.querySelectorAll('[data-floating-ui-inert]').forEach(el => {
-                        el.style.display = "none";
-                    });
-
-                    // Find and hide the inbox panel specifically
-                    const inboxIcon = document.querySelector('[data-e2e="inbox-icon"]');
-                    if (inboxIcon) {
-                        let panel = inboxIcon.closest('[class*="Popup"], [class*="Modal"], [class*="Overlay"], [class*="Panel"], [role="dialog"]');
-                        if (panel) {
-                            panel.style.display = "none";
-                            panel.remove();
-                        }
-                    }
-
-                    // Hide any element with aria-modal="true" or role="dialog" that overlays content
-                    document.querySelectorAll('[aria-modal="true"], [role="dialog"]').forEach(el => {
-                        if (el.querySelector('[data-e2e="inbox-list"], [data-e2e="inbox-icon"]')) {
-                            el.style.display = "none";
-                            el.remove();
-                        }
-                    });
-
-                    return app.getAttribute("inert") !== "true";
-                }''')
-                if done:
-                    logger.info("Overlay removed via JS (inert + portal hide)")
-                    await self._human_delay(1, 2)
-                    break
-
-                # Fallback: click inbox icon to toggle
-                try:
-                    inbox_icon = self._page.locator('[data-e2e="inbox-icon"]').first
-                    if await inbox_icon.count() > 0:
-                        await inbox_icon.click(timeout=2000)
-                        await self._human_delay(1, 2)
-                except: pass
-
-                await self._page.keyboard.press("Escape")
-                await self._human_delay(1, 2)
-            except: break
+    # ── Posts & comments ──────────────────────────────────────────────
 
     async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
         results = []
@@ -723,9 +472,7 @@ class CamoufoxAdapter(PlatformAdapter):
                 if (app) {
                     observer.observe(app, { attributes: true, attributeFilter: ["inert"] });
                 }
-                // Also remove floating-ui portals that cause inert
                 document.querySelectorAll('[data-floating-ui-portal]').forEach(el => el.remove());
-                // Remove inert now if present
                 if (app && app.getAttribute("inert") === "true") {
                     app.removeAttribute("inert");
                     app.removeAttribute("aria-hidden");
@@ -736,7 +483,6 @@ class CamoufoxAdapter(PlatformAdapter):
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(5, 7)
 
-            # Re-inject observer after navigation (page reloaded)
             await self._page.evaluate('''() => {
                 const app = document.querySelector("#app");
                 if (app && app.getAttribute("inert") === "true") {
@@ -748,26 +494,21 @@ class CamoufoxAdapter(PlatformAdapter):
             }''')
             await self._human_delay(1, 2)
 
-            # Extract video owner from URL to exclude them
             video_owner = ""
             try:
                 video_owner = post_url.split("/@")[-1].split("/")[0].split("?")[0].lower()
             except: pass
 
-            # --- Phase 1: scroll to trigger lazy comment loading ---
             for _ in range(10):
                 await self._page.mouse.wheel(0, 600)
                 await self._human_delay(1.5, 2.5)
             await self._human_delay(2, 3)
-            # Scroll back to top
             await self._page.evaluate("window.scrollTo(0, 0)")
             await self._human_delay(1, 2)
 
-            # --- Phase 2: find comment list container via data-e2e ---
             comment_links = []
             container_found = ""
 
-            # Primary: data-e2e comment list containers
             container_selectors = [
                 '[data-e2e="browse-comment-list"]',
                 '[data-e2e="comment-list"]',
@@ -784,7 +525,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                 except: pass
 
-            # --- Phase 2b: find comment items via data-e2e comment-avatar ---
             if not comment_links:
                 avatar_selectors = [
                     '[data-e2e="comment-avatar-1"]',
@@ -801,13 +541,11 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                     except: pass
 
-            # --- Phase 2c: find comment items via data-e2e comment-level spans ---
             if not comment_links:
                 for level_sel in ['[data-e2e="comment-level-1"]', '[data-e2e="comment-level-2"]']:
                     try:
                         spans = await self._page.query_selector_all(level_sel)
                         if spans:
-                            # Navigate up to the parent comment wrapper, then find the user link
                             for span in spans[:limit]:
                                 try:
                                     parent = await span.evaluate_handle(
@@ -824,10 +562,8 @@ class CamoufoxAdapter(PlatformAdapter):
                                 break
                     except: pass
 
-            # --- Phase 2d: click comment button to open the panel ---
             if not comment_links:
                 clicked = False
-                # Try standard data-e2e selectors
                 for btn_sel in [
                     '[data-e2e="comment-icon"]',
                     '[data-e2e="browse-comment-icon"]',
@@ -844,7 +580,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                     except: pass
 
-                # Fallback: find comment button via aria-label on the action bar
                 if not clicked:
                     try:
                         comment_btns = await self._page.query_selector_all(
@@ -862,18 +597,14 @@ class CamoufoxAdapter(PlatformAdapter):
                             except: pass
                     except: pass
 
-                # Fallback: click the 2nd child of SectionActionBarContainer (comment is usually 2nd)
                 if not clicked:
                     try:
-                        action_bar = self._page.locator('section').filter(has_text='').first
-                        # Try finding action bar by class
                         bars = await self._page.query_selector_all('section')
                         for bar in bars:
                             cls = await bar.get_attribute("class") or ""
                             if "Action" in cls or "action" in cls:
                                 children = await bar.query_selector_all(':scope > *')
                                 if len(children) >= 2:
-                                    # Comment button is typically the 2nd child
                                     await children[1].click(timeout=5000)
                                     await self._human_delay(3, 4)
                                     logger.info(f"get_post_commenters: clicked 2nd child of action bar section")
@@ -881,7 +612,6 @@ class CamoufoxAdapter(PlatformAdapter):
                                     break
                     except: pass
 
-                # Re-check containers after clicking
                 for sel in container_selectors + avatar_selectors:
                     try:
                         if sel.startswith('[data-e2e="comment-avatar'):
@@ -896,7 +626,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                     except: pass
 
-                # After clicking, also re-dump data-e2e to see what changed
                 if not comment_links:
                     try:
                         all_e2e_after = await self._page.query_selector_all('[data-e2e]')
@@ -908,17 +637,12 @@ class CamoufoxAdapter(PlatformAdapter):
                                     e2e_after.append(val)
                             except: pass
                         logger.warning(f"get_post_commenters: after click, data-e2e dump: {e2e_after}")
-                        # Take another screenshot after clicking
-                        ss_path2 = os.path.join(os.path.dirname(__file__), "..", "..", "debug_post_after_click.png")
+                        ss_path2 = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug_post_after_click.png")
                         await self._page.screenshot(path=ss_path2, full_page=False)
                         logger.warning(f"get_post_commenters: Screenshot after click saved to {ss_path2}")
                     except: pass
 
-            # --- Phase 3: NO broad fallback. Return empty rather than extract
-            #     non-commenters from the header/sidebar (this was the root cause
-            #     of the "stuck in a loop" bug). ---
             if not comment_links:
-                # DEBUG: dump all data-e2e attributes, section HTML, and screenshot
                 try:
                     all_e2e = await self._page.query_selector_all('[data-e2e]')
                     e2e_vals = []
@@ -930,7 +654,6 @@ class CamoufoxAdapter(PlatformAdapter):
                         except: pass
                     logger.warning(f"get_post_commenters: NO COMMENTS FOUND. Page data-e2e dump: {e2e_vals}")
 
-                    # Dump all <section> tags with innerHTML for the action bar
                     sections = await self._page.query_selector_all('section')
                     logger.warning(f"get_post_commenters: Found {len(sections)} <section> elements")
                     for i, sec in enumerate(sections[:10]):
@@ -943,7 +666,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             logger.warning(f"  section[{i}] innerHTML (first 2000): {inner[:2000]}")
                         except: pass
 
-                    # Dump all buttons / clickable elements that might be the comment button
                     buttons = await self._page.query_selector_all('button, [role="button"], [data-e2e*="comment"], [aria-label*="comment" i], [aria-label*="Comment" i]')
                     logger.warning(f"get_post_commenters: Found {len(buttons)} button/comment elements")
                     for i, btn in enumerate(buttons[:20]):
@@ -956,15 +678,13 @@ class CamoufoxAdapter(PlatformAdapter):
                             logger.warning(f"  btn[{i}]: <{tag}> aria='{aria}' e2e='{e2e}' class='{cls}' text='{text}'")
                         except: pass
 
-                    # Take a screenshot for visual inspection
-                    ss_path = os.path.join(os.path.dirname(__file__), "..", "..", "debug_post_page.png")
+                    ss_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug_post_page.png")
                     await self._page.screenshot(path=ss_path, full_page=False)
                     logger.warning(f"get_post_commenters: Screenshot saved to {ss_path}")
 
-                    # Dump the full outer HTML of the main content area
                     main_html = await self._page.evaluate("""
                         () => {
-                            const main = document.querySelector('[data-e2e="browse-main"]') 
+                            const main = document.querySelector('[data-e2e="browse-main"]')
                                 || document.querySelector('main')
                                 || document.querySelector('#app')
                                 || document.body;
@@ -977,7 +697,6 @@ class CamoufoxAdapter(PlatformAdapter):
 
                 return results
 
-            # --- Phase 4: dedupe + filter ---
             seen = set()
             for link in comment_links[:limit * 5]:
                 try:
@@ -1071,20 +790,20 @@ class CamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="reply_comment", error=str(e))
 
+    # ── Profiles & posts ──────────────────────────────────────────────
+
     async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
         handle = user_id.lstrip("@")
         try:
             await self._ensure_browser(self._session_data)
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Robust private account detection
             is_private = False
 
-            # 1. Text-based detection (multiple variations)
             private_text_indicators = [
                 "this account is private",
                 "this account's posts are hidden",
@@ -1100,7 +819,6 @@ class CamoufoxAdapter(PlatformAdapter):
                     logger.info(f"Private account detected (text): @{handle} — '{indicator}'")
                     break
 
-            # 2. DOM element detection (multiple selectors)
             if not is_private:
                 private_selectors = [
                     '[data-e2e="private-account"]',
@@ -1120,19 +838,15 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                     except: pass
 
-            # 3. Check if profile grid is empty (private accounts have no visible posts)
             if not is_private:
                 try:
                     grid = await self._page.query_selector('[data-e2e="user-post-item"], [data-e2e="user-post-grid"]')
                     if not grid:
-                        # No grid at all — could be private or empty account
-                        # Check for the "follow to see" message
                         if "follow" in text_lower and ("see" in text_lower or "photos" in text_lower or "videos" in text_lower):
                             is_private = True
                             logger.info(f"Private account detected (no grid + follow text): @{handle}")
                 except: pass
 
-            # 4. Check for lock icon in profile area
             if not is_private:
                 try:
                     lock_selectors = [
@@ -1149,7 +863,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             break
                 except: pass
 
-            # If private, skip LLM call — return minimal data
             if is_private:
                 return {
                     "username": handle,
@@ -1187,16 +900,14 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Scroll to load posts (TikTok lazy-loads)
             for _ in range(5):
                 await self._page.mouse.wheel(0, 1200)
                 await self._human_delay(1.5, 2.5)
 
-            # Try HTML extraction first — look for post links belonging to THIS user only
             posts = []
             try:
                 links = await self._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
@@ -1205,11 +916,8 @@ class CamoufoxAdapter(PlatformAdapter):
                     href = await link.get_attribute("href")
                     if not href:
                         continue
-                    # Only include posts from this user's profile
                     if f"/@{handle}/" not in href and f"/@{handle}?" not in href:
                         continue
-                    # Extract video/photo ID for dedup
-                    import re
                     vid_match = re.search(r'/(video|photo)/(\d+)', href)
                     if not vid_match:
                         continue
@@ -1218,7 +926,7 @@ class CamoufoxAdapter(PlatformAdapter):
                         continue
                     seen_ids.add(vid_id)
                     if not href.startswith("http"):
-                        href = f"https://www.{self.platform}.com{href}"
+                        href = f"https://www.tiktok.com{href}"
                     posts.append({"url": href, "caption": ""})
                     if len(posts) >= limit:
                         break
@@ -1228,7 +936,6 @@ class CamoufoxAdapter(PlatformAdapter):
             except Exception as e:
                 logger.warning(f"HTML post extraction failed: {e}")
 
-            # Fallback to LLM
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
@@ -1254,7 +961,6 @@ class CamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
-            # Find comment input and type
             comment_input = self._page.locator("textarea[placeholder*='comment'], div[contenteditable='true']").first
             await comment_input.click(timeout=15000)
             for char in message:
@@ -1274,12 +980,11 @@ class CamoufoxAdapter(PlatformAdapter):
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._navigate(url)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Click first post
             first_post = self._page.locator("article a, div[data-e2e='user-post'] a").first
             await first_post.click(timeout=15000)
             await self._human_delay(2, 3)
@@ -1298,6 +1003,8 @@ class CamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="comment", error=str(e))
 
+    # ── Screenshot ────────────────────────────────────────────────────
+
     async def capture_screenshot(self) -> Optional[str]:
         try:
             if self._page:
@@ -1308,44 +1015,14 @@ class CamoufoxAdapter(PlatformAdapter):
             pass
         return None
 
-    async def reply_to_dm(self, user_id: str, message: str) -> ActionResult:
-        """Reply to an existing DM conversation."""
-        try:
-            await self._ensure_browser(self._session_data)
-            handle = user_id.lstrip("@")
-            await self._navigate(f"https://www.{self.platform}.com/direct/t/{handle}")
-            await self._human_delay(2, 3)
-            text = await self._extract_page_text()
-            self._check_for_blockers(text)
-
-            # Find the message input box
-            msg_input = self._page.locator("textarea, div[contenteditable='true'], div[data-e2e='message-input']").first
-            await msg_input.click(timeout=15000)
-            await self._human_delay(0.5, 1)
-
-            # Type with human delays
-            for char in message:
-                await msg_input.type(char, delay=random.randint(50, 150))
-            await self._human_delay(0.5, 1)
-
-            # Send the message
-            send_btn = self._page.get_by_role("button", name="Send").first
-            await send_btn.click(timeout=15000)
-            await self._human_delay(1, 2)
-            return ActionResult(success=True, action_type="reply_dm")
-        except BlockerDetected:
-            raise
-        except Exception as e:
-            return ActionResult(success=False, action_type="reply_dm", error=str(e))
+    # ── Likes / share / stories / live ─────────────────────────────────
 
     async def like_post(self, post_url: str) -> ActionResult:
-        """Like a post (works for both video and photo posts)."""
         try:
             await self._ensure_browser(self._session_data)
             await self._page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Remove overlay: strip inert + floating-ui portals
             await self._page.evaluate('''() => {
                 const app = document.querySelector("#app");
                 if (app && app.getAttribute("inert") === "true") {
@@ -1357,24 +1034,17 @@ class CamoufoxAdapter(PlatformAdapter):
             }''')
             await self._human_delay(1, 2)
 
-            # Try multiple selector strategies for video and photo posts
             like_btn = None
             selectors = [
-                # XPath: button containing span with like icon (works for both video + photo)
                 '//button[.//span[@data-e2e="browse-like-icon" or @data-e2e="like-icon"]]',
-                # CSS: direct data-e2e selectors
                 'button[data-e2e="like-icon"]',
                 'button[data-e2e="like-button"]',
                 '[data-e2e="like-icon"]',
                 '[data-e2e="like-button"]',
-                # Fallback: aria-label on button
                 'button[aria-label*="Like"]',
                 'button[aria-label*="like"]',
-                # Photo/carousel viewer: like icon is an SVG inside StyledIconWrapper
-                # (first StyledIconWrapper in the right action bar is the like heart)
                 'div[class*="StyledIconWrapper"]:first-of-type',
                 'div[class*="StyledIconWrapper"]:first-of-type svg',
-                # Generic action bar button (right-side icons on photo viewer)
                 '[class*="StyledActionBarButton"]:first-of-type',
             ]
 
@@ -1391,7 +1061,6 @@ class CamoufoxAdapter(PlatformAdapter):
                 except: pass
 
             if not like_btn:
-                # DEBUG: dump all buttons, SVGs, and interactive elements on the page
                 try:
                     buttons = await self._page.query_selector_all('button')
                     logger.warning(f"like_post: No like button found. Dumping {len(buttons)} buttons on page:")
@@ -1404,7 +1073,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             logger.warning(f"  button[{i}]: aria='{aria}' e2e='{e2e}' cls='{cls}' text='{txt}'")
                         except: pass
 
-                    # Dump all elements with data-e2e
                     e2e_els = await self._page.query_selector_all('[data-e2e]')
                     logger.warning(f"like_post: Found {len(e2e_els)} elements with data-e2e:")
                     for i, el in enumerate(e2e_els[:30]):
@@ -1414,7 +1082,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             logger.warning(f"  data-e2e[{i}]: <{tag}> data-e2e='{e2e}'")
                         except: pass
 
-                    # Dump all divs with aria-label (photo posts use divs, not buttons)
                     aria_divs = await self._page.query_selector_all('div[aria-label]')
                     logger.warning(f"like_post: Found {len(aria_divs)} divs with aria-label:")
                     for i, el in enumerate(aria_divs[:20]):
@@ -1423,7 +1090,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             logger.warning(f"  div-aria[{i}]: aria-label='{aria}'")
                         except: pass
 
-                    # Dump all SVGs inside clickable elements
                     svgs = await self._page.query_selector_all('svg')
                     logger.warning(f"like_post: Found {len(svgs)} SVGs on page")
                     for i, svg in enumerate(svgs[:15]):
@@ -1433,7 +1099,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             logger.warning(f"  svg[{i}]: parent='{parent_tag}' aria='{aria}'")
                         except: pass
 
-                    # Also check for any element with "like" in any attribute
                     like_els = await self._page.query_selector_all('[class*="like" i], [class*="Like" i], [aria-label*="like" i], [aria-label*="Like" i]')
                     logger.warning(f"like_post: Found {len(like_els)} elements with 'like' in class/aria:")
                     for i, el in enumerate(like_els[:10]):
@@ -1448,7 +1113,6 @@ class CamoufoxAdapter(PlatformAdapter):
                     logger.error(f"like_post: Debug dump failed: {e}")
                 return ActionResult(success=False, action_type="like", error="Like button not found")
 
-            # Try click, fallback to JS click
             try:
                 await like_btn.click(timeout=10000, force=True)
             except Exception:
@@ -1461,7 +1125,6 @@ class CamoufoxAdapter(PlatformAdapter):
 
             await self._human_delay(1, 2)
 
-            # Verify like was applied
             try:
                 is_liked = await like_btn.get_attribute("aria-pressed")
                 if is_liked == "true":
@@ -1477,7 +1140,6 @@ class CamoufoxAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="like", error=str(e))
 
     async def unlike_post(self, post_url: str) -> ActionResult:
-        """Unlike a post."""
         try:
             await self._ensure_browser(self._session_data)
             await self._navigate(post_url)
@@ -1501,7 +1163,6 @@ class CamoufoxAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="unlike", error=str(e))
 
     async def share_post(self, post_url: str) -> ActionResult:
-        """Share/repost a post."""
         try:
             await self._ensure_browser(self._session_data)
             await self._navigate(post_url)
@@ -1509,7 +1170,6 @@ class CamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
-            # Click share button
             share_btn = self._page.locator(
                 "button[data-e2e='share-icon'], "
                 "button[data-e2e='share-button'], "
@@ -1520,13 +1180,11 @@ class CamoufoxAdapter(PlatformAdapter):
             await share_btn.click(timeout=15000)
             await self._human_delay(1, 2)
 
-            # Click repost option if available
             try:
                 repost_btn = self._page.get_by_role("button", name="Repost").first
                 await repost_btn.click(timeout=8000)
                 await self._human_delay(1, 2)
             except Exception:
-                # Repost might not be available, that's ok
                 pass
 
             return ActionResult(success=True, action_type="share")
@@ -1536,17 +1194,15 @@ class CamoufoxAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="share", error=str(e))
 
     async def view_stories(self, user_id: str) -> ActionResult:
-        """View a user's stories."""
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._navigate(url)
             await self._human_delay(2, 3)
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Look for story circle/avatar
             story_btn = self._page.locator(
                 "div[data-e2e='story-avatar'], "
                 "div[data-e2e='user-avatar'][data-e2e='has-story'], "
@@ -1555,7 +1211,6 @@ class CamoufoxAdapter(PlatformAdapter):
             await story_btn.click(timeout=15000)
             await self._human_delay(3, 5)
 
-            # Wait for story to play, then close
             await self._human_delay(5, 7)
             try:
                 close_btn = self._page.locator(
@@ -1573,11 +1228,10 @@ class CamoufoxAdapter(PlatformAdapter):
             return ActionResult(success=False, action_type="view_story", error=str(e))
 
     async def check_live(self, user_id: str) -> Dict[str, Any]:
-        """Check if a user is currently live."""
         try:
             await self._ensure_browser(self._session_data)
             handle = user_id.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             await self._navigate(url)
             await self._human_delay(2, 3)
             text = await self._extract_page_text()
@@ -1593,20 +1247,17 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"Check live failed: {e}")
             return {"username": handle, "is_live": False, "url": ""}
 
+    # ── Follower-based safety checks ──────────────────────────────────
+
     async def check_user_followers(self, username: str, search_names: List[str]) -> Dict[str, Any]:
-        """
-        Check if any of search_names appear in a user's followers list.
-        Returns: {"found": bool, "matched_names": [...], "follower_count": int}
-        """
         try:
             await self._ensure_browser(self._session_data)
             handle = username.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             logger.info(f"check_user_followers: Checking followers of @{handle}")
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Click on followers count to open followers list
             followers_clicked = False
             followers_selectors = [
                 '[data-e2e="followers-count"]',
@@ -1629,7 +1280,6 @@ class CamoufoxAdapter(PlatformAdapter):
                 logger.warning(f"check_user_followers: Could not open followers list for @{handle}")
                 return {"found": False, "matched_names": [], "follower_count": 0}
 
-            # Get total follower count
             follower_count = 0
             try:
                 count_el = self._page.locator('[data-e2e="followers-count"]').first
@@ -1638,18 +1288,14 @@ class CamoufoxAdapter(PlatformAdapter):
                     follower_count = self._parse_count_text(count_text)
             except: pass
 
-            # Search through followers list for matching names
             matched = []
             search_lower = [n.lower().replace(".", " ").replace("_", " ").replace("-", " ") for n in search_names]
 
-            # Scroll through followers list and check names
             seen = set()
-            for scroll_i in range(20):  # Max 20 scrolls
-                # Get all visible follower names/usernames
+            for scroll_i in range(20):
                 try:
                     items = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="follow-item"], div[class*="FollowerItem"]')
                     if not items:
-                        # Fallback: get all links with /@
                         items = await self._page.query_selector_all('a[href*="/@"]')
                 except:
                     items = []
@@ -1657,7 +1303,6 @@ class CamoufoxAdapter(PlatformAdapter):
                 new_found = False
                 for item in items:
                     try:
-                        # Get username from link
                         link = await item.query_selector('a[href*="/@"]') if await item.evaluate("el => el.tagName") != "A" else item
                         if not link:
                             continue
@@ -1670,7 +1315,6 @@ class CamoufoxAdapter(PlatformAdapter):
                         seen.add(item_username)
                         new_found = True
 
-                        # Get display name
                         display_name = ""
                         try:
                             name_el = await item.query_selector('p[class*="nickname"], span[class*="nickname"], h3, h4')
@@ -1678,33 +1322,26 @@ class CamoufoxAdapter(PlatformAdapter):
                                 display_name = (await name_el.inner_text()).lower()
                         except: pass
 
-                        # Check if this follower matches any of our search names
                         combined = f"{item_username} {display_name}".replace(".", " ").replace("_", " ").replace("-", " ")
                         for search_name in search_lower:
-                            # Check if search name words appear in the follower's name
                             search_words = search_name.split()
                             if len(search_words) >= 2:
-                                # Multi-word name: check if most words match
                                 matches = sum(1 for w in search_words if w in combined)
-                                if matches >= len(search_words) - 1:  # Allow 1 word mismatch
+                                if matches >= len(search_words) - 1:
                                     matched.append({"username": item_username, "display_name": display_name, "matched_search": search_name})
                                     logger.info(f"check_user_followers: FOUND match '@{item_username}' ({display_name}) for '{search_name}'")
                             else:
-                                # Single word: exact or substring match
                                 if search_words[0] in combined and len(search_words[0]) >= 3:
                                     matched.append({"username": item_username, "display_name": display_name, "matched_search": search_name})
                                     logger.info(f"check_user_followers: FOUND match '@{item_username}' ({display_name}) for '{search_name}'")
                     except: pass
 
-                # If we found matches, stop early
                 if matched:
                     break
 
-                # If no new items found, we've reached the end
                 if not new_found and scroll_i > 2:
                     break
 
-                # Scroll down
                 try:
                     await self._page.mouse.wheel(0, 800)
                     await self._human_delay(1, 2)
@@ -1723,20 +1360,15 @@ class CamoufoxAdapter(PlatformAdapter):
             return {"found": False, "matched_names": [], "follower_count": 0}
 
     async def get_target_followers(self, username: str, max_scroll: int = 50) -> set:
-        """
-        Scrape a user's followers list into a set for O(1) lookups.
-        Returns a set of lowercase usernames.
-        """
         followers = set()
         try:
             await self._ensure_browser(self._session_data)
             handle = username.lstrip("@")
-            url = f"https://www.{self.platform}.com/@{handle}"
+            url = self._profile_url(handle)
             logger.info(f"get_target_followers: Scraping followers of @{handle}")
             await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Click followers count
             followers_selectors = [
                 '[data-e2e="followers-count"]',
                 'a[href*="/followers"]',
@@ -1752,10 +1384,8 @@ class CamoufoxAdapter(PlatformAdapter):
                         break
                 except: pass
 
-            # Infinite scroll and collect usernames
             prev_count = 0
             for i in range(max_scroll):
-                # Extract all visible follower links
                 links = await self._page.query_selector_all('a[href*="/@"]')
                 for link in links:
                     try:
@@ -1770,7 +1400,6 @@ class CamoufoxAdapter(PlatformAdapter):
                     break
                 prev_count = len(followers)
 
-                # Scroll down
                 try:
                     await self._page.mouse.wheel(0, 800)
                     await self._human_delay(1, 2)
@@ -1783,51 +1412,30 @@ class CamoufoxAdapter(PlatformAdapter):
             logger.error(f"get_target_followers failed for @{handle}: {e}")
         return followers
 
-    def _parse_count_text(self, text: str) -> int:
-        """Parse follower count text like '1.2K' or '12,345'."""
-        if not text:
-            return 0
-        text = text.replace(",", "").replace(" ", "").lower()
-        if text.endswith("k"):
-            try: return int(float(text[:-1]) * 1000)
-            except: return 0
-        elif text.endswith("m"):
-            try: return int(float(text[:-1]) * 1000000)
-            except: return 0
-        try:
-            return int(text)
-        except:
-            return 0
+    # ── Clone / fake account search ──────────────────────────────────
 
     async def search_for_clones(self, target_name: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search TikTok for accounts similar to target_name. Returns list of {username, display_name, bio, followers}."""
         try:
             await self._ensure_browser(self._session_data)
-            # Clean the name for search (remove dots, underscores, etc.)
             clean_name = target_name.replace(".", " ").replace("_", " ").replace("-", " ").strip()
-            search_url = f"https://www.{self.platform}.com/search/user?q={clean_name}&lang=en"
+            search_url = f"https://www.tiktok.com/search/user?q={clean_name}&lang=en"
             logger.info(f"search_for_clones: Searching for '{clean_name}'")
             await self._page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
             await self._human_delay(3, 5)
 
-            # Scroll to load more results
             for _ in range(3):
                 await self._page.mouse.wheel(0, 1000)
                 await self._human_delay(1, 2)
 
-            # Extract user cards from search results
             results = []
             try:
-                # TikTok search user cards
                 cards = await self._page.query_selector_all('[data-e2e="search-user-container"], div[class*="user-card"], div[class*="UserCard"]')
                 if not cards:
-                    # Fallback: look for any user links
                     cards = await self._page.query_selector_all('a[href*="/@"]')
 
                 seen_usernames = set()
                 for card in cards[:limit * 2]:
                     try:
-                        # Get username
                         link = await card.query_selector('a[href*="/@"]') if await card.evaluate("el => el.tagName") != "A" else card
                         if not link:
                             continue
@@ -1839,7 +1447,6 @@ class CamoufoxAdapter(PlatformAdapter):
                             continue
                         seen_usernames.add(username)
 
-                        # Get display name and bio
                         display_name = ""
                         bio = ""
                         try:
@@ -1863,7 +1470,6 @@ class CamoufoxAdapter(PlatformAdapter):
             except Exception as e:
                 logger.warning(f"search_for_clones: Error extracting cards: {e}")
 
-            # If HTML extraction failed, use LLM
             if not results:
                 try:
                     text = await self._extract_page_text()
@@ -1883,18 +1489,3 @@ class CamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             logger.error(f"search_for_clones failed: {e}")
             return []
-
-    async def close(self):
-        """Close the browser."""
-        try:
-            if self._page:
-                await self._page.close()
-            if self._camoufox:
-                await self._camoufox.__aexit__(None, None, None)
-        except Exception as e:
-            logger.warning(f"Error closing browser: {e}")
-        finally:
-            self._page = None
-            self._context = None
-        self._camoufox = None
-        self._current_username: Optional[str] = None

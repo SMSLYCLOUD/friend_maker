@@ -1,233 +1,34 @@
-import asyncio
+"""Facebook adapter using Camoufox (patched Firefox) for anti-detection.
+
+All browser lifecycle, human-like helpers, blocker detection, and LLM
+decision logic live in `BaseCamoufoxAdapter`. This file only contains
+Facebook-specific URL builders, selectors, and the optional
+email/password login flow used when cookies are missing.
+"""
+
 import json
 import logging
-import os
 import random
+import re
 from typing import Optional, List, Dict, Any
 
-from playwright.async_api import async_playwright, Page, BrowserContext
-
-from app.platforms.base import PlatformAdapter, UserProfile, ActionResult
 from app.exceptions import BlockerDetected
+from app.platforms.base import ActionResult, UserProfile
+from app.platforms.shared.base_camoufox import BaseCamoufoxAdapter
 
 logger = logging.getLogger("FacebookCamoufoxAdapter")
 
-STEALTH_PROMPT_PREFIX = (
-    "Before taking any action: scroll down a little, wait 2-3 seconds, then scroll back up. "
-    "Move the mouse around randomly for a moment before clicking. "
-    "When typing, add small delays between characters (like a human would). "
-    "Do not rush through actions — take your time. "
-)
 
-BLOCKER_SIGNALS = [
-    "login page", "log in", "sign in", "sign up",
-    "captcha", "verify you are human", "verification required",
-    "robot check", "bot check", "security check",
-    "access denied", "blocked", "suspended",
-    "two-factor", "2fa", "otp",
-    "sorry, this page isn't available",
-    "something went wrong",
-    "confirm it's you", "suspicious activity",
-    "verify your account", "login required",
-    "cloudflare", "checking your browser",
-    "attention required", "just a moment",
-    "confirm your identity", "review your account",
-    "content not available",
-]
-
-
-def _get_provider_manager():
-    from app.llm.provider_manager import get_provider_manager
-    return get_provider_manager()
-
-
-class FacebookCamoufoxAdapter(PlatformAdapter):
-    """Anti-detection adapter for Facebook using Camoufox (patched Firefox) + Playwright."""
+class FacebookCamoufoxAdapter(BaseCamoufoxAdapter):
+    """Anti-detection adapter for Facebook using Camoufox + Playwright."""
 
     platform_name: str = "facebook"
+    platform_label: str = "facebook"
 
-    def __init__(self, platform: str = "facebook", **kwargs):
-        self.platform = "facebook"
-        self.platform_name = "facebook"
-        self._playwright = None
-        self._context: Optional[BrowserContext] = None
-        self._page: Optional[Page] = None
-        self._session_data: Optional[str] = None
-        self._camoufox = None
-
-    # ── Browser lifecycle ────────────────────────────────────────────────
-
-    async def _ensure_browser(self, session_data: Optional[str] = None):
-        if self._page and not self._page.is_closed():
-            return
-
-        self._session_data = session_data
-        proxy_config = self._get_proxy_config()
-
-        from camoufox.async_api import AsyncCamoufox
-
-        launch_kwargs = {
-            "headless": True,
-            "os": ["windows", "macos"],
-        }
-
-        logger.info("Launching Camoufox browser for facebook...")
-        self._camoufox = AsyncCamoufox(**launch_kwargs)
-        try:
-            self._context = await self._camoufox.__aenter__()
-        except Exception as e:
-            logger.warning(f"Camoufox launch failed, retrying without proxy: {e}")
-            self._camoufox = AsyncCamoufox(headless=True, os=["windows", "macos"])
-            self._context = await self._camoufox.__aenter__()
-
-        if hasattr(self._context, "new_context"):
-            self._context = await self._context.new_context()
-
-        if session_data:
-            await self._load_cookies(session_data)
-
-        self._page = await self._context.new_page()
-        logger.info("Camoufox browser ready for facebook")
-
-    async def _load_cookies(self, session_data: str):
-        try:
-            cookies = json.loads(session_data)
-            if isinstance(cookies, list) and cookies:
-                await self._context.add_cookies(cookies)
-                logger.info(f"Loaded {len(cookies)} cookies")
-        except Exception as e:
-            logger.warning(f"Failed to load cookies: {e}")
-
-    async def _get_cookies(self) -> str:
-        try:
-            cookies = await self._context.cookies()
-            return json.dumps(cookies)
-        except Exception:
-            return "[]"
-
-    async def _run_with_retry(self, fn, *args, **kwargs):
-        for attempt in range(2):
-            try:
-                if self._page and self._page.is_closed():
-                    logger.warning("Page closed, restarting browser...")
-                    await self._ensure_browser(self._session_data)
-                return await fn(*args, **kwargs)
-            except Exception as e:
-                error_str = str(e).lower()
-                is_browser_dead = (
-                    "closed" in error_str
-                    or "disconnected" in error_str
-                    or "handler is closed" in error_str
-                    or "target closed" in error_str
-                )
-                if is_browser_dead and attempt == 0:
-                    logger.warning(f"Browser died, restarting: {e}")
-                    self._page = None
-                    self._context = None
-                    await self._ensure_browser(self._session_data)
-                    continue
-                raise
-
-    @staticmethod
-    def _get_proxy_config() -> Optional[dict]:
-        url = os.getenv("SKYVERN_PROXY_URL", "").strip()
-        if not url:
-            return None
-        if not url.startswith(("http://", "https://", "socks5://")):
-            url = f"http://{url}"
-        username = os.getenv("SKYVERN_PROXY_USERNAME", "").strip()
-        password = os.getenv("SKYVERN_PROXY_PASSWORD", "").strip()
-        config = {"url": url}
-        if username:
-            config["username"] = username
-            config["password"] = password
-        return config
-
-    # ── Human-like helpers ───────────────────────────────────────────────
-
-    def _check_for_blockers(self, text: str, url: str = ""):
-        lower = text.lower()
-        for signal in BLOCKER_SIGNALS:
-            if signal in lower:
-                raise BlockerDetected(
-                    blocker_type=signal.replace(" ", "_"),
-                    message=f"Detected '{signal}' on page. Human intervention required.",
-                    url=url,
-                )
-
-    async def _human_delay(self, min_s: float = 1.0, max_s: float = 3.0):
-        delay = random.uniform(min_s, max_s)
-        await asyncio.sleep(delay)
-
-    async def _human_scroll(self):
-        for _ in range(random.randint(1, 3)):
-            amount = random.randint(100, 400)
-            direction = 1 if random.random() > 0.3 else -1
-            await self._page.mouse.wheel(0, amount * direction)
-            await asyncio.sleep(random.uniform(0.3, 0.8))
-
-    async def _human_move_mouse(self):
-        x = random.randint(100, 800)
-        y = random.randint(100, 600)
-        await self._page.mouse.move(x, y, steps=random.randint(5, 15))
-        await asyncio.sleep(random.uniform(0.3, 0.7))
-
-    async def _navigate(self, url: str):
-        async def _do_navigate():
-            await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await self._human_delay(2, 4)
-            await self._human_scroll()
-            await self._human_move_mouse()
-        await self._run_with_retry(_do_navigate)
-
-    async def _extract_page_text(self) -> str:
-        async def _do_extract():
-            try:
-                return await self._page.inner_text("body")
-            except Exception:
-                return ""
-        return await self._run_with_retry(_do_extract)
-
-    def _llm_decide(self, page_text: str, prompt: str) -> str:
-        pm = _get_provider_manager()
-        provider = pm.get_next_provider()
-        if not provider:
-            return ""
-
-        full_prompt = (
-            f"You are looking at a Facebook page.\n"
-            f"Page text (first 2000 chars): {page_text[:2000]}\n\n"
-            f"Task: {prompt}\n\n"
-            f"Respond with a JSON object describing what to do. "
-            f'For example: {{"action": "click", "selector": "button Follow"}} or '
-            f'{{"action": "type", "selector": "input[name=username]", "text": "hello"}} or '
-            f'{{"action": "extract", "data": {{...}}}}'
-        )
-
-        try:
-            import httpx
-            resp = httpx.post(
-                f"{provider.config.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {provider.config.api_key}"},
-                json={
-                    "model": provider.config.model,
-                    "messages": [{"role": "user", "content": full_prompt}],
-                    "temperature": 0.3,
-                },
-                timeout=90,
-            )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
-            return content
-        except Exception as e:
-            logger.error(f"LLM decision failed: {e}")
-            return ""
-
-    # ── Facebook URL helpers ─────────────────────────────────────────────
+    # ── URL helpers ────────────────────────────────────────────────────
 
     @staticmethod
     def _profile_url(user_id: str) -> str:
-        """Build a Facebook profile URL, handling vanity vs numeric IDs."""
         uid = user_id.lstrip("@")
         if uid.isdigit():
             return f"https://www.facebook.com/profile.php?id={uid}"
@@ -236,8 +37,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
     @staticmethod
     def _dm_url(user_id: str) -> str:
         uid = user_id.lstrip("@")
-        if uid.isdigit():
-            return f"https://www.facebook.com/messages/t/{uid}"
         return f"https://www.facebook.com/messages/t/{uid}"
 
     @staticmethod
@@ -247,7 +46,7 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             return gid
         return f"https://www.facebook.com/groups/{gid}"
 
-    # ── PlatformAdapter implementation ───────────────────────────────────
+    # ── Authentication ────────────────────────────────────────────────
 
     async def authenticate(
         self,
@@ -261,7 +60,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, "https://www.facebook.com/")
 
-            # If credentials provided and not logged in, try to log in
             logged_in = not any(w in text.lower() for w in ["log in", "sign in", "sign up"])
             if not logged_in and username and password:
                 logged_in = await self._login_with_credentials(username, password)
@@ -275,12 +73,10 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             return False
 
     async def _login_with_credentials(self, username: str, password: str) -> bool:
-        """Attempt to log in with email/password on facebook.com/login."""
         try:
             await self._navigate("https://www.facebook.com/login")
             await self._human_delay(2, 3)
 
-            # Fill email
             email_input = self._page.locator(
                 'input[name="email"], input#email, input[placeholder*="Email"], input[placeholder*="Phone"]'
             ).first
@@ -288,7 +84,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             await email_input.fill(username)
             await self._human_delay(0.5, 1)
 
-            # Fill password
             pass_input = self._page.locator(
                 'input[name="pass"], input#pass, input[type="password"]'
             ).first
@@ -296,7 +91,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             await pass_input.fill(password)
             await self._human_delay(0.5, 1)
 
-            # Click log in
             login_btn = self._page.locator(
                 'button[name="login"], button[type="submit"], input[type="submit"]'
             ).first
@@ -309,6 +103,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             logger.error(f"Login with credentials failed: {e}")
             return False
 
+    # ── User discovery ─────────────────────────────────────────────────
+
     async def search_users(self, query: str, limit: int = 20, context: str = "") -> List[UserProfile]:
         results = []
         try:
@@ -318,14 +114,12 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Scroll to load more results
             for _ in range(5):
                 await self._page.mouse.wheel(0, 800)
                 await self._human_delay(1.5, 2.5)
 
             text = await self._extract_page_text()
 
-            # Try HTML extraction first
             usernames = []
             try:
                 links = await self._page.locator('a[role="link"]').all()
@@ -334,7 +128,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
                     href = await link.get_attribute("href")
                     if not href or "/groups/" in href or "/events/" in href:
                         continue
-                    import re
                     if "profile.php" in href:
                         match = re.search(r"id=(\d+)", href)
                         if match:
@@ -391,7 +184,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Facebook doesn't expose followers easily; try LLM extraction
             llm_response = self._llm_decide(
                 text,
                 f"Extract follower names/usernames from this Facebook profile page (if visible). "
@@ -414,6 +206,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             logger.error(f"Get followers failed: {e}")
         return results
 
+    # ── Follow / unfollow ─────────────────────────────────────────────
+
     async def follow(self, user_id: str) -> ActionResult:
         try:
             await self._ensure_browser(self._session_data)
@@ -422,25 +216,22 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Try "Add Friend" first
-            add_friend_btn = self._page.get_by_role("button", name="Add Friend").first
             try:
+                add_friend_btn = self._page.get_by_role("button", name="Add Friend").first
                 await add_friend_btn.click(timeout=5000)
                 await self._human_delay(1, 2)
                 return ActionResult(success=True, action_type="add_friend")
             except Exception:
                 pass
 
-            # Try "Follow"
-            follow_btn = self._page.get_by_role("button", name="Follow").first
             try:
+                follow_btn = self._page.get_by_role("button", name="Follow").first
                 await follow_btn.click(timeout=5000)
                 await self._human_delay(1, 2)
                 return ActionResult(success=True, action_type="follow")
             except Exception:
                 pass
 
-            # Fallback: LLM
             llm_response = self._llm_decide(
                 text,
                 "Find and click the Add Friend or Follow button on this profile. "
@@ -472,15 +263,13 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Try "Following" / "Friends" button to unfriend/unfollow
             for btn_name in ["Following", "Friends", "Friend"]:
                 btn = self._page.get_by_role("button", name=btn_name).first
                 try:
                     await btn.click(timeout=5000)
                     await self._human_delay(1, 2)
-                    # Confirm unfriend/unfollow if dialog appears
-                    confirm = self._page.get_by_role("button", name="Unfriend").first
                     try:
+                        confirm = self._page.get_by_role("button", name="Unfriend").first
                         await confirm.click(timeout=3000)
                         await self._human_delay(1, 2)
                     except Exception:
@@ -495,6 +284,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="unfollow", error=str(e))
 
+    # ── Direct messages ───────────────────────────────────────────────
+
     async def send_dm(self, user_id: str, message: str) -> ActionResult:
         try:
             await self._ensure_browser(self._session_data)
@@ -504,7 +295,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Messenger input
             msg_input = self._page.locator(
                 '[role="textbox"][aria-label*="Message"], '
                 '[role="textbox"][aria-label*="message"], '
@@ -518,7 +308,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
                 await msg_input.type(char, delay=random.randint(50, 150))
             await self._human_delay(0.5, 1)
 
-            # Press Enter to send
             await msg_input.press("Enter")
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="dm")
@@ -527,6 +316,34 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             logger.error(f"send_dm failed for {user_id}: {e}")
             return ActionResult(success=False, action_type="dm", error=str(e))
+
+    async def reply_to_dm(self, user_id: str, message: str) -> ActionResult:
+        try:
+            await self._ensure_browser(self._session_data)
+            await self._navigate(self._dm_url(user_id))
+            await self._human_delay(2, 3)
+            text = await self._extract_page_text()
+            self._check_for_blockers(text)
+
+            msg_input = self._page.locator(
+                '[role="textbox"][aria-label*="Message"], '
+                'div[contenteditable="true"]'
+            ).first
+            await msg_input.click(timeout=5000)
+            await self._human_delay(0.5, 1)
+
+            for char in message:
+                await msg_input.type(char, delay=random.randint(50, 150))
+            await self._human_delay(0.5, 1)
+            await msg_input.press("Enter")
+            await self._human_delay(1, 2)
+            return ActionResult(success=True, action_type="reply_dm")
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            return ActionResult(success=False, action_type="reply_dm", error=str(e))
+
+    # ── Inbox / conversations ──────────────────────────────────────────
 
     async def check_inbox(self, limit: int = 10) -> List[Dict[str, Any]]:
         try:
@@ -575,6 +392,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             logger.error(f"Read conversation failed: {e}")
             return []
 
+    # ── Groups ────────────────────────────────────────────────────────
+
     async def get_group_members(self, group_id: str, limit: int = 100) -> List[UserProfile]:
         results = []
         try:
@@ -584,7 +403,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Scroll to load members
             for _ in range(5):
                 await self._page.mouse.wheel(0, 1000)
                 await self._human_delay(1.5, 2.5)
@@ -613,6 +431,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             logger.error(f"Get group members failed: {e}")
         return results
 
+    # ── Posts & comments ──────────────────────────────────────────────
+
     async def get_post_commenters(self, post_url: str, limit: int = 50) -> List[UserProfile]:
         results = []
         try:
@@ -621,7 +441,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
-            # Scroll to load comments
             for _ in range(3):
                 await self._page.mouse.wheel(0, 600)
                 await self._human_delay(1.5, 2)
@@ -698,6 +517,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="reply_comment", error=str(e))
 
+    # ── Profiles & posts ──────────────────────────────────────────────
+
     async def get_user_profile(self, user_id: str) -> Dict[str, Any]:
         uid = user_id.lstrip("@")
         try:
@@ -768,7 +589,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
-            # Facebook comment input
             comment_input = self._page.locator(
                 '[aria-label*="Write a comment"], '
                 '[aria-label*="comment as"], '
@@ -781,7 +601,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
                 await comment_input.type(char, delay=random.randint(50, 150))
             await self._human_delay(0.5, 1)
 
-            # Press Enter to submit comment
             await comment_input.press("Enter")
             await self._human_delay(1, 2)
             return ActionResult(success=True, action_type="comment")
@@ -798,7 +617,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Click first post
             first_post = self._page.locator(
                 'div[role="article"], '
                 'div[data-ad-rendering-role="story_message"], '
@@ -824,6 +642,8 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             return ActionResult(success=False, action_type="comment", error=str(e))
 
+    # ── Screenshot ────────────────────────────────────────────────────
+
     async def capture_screenshot(self) -> Optional[str]:
         try:
             if self._page:
@@ -834,31 +654,7 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             pass
         return None
 
-    async def reply_to_dm(self, user_id: str, message: str) -> ActionResult:
-        try:
-            await self._ensure_browser(self._session_data)
-            await self._navigate(self._dm_url(user_id))
-            await self._human_delay(2, 3)
-            text = await self._extract_page_text()
-            self._check_for_blockers(text)
-
-            msg_input = self._page.locator(
-                '[role="textbox"][aria-label*="Message"], '
-                'div[contenteditable="true"]'
-            ).first
-            await msg_input.click(timeout=5000)
-            await self._human_delay(0.5, 1)
-
-            for char in message:
-                await msg_input.type(char, delay=random.randint(50, 150))
-            await self._human_delay(0.5, 1)
-            await msg_input.press("Enter")
-            await self._human_delay(1, 2)
-            return ActionResult(success=True, action_type="reply_dm")
-        except BlockerDetected:
-            raise
-        except Exception as e:
-            return ActionResult(success=False, action_type="reply_dm", error=str(e))
+    # ── Likes / share / stories / live ─────────────────────────────────
 
     async def like_post(self, post_url: str) -> ActionResult:
         try:
@@ -868,7 +664,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, post_url)
 
-            # Facebook like button uses aria-label "Like" or data-testid
             like_btn = self._page.locator(
                 'div[aria-label="Like"][role="button"], '
                 'div[aria-label="like"][role="button"], '
@@ -921,7 +716,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             await share_btn.click(timeout=5000)
             await self._human_delay(1, 2)
 
-            # Click "Share now" if dialog appears
             try:
                 share_now = self._page.get_by_role("button", name="Share now").first
                 await share_now.click(timeout=3000)
@@ -944,7 +738,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             text = await self._extract_page_text()
             self._check_for_blockers(text, url)
 
-            # Facebook stories are shown as circular avatars at the top
             story_btn = self._page.locator(
                 'div[aria-label*="Story"], '
                 'a[href*="/stories/"]'
@@ -952,7 +745,6 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
             await story_btn.click(timeout=5000)
             await self._human_delay(5, 7)
 
-            # Close the story viewer
             try:
                 close_btn = self._page.locator(
                     'div[aria-label="Close"], '
@@ -986,16 +778,3 @@ class FacebookCamoufoxAdapter(PlatformAdapter):
         except Exception as e:
             logger.error(f"Check live failed: {e}")
             return {"username": user_id, "is_live": False, "url": ""}
-
-    async def close(self):
-        try:
-            if self._page:
-                await self._page.close()
-            if self._camoufox:
-                await self._camoufox.__aexit__(None, None, None)
-        except Exception as e:
-            logger.warning(f"Error closing browser: {e}")
-        finally:
-            self._page = None
-            self._context = None
-            self._camoufox = None
