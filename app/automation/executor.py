@@ -289,7 +289,23 @@ class CampaignExecutor:
                         # Pre-scrape target keywords for safety check
                         self._safety_keywords = []
                         if source:
-                            self._safety_keywords = [w.lower() for w in source.replace(".", " ").replace("_", " ").replace("-", " ").split() if len(w) >= 3]
+                            src = source.lower()
+                            keywords = set()
+                            # Individual word parts (len >= 3)
+                            for w in re.split(r'[._\-]', src):
+                                if len(w) >= 3:
+                                    keywords.add(w)
+                            # Full original source
+                            keywords.add(src)
+                            # All separators removed
+                            keywords.add(src.replace(".", "").replace("_", "").replace("-", ""))
+                            # With underscore separators
+                            keywords.add(src.replace(".", "_").replace("-", "_"))
+                            # With dot separators
+                            keywords.add(src.replace("_", ".").replace("-", "."))
+                            # With hyphen separators
+                            keywords.add(src.replace(".", "-").replace("_", "-"))
+                            self._safety_keywords = list(keywords)
                             self.logger.info(f"Safety check: will look for keywords {self._safety_keywords} in commenters' followers")
 
                         processed_commenters = set()
