@@ -108,6 +108,13 @@ class ProviderManager:
             "rpm_limit": 40,
             "rpd_limit": 1000,
         },
+        "DeepSeek": {
+            "model": "deepseek-v4-flash",
+            "base_url": "https://api.deepseek.com/v1",
+            "rpm_limit": 2500,
+            "rpd_limit": 100000,
+            "supports_vision": False,
+        },
     }
 
     def _init_from_env(self):
