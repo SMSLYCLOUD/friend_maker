@@ -307,6 +307,51 @@ export function getImageUrl(filename: string) {
   return `${API_URL}/api/settings/images/${filename}`;
 }
 
+// --- Templates ---
+
+export async function fetchTemplates(templateType?: string) {
+  const qs = templateType ? `?template_type=${encodeURIComponent(templateType)}` : "";
+  const res = await fetch(`${API_URL}/api/templates${qs}`, {
+    headers: authHeaders(),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch templates");
+  return res.json();
+}
+
+export async function createTemplate(data: { name: string; content: string; template_type: string; platform?: string; is_default?: boolean }) {
+  const res = await fetch(`${API_URL}/api/templates`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create template");
+  }
+  return res.json();
+}
+
+export async function updateTemplate(id: string, data: Record<string, any>) {
+  const res = await fetch(`${API_URL}/api/templates/${id}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update template");
+  return res.json();
+}
+
+export async function deleteTemplate(id: string) {
+  const res = await fetch(`${API_URL}/api/templates/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to delete template");
+  return res.json();
+}
+
+
 export async function fetchProviderStatus() {
   const res = await fetch(`${API_URL}/api/providers/status`, {
     headers: authHeaders(),

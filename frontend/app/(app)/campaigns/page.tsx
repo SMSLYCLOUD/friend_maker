@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   fetchCampaigns, createCampaign, startCampaign, stopCampaign, deleteCampaign, fetchAccounts,
-  triggerEmailCampaign, triggerPlatform, triggerAllPlatforms, fetchPlatforms,
+  triggerEmailCampaign, triggerPlatform, triggerAllPlatforms, fetchPlatforms, fetchTemplates,
 } from "@/lib/api";
 import { Plus, Play, Square, Loader2, Sparkles, Send, Mail, Globe, Boxes, FileText, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -21,6 +21,7 @@ export default function CampaignsPage() {
   const [triggerZip, setTriggerZip] = useState("");
   const [triggerBusiness, setTriggerBusiness] = useState("");
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<any[]>([]);
 
   const setTriggerState = (key: string, msg: string) => {
     setTriggerStates(prev => ({ ...prev, [key]: msg }));
@@ -74,6 +75,7 @@ export default function CampaignsPage() {
   useEffect(() => {
     loadData();
     fetchPlatforms().then(r => setPlatforms(r.platforms || [])).catch(() => {});
+    fetchTemplates().then(setTemplates).catch(() => {});
   }, []);
 
   const loadData = async () => {
@@ -197,9 +199,28 @@ export default function CampaignsPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> AI Instructions
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> AI Instructions
+                  </label>
+                  {templates.filter(t => t.template_type === "ai_instruction").length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const t = templates.find(t => t.id === e.target.value);
+                          if (t) setForm({ ...form, ai_instructions: t.content });
+                        }
+                      }}
+                      className="text-xs bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-gray-300 outline-none"
+                      defaultValue=""
+                    >
+                      <option value="">Load from template...</option>
+                      {templates.filter(t => t.template_type === "ai_instruction").map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <textarea
                   value={form.ai_instructions}
                   onChange={(e) => setForm({ ...form, ai_instructions: e.target.value })}
@@ -209,9 +230,28 @@ export default function CampaignsPage() {
               </div>
               {(form.campaign_type === "outreach" || form.campaign_type === "comment_engage") && (
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                    <Send className="w-3 h-3" /> Message Template
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                      <Send className="w-3 h-3" /> Message Template
+                    </label>
+                    {templates.filter(t => t.template_type === "message_template").length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const t = templates.find(t => t.id === e.target.value);
+                            if (t) setForm({ ...form, message_template: t.content });
+                          }
+                        }}
+                        className="text-xs bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-gray-300 outline-none"
+                        defaultValue=""
+                      >
+                        <option value="">Load from template...</option>
+                        {templates.filter(t => t.template_type === "message_template").map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                   <textarea
                     value={form.message_template}
                     onChange={(e) => setForm({ ...form, message_template: e.target.value })}

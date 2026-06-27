@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, BarChart3, Settings, Rocket, LogIn, UserPlus, Zap, LogOut, Menu, X } from "lucide-react";
+import { Users, BarChart3, Settings, Rocket, LogIn, UserPlus, Zap, LogOut, Menu, X, FileText } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { clearAuthSession, isAuthenticated } from "@/lib/auth";
@@ -11,6 +11,7 @@ const protectedLinks = [
   { name: "Dashboard", href: "/dashboard", icon: BarChart3, color: "text-blue-400" },
   { name: "Accounts", href: "/accounts", icon: Users, color: "text-purple-400" },
   { name: "Campaigns", href: "/campaigns", icon: Rocket, color: "text-amber-400" },
+  { name: "Templates", href: "/templates", icon: FileText, color: "text-cyan-400" },
   { name: "Settings", href: "/settings", icon: Settings, color: "text-emerald-400" },
 ];
 

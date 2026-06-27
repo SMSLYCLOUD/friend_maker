@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS contact_registry (
     UNIQUE(user_id, platform, platform_user_id, action_type)
 );
 
+CREATE TABLE IF NOT EXISTS templates (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    template_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    platform TEXT,
+    is_default INTEGER DEFAULT 0,
+    created_at INTEGER,
+    updated_at INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS follow_backs (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,

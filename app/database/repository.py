@@ -539,6 +539,65 @@ class Repository:
         return result.fetchone()[0]
 
 
+    # --- Template Operations ---
+    def create_template(self, user_id: str, name: str, template_type: str, content: str, platform: str = None, is_default: bool = False) -> str:
+        tid = str(uuid.uuid4())
+        query = text("""
+        INSERT INTO templates (id, user_id, name, template_type, content, platform, is_default, created_at, updated_at)
+        VALUES (:id, :user_id, :name, :template_type, :content, :platform, :is_default, :created_at, :updated_at)
+        """)
+        now = int(time.time())
+        self.session.execute(query, {
+            "id": tid, "user_id": user_id, "name": name, "template_type": template_type,
+            "content": content, "platform": platform, "is_default": 1 if is_default else 0,
+            "created_at": now, "updated_at": now
+        })
+        self.session.commit()
+        return tid
+
+    def get_templates(self, user_id: str, template_type: str = None, platform: str = None) -> List[dict]:
+        conditions = ["user_id = :user_id"]
+        params = {"user_id": user_id}
+        if template_type:
+            conditions.append("template_type = :template_type")
+            params["template_type"] = template_type
+        if platform:
+            conditions.append("(platform = :platform OR platform IS NULL)")
+            params["platform"] = platform
+        where = " AND ".join(conditions)
+        query = text(f"SELECT * FROM templates WHERE {where} ORDER BY is_default DESC, updated_at DESC")
+        result = self.session.execute(query, params)
+        return [dict(row._asdict()) for row in result.fetchall()]
+
+    def get_template(self, template_id: str, user_id: str) -> Optional[dict]:
+        query = text("SELECT * FROM templates WHERE id = :id AND user_id = :user_id")
+        result = self.session.execute(query, {"id": template_id, "user_id": user_id})
+        row = result.fetchone()
+        return dict(row._asdict()) if row else None
+
+    def update_template(self, template_id: str, user_id: str, **kwargs) -> bool:
+        allowed = {"name", "content", "platform", "is_default", "template_type"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not updates:
+            return False
+        if "is_default" in updates:
+            updates["is_default"] = 1 if updates["is_default"] else 0
+        updates["updated_at"] = int(time.time())
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        query = text(f"UPDATE templates SET {set_clause} WHERE id = :id AND user_id = :user_id")
+        updates["id"] = template_id
+        updates["user_id"] = user_id
+        result = self.session.execute(query, updates)
+        self.session.commit()
+        return result.rowcount > 0
+
+    def delete_template(self, template_id: str, user_id: str) -> bool:
+        query = text("DELETE FROM templates WHERE id = :id AND user_id = :user_id")
+        result = self.session.execute(query, {"id": template_id, "user_id": user_id})
+        self.session.commit()
+        return result.rowcount > 0
+
+
 def get_repository():
     repo = Repository()
     try:

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { AUTH_COOKIE } from "@/lib/auth";
 
-const protectedRoutes = ["/dashboard", "/accounts", "/campaigns", "/settings"];
+const protectedRoutes = ["/dashboard", "/accounts", "/campaigns", "/templates", "/settings"];
 const authRoutes = ["/login", "/register"];
 
 export function middleware(request: NextRequest) {
@@ -25,5 +25,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/accounts/:path*", "/campaigns/:path*", "/settings/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/accounts/:path*", "/campaigns/:path*", "/templates/:path*", "/settings/:path*", "/login", "/register"],
 };

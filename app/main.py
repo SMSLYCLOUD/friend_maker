@@ -865,6 +865,59 @@ async def delete_bot_image(
     repo.update_setting("BOT_INSTRUCTION_IMAGES", json.dumps(stored))
     return {"status": "deleted"}
 
+# --- Template CRUD ---
+
+@app.get("/api/templates")
+def list_templates(
+    template_type: str = None,
+    platform: str = None,
+    repo: Repository = Depends(get_repository),
+    user: dict = Depends(get_current_user)
+):
+    return repo.get_templates(user["id"], template_type=template_type, platform=platform)
+
+@app.post("/api/templates")
+def create_template(
+    data: Dict[str, Any],
+    repo: Repository = Depends(get_repository),
+    user: dict = Depends(get_current_user)
+):
+    name = data.get("name", "").strip()
+    content = data.get("content", "").strip()
+    template_type = data.get("template_type", "").strip()
+    if not name or not content or not template_type:
+        raise HTTPException(status_code=400, detail="name, content, and template_type are required")
+    if template_type not in ("bot_instruction", "ai_instruction", "message_template"):
+        raise HTTPException(status_code=400, detail="template_type must be bot_instruction, ai_instruction, or message_template")
+    tid = repo.create_template(
+        user["id"], name, template_type, content,
+        platform=data.get("platform"),
+        is_default=data.get("is_default", False)
+    )
+    return {"id": tid, "status": "created"}
+
+@app.put("/api/templates/{template_id}")
+def update_template(
+    template_id: str,
+    data: Dict[str, Any],
+    repo: Repository = Depends(get_repository),
+    user: dict = Depends(get_current_user)
+):
+    if not repo.update_template(template_id, user["id"], **data):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "updated"}
+
+@app.delete("/api/templates/{template_id}")
+def delete_template(
+    template_id: str,
+    repo: Repository = Depends(get_repository),
+    user: dict = Depends(get_current_user)
+):
+    if not repo.delete_template(template_id, user["id"]):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "deleted"}
+
+
 @app.post("/api/register", response_model=LoginResponse)
 def register(request: LoginRequest, repo: Repository = Depends(get_repository)):
     if repo.get_user(request.username):
