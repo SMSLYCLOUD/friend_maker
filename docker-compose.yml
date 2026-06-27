@@ -1,7 +1,126 @@
 services:
+  # ── Skyvern AI Browser Automation ──────────────────────────
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: socialgrowthai-litellm
+    restart: on-failure
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      - GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-}
+      - OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-}
+      - GEMINI_API_KEY=${SKYVERN_LLM_GOOGLE_API_KEY:-}
+      - SAMBANOVA_API_KEY=${SKYVERN_LLM_SAMBANOVA_API_KEY:-}
+      - NVIDIA_API_KEY=${SKYVERN_LLM_NVIDIA_API_KEY:-}
+      - XIAOMI_MIMO_API_KEY=${SKYVERN_LLM_XIAOMI_MIMO_API_KEY:-}
+      - DEEPSEEK_API_KEY=${SKYVERN_LLM_DEEPSEEK_API_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health', timeout=5)\" || python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health', timeout=5)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - social-network
+
+  skyvern-postgres:
+    image: postgres:14-alpine
+    container_name: socialgrowthai-skyvern-db
+    restart: always
+    volumes:
+      - skyvern-pgdata:/var/lib/postgresql/data
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=skyvern
+      - POSTGRES_PASSWORD=skyvern
+      - POSTGRES_DB=skyvern
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skyvern"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - social-network
+
+  skyvern:
+    image: public.ecr.aws/skyvern/skyvern:latest
+    container_name: socialgrowthai-skyvern
+    restart: on-failure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"   # Skyvern API
+      - "6080:6080"   # Skyvern VNC
+    volumes:
+      - skyvern-artifacts:/data/artifacts
+      - skyvern-videos:/data/videos
+      - skyvern-har:/data/har
+      - skyvern-log:/data/log
+      - skyvern-config:/app/.skyvern
+    env_file:
+      - ./.env
+    environment:
+      - DATABASE_STRING=postgresql+psycopg://skyvern:skyvern@skyvern-postgres:5432/skyvern
+      - BROWSER_STREAMING_MODE=cdp
+      - BROWSER_TYPE=chromium-headful
+      - ENABLE_CODE_BLOCK=true
+      # LLM via LiteLLM proxy — dynamic fallback Groq→OpenRouter→Google→SambaNova→NVIDIA
+      - ENABLE_OPENAI_COMPATIBLE=true
+      - OPENAI_COMPATIBLE_MODEL_NAME=skyvern-llm
+      - OPENAI_COMPATIBLE_API_KEY=sk-dummy
+      - OPENAI_COMPATIBLE_API_BASE=http://litellm-proxy:4000/v1
+      - OPENAI_COMPATIBLE_SUPPORTS_VISION=true
+      - LLM_KEY=OPENAI_COMPATIBLE
+      # Cap LLM-driven steps to avoid free-tier 429s
+      - MAX_STEPS_PER_RUN=2
+      - MAX_RETRIES_PER_STEP=0
+      - MAX_SCRAPING_RETRIES=0
+      - MAX_SCREENSHOT_SCROLLS=2
+      - PORT=8000
+    depends_on:
+      skyvern-postgres:
+        condition: service_healthy
+      litellm-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8000/api/v1/heartbeat || (python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/heartbeat', timeout=5)\") || (python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/heartbeat', timeout=5)\")"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+    networks:
+      - social-network
+
+  skyvern-ui:
+    image: public.ecr.aws/skyvern/skyvern-ui:latest
+    container_name: socialgrowthai-skyvern-ui
+    restart: on-failure
+    ports:
+      - "8080:8080"   # Skyvern UI
+      - "9090:9090"   # Artifacts API
+    volumes:
+      - skyvern-artifacts:/data/artifacts
+      - skyvern-videos:/data/videos
+      - skyvern-har:/data/har
+      - skyvern-config:/app/.skyvern
+    environment:
+      - VITE_BROWSER_STREAMING_MODE=cdp
+      - VITE_API_BASE_URL=http://${HOST_IP:?Set HOST_IP in .env}:8000/api/v1
+      - VITE_WSS_BASE_URL=ws://${HOST_IP:?Set HOST_IP in .env}:8000/api/v1
+      - VITE_ARTIFACT_API_BASE_URL=http://${HOST_IP:?Set HOST_IP in .env}:9090
+    depends_on:
+      skyvern:
+        condition: service_healthy
+    networks:
+      - social-network
+
+  # ── VNC browser for OTP / CAPTCHA manual intervention ─────
   vnc-social:
     build:
-      context: ./web
+      context: .
       dockerfile: Dockerfile.backend
     container_name: socialgrowthai-vnc-social
     command: ["node", "vnc_social.mjs"]
@@ -10,6 +129,8 @@ services:
       - "6082:6082"
     volumes:
       - cookies:/app/cookies
+    env_file:
+      - ./.env
     environment:
       - VNC_PORT=5901
       - NOVNC_PORT=6082
@@ -17,9 +138,10 @@ services:
       - social-network
     restart: always
 
+  # ── Python backend ────────────────────────────────────────
   python-backend:
     build:
-      context: ./web
+      context: .
       dockerfile: Dockerfile.backend
     container_name: socialgrowthai-python-backend
     ports:
@@ -31,23 +153,54 @@ services:
       - cookies:/app/cookies
       - scratch:/app/scratch
       - uploads:/app/uploads
+      - camoufox_cache:/home/appuser/.cache/camoufox
+      - ./.env:/app/.env
     env_file:
-      - ./web/.env
+      - ./.env
     environment:
       - DATABASE_URL=sqlite:///data/social_growth.db
+      - SKYVERN_API_URL=http://skyvern:8000
+      # Multi-provider LLM config (read by ProviderManager)
+      - SKYVERN_LLM_PROVIDERS=${SKYVERN_LLM_PROVIDERS:-DeepSeek}
+      - SKYVERN_LLM_GROQ_API_KEY=${SKYVERN_LLM_GROQ_API_KEY:-}
+      - SKYVERN_LLM_GROQ_MODEL=${SKYVERN_LLM_GROQ_MODEL:-llama-4-scout-17b-16e-instruct}
+      - SKYVERN_LLM_GROQ_BASE_URL=${SKYVERN_LLM_GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      - SKYVERN_LLM_GROQ_RPM_LIMIT=${SKYVERN_LLM_GROQ_RPM_LIMIT:-30}
+      - SKYVERN_LLM_OPENROUTER_API_KEY=${SKYVERN_LLM_OPENROUTER_API_KEY:-}
+      - SKYVERN_LLM_OPENROUTER_MODEL=${SKYVERN_LLM_OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      - SKYVERN_LLM_OPENROUTER_BASE_URL=${SKYVERN_LLM_OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - SKYVERN_LLM_OPENROUTER_RPM_LIMIT=${SKYVERN_LLM_OPENROUTER_RPM_LIMIT:-20}
+      - SKYVERN_LLM_GOOGLE_API_KEY=${SKYVERN_LLM_GOOGLE_API_KEY:-}
+      - SKYVERN_LLM_GOOGLE_MODEL=${SKYVERN_LLM_GOOGLE_MODEL:-gemini-2.5-flash}
+      - SKYVERN_LLM_GOOGLE_BASE_URL=${SKYVERN_LLM_GOOGLE_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}
+      - SKYVERN_LLM_GOOGLE_RPM_LIMIT=${SKYVERN_LLM_GOOGLE_RPM_LIMIT:-10}
+      - SKYVERN_LLM_SAMBANOVA_API_KEY=${SKYVERN_LLM_SAMBANOVA_API_KEY:-}
+      - SKYVERN_LLM_SAMBANOVA_MODEL=${SKYVERN_LLM_SAMBANOVA_MODEL:-Llama-4-Maverick-17B-128E-Instruct}
+      - SKYVERN_LLM_SAMBANOVA_BASE_URL=${SKYVERN_LLM_SAMBANOVA_BASE_URL:-https://api.sambanova.ai/v1}
+      - SKYVERN_LLM_SAMBANOVA_RPM_LIMIT=${SKYVERN_LLM_SAMBANOVA_RPM_LIMIT:-30}
+      - SKYVERN_LLM_NVIDIA_API_KEY=${SKYVERN_LLM_NVIDIA_API_KEY:-}
+      - SKYVERN_LLM_NVIDIA_MODEL=${SKYVERN_LLM_NVIDIA_MODEL:-meta/llama-4-scout-17b-16e-instruct}
+      - SKYVERN_LLM_NVIDIA_BASE_URL=${SKYVERN_LLM_NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      - SKYVERN_LLM_NVIDIA_RPM_LIMIT=${SKYVERN_LLM_NVIDIA_RPM_LIMIT:-40}
+      # DeepSeek (primary provider)
+      - SKYVERN_LLM_DEEPSEEK_API_KEY=${SKYVERN_LLM_DEEPSEEK_API_KEY:-}
+      - SKYVERN_LLM_DEEPSEEK_MODEL=${SKYVERN_LLM_DEEPSEEK_MODEL:-deepseek-v4-flash}
+      - SKYVERN_LLM_DEEPSEEK_BASE_URL=${SKYVERN_LLM_DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      - SKYVERN_LLM_DEEPSEEK_RPM_LIMIT=${SKYVERN_LLM_DEEPSEEK_RPM_LIMIT:-2500}
     networks:
       - social-network
     restart: always
 
+  # ── Next.js frontend ─────────────────────────────────────
   frontend:
     build:
-      context: ./web
+      context: .
       dockerfile: Dockerfile.frontend
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8010}
     container_name: socialgrowthai-frontend
     ports:
-      - "3000:3000"
+      - "80:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8010}
     depends_on:
@@ -65,3 +218,10 @@ volumes:
   cookies:
   scratch:
   uploads:
+  camoufox_cache:
+  skyvern-pgdata:
+  skyvern-artifacts:
+  skyvern-videos:
+  skyvern-har:
+  skyvern-log:
+  skyvern-config:
