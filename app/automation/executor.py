@@ -748,6 +748,10 @@ class CampaignExecutor:
                         commenter = c.get("username", "").lstrip("@")
                         if not commenter or self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, commenter, action_type):
                             continue
+                        # Safety check: skip if source account is in their followers
+                        if not await self._safety_check(commenter, sources):
+                            self.repo.register_contact(self.user_id, self.adapter.platform_name, commenter, commenter, action_type, campaign.id)
+                            continue
                         reply_text = "Great point!"
                         if self.generator:
                             profile_data = {"username": commenter, "bio": "", "comment_text": c.get("text", "")}
@@ -1533,8 +1537,12 @@ class CampaignExecutor:
         """
         keywords = getattr(self, '_safety_keywords', [])
         if not keywords:
-            self.logger.info(f"Safety check: no keywords set, skipping check for @{target_username}")
-            return True
+            self.logger.warning(f"Safety check: no keywords set! Building from sources now.")
+            self._safety_keywords = self._build_safety_keywords(source_accounts)
+            keywords = self._safety_keywords
+            if not keywords:
+                self.logger.error(f"Safety check: STILL no keywords after rebuild! Skipping @{target_username} for safety.")
+                return False
 
         try:
             result = await self.adapter.check_user_followers(target_username, keywords)
@@ -1545,8 +1553,8 @@ class CampaignExecutor:
             self.logger.info(f"SAFETY OK @{target_username}: no source accounts in followers")
             return True
         except Exception as e:
-            self.logger.warning(f"Safety check failed for @{target_username}: {e} — proceeding anyway")
-            return True
+            self.logger.error(f"Safety check FAILED for @{target_username}: {e} — SKIPPING for safety")
+            return False
 
     def stop(self):
         self.running = False

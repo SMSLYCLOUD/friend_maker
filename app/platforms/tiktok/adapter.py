@@ -1349,7 +1349,7 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
                         // 2. Paginate through follower list
                         const allUsers = [];
                         let cursor = 0;
-                        for (let pg = 0; pg < 5; pg++) {
+                        for (let pg = 0; pg < 10; pg++) {
                             const url = `/api/user/list/?userId=${userId}&secUid=${secUid}&count=50&type=follower&cursor=${cursor}&aid=1988&sourceType=1`;
                             const resp = await fetch(url, {credentials: 'include', headers: {'Accept': 'application/json'}});
                             const data = await resp.json();
@@ -1395,8 +1395,8 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
         except BlockerDetected:
             raise
         except Exception as e:
-            logger.error(f"check_user_followers failed: {e}")
-            return {"found": False, "matched_names": [], "follower_count": 0}
+            logger.error(f"check_user_followers failed: {e} — assuming UNSAFE (skip user)")
+            return {"found": True, "matched_names": [{"username": "ERROR", "display_name": "", "matched_search": "check_failed"}], "follower_count": 0}
 
     async def get_target_followers(self, username: str, max_scroll: int = 50) -> set:
         followers = set()
