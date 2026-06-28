@@ -1398,6 +1398,41 @@ class TikTokCamoufoxAdapter(BaseCamoufoxAdapter):
             logger.error(f"check_user_followers failed: {e} — assuming UNSAFE (skip user)")
             return {"found": True, "matched_names": [{"username": "ERROR", "display_name": "", "matched_search": "check_failed"}], "follower_count": 0}
 
+    async def is_following_us(self, target_username: str) -> bool:
+        """Check if target user is already following the logged-in bot account."""
+        try:
+            await self._ensure_browser(self._session_data)
+            handle = target_username.lstrip("@")
+            url = self._profile_url(handle)
+            logger.info(f"is_following_us: Checking if @{handle} follows us")
+            await self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await self._human_delay(3, 5)
+
+            # Check for "Follows you" badge on the profile
+            follows_you = await self._page.evaluate("""
+                () => {
+                    // TikTok shows "Follows you" text near the username
+                    const els = document.querySelectorAll('[data-e2e="follow-badge"], [data-e2e="follows-you"]');
+                    for (const el of els) {
+                        if (el.textContent && el.textContent.toLowerCase().includes('follows you')) return true;
+                    }
+                    // Check spans near the username for "Follows you"
+                    const spans = document.querySelectorAll('span');
+                    for (const s of spans) {
+                        if (s.textContent && s.textContent.trim().toLowerCase() === 'follows you') return true;
+                    }
+                    return false;
+                }
+            """)
+
+            logger.info(f"is_following_us: @{handle} follows us = {follows_you}")
+            return follows_you
+        except BlockerDetected:
+            raise
+        except Exception as e:
+            logger.error(f"is_following_us check failed for @{handle}: {e}")
+            return False  # Assume not following on error
+
     async def get_target_followers(self, username: str, max_scroll: int = 50) -> set:
         followers = set()
         try:

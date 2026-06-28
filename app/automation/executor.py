@@ -1532,8 +1532,11 @@ class CampaignExecutor:
 
     async def _safety_check(self, target_username: str, source_accounts: List[str]) -> bool:
         """
-        Check if source accounts appear in this user's followers.
-        Returns True if SAFE to interact, False if should SKIP.
+        Check if safe to interact with target user.
+        Returns True if SAFE, False if should SKIP.
+        Checks:
+        1. Source account followers (skip if they already follow source)
+        2. Already follows us (skip if they already follow bot account)
         """
         keywords = getattr(self, '_safety_keywords', [])
         if not keywords:
@@ -1545,16 +1548,27 @@ class CampaignExecutor:
                 return False
 
         try:
+            # Check 1: Does target follow source account?
             result = await self.adapter.check_user_followers(target_username, keywords)
             if result["found"]:
                 matched = [m["username"] for m in result["matched_names"]]
                 self.logger.warning(f"SAFETY SKIP @{target_username}: found source accounts in followers: {matched}")
                 return False
             self.logger.info(f"SAFETY OK @{target_username}: no source accounts in followers")
-            return True
         except Exception as e:
             self.logger.error(f"Safety check FAILED for @{target_username}: {e} — SKIPPING for safety")
             return False
+
+        # Check 2: Does target already follow us?
+        try:
+            if await self.adapter.is_following_us(target_username):
+                self.logger.warning(f"SAFETY SKIP @{target_username}: already follows our bot account")
+                return False
+            self.logger.info(f"SAFETY OK @{target_username}: does not follow us")
+        except Exception as e:
+            self.logger.warning(f"is_following_us check failed for @{target_username}: {e} — proceeding")
+
+        return True
 
     def stop(self):
         self.running = False
