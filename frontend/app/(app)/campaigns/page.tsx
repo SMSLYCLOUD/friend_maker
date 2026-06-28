@@ -203,24 +203,27 @@ export default function CampaignsPage() {
                   <label className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
                     <Sparkles className="w-3 h-3" /> AI Instructions
                   </label>
-                  {templates.filter(t => t.template_type === "ai_instruction").length > 0 && (
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const t = templates.find(t => t.id === e.target.value);
-                          if (t) setForm({ ...form, ai_instructions: t.content });
-                        }
-                      }}
-                      className="text-xs bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-gray-300 outline-none"
-                      defaultValue=""
-                    >
-                      <option value="">Load from template...</option>
-                      {templates.filter(t => t.template_type === "ai_instruction").map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                  )}
                 </div>
+                {templates.filter(t => t.template_type === "ai_instruction").length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {templates.filter(t => t.template_type === "ai_instruction").slice(0, 6).map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setForm({ ...form, ai_instructions: t.content })}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 transition-all touch-manipulation truncate max-w-[180px]"
+                        title={t.name}
+                      >
+                        {t.user_id === "system" ? "⭐ " : ""}{t.name}
+                      </button>
+                    ))}
+                    {templates.filter(t => t.template_type === "ai_instruction").length > 6 && (
+                      <Link href="/templates" className="text-[10px] px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition-all">
+                        +{templates.filter(t => t.template_type === "ai_instruction").length - 6} more...
+                      </Link>
+                    )}
+                  </div>
+                )}
                 <textarea
                   value={form.ai_instructions}
                   onChange={(e) => setForm({ ...form, ai_instructions: e.target.value })}
@@ -234,24 +237,27 @@ export default function CampaignsPage() {
                     <label className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1">
                       <Send className="w-3 h-3" /> Message Template
                     </label>
-                    {templates.filter(t => t.template_type === "message_template").length > 0 && (
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            const t = templates.find(t => t.id === e.target.value);
-                            if (t) setForm({ ...form, message_template: t.content });
-                          }
-                        }}
-                        className="text-xs bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-gray-300 outline-none"
-                        defaultValue=""
-                      >
-                        <option value="">Load from template...</option>
-                        {templates.filter(t => t.template_type === "message_template").map(t => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </select>
-                    )}
                   </div>
+                  {templates.filter(t => t.template_type === "message_template").length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {templates.filter(t => t.template_type === "message_template").slice(0, 6).map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setForm({ ...form, message_template: t.content })}
+                          className="text-[10px] px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 transition-all touch-manipulation truncate max-w-[180px]"
+                          title={t.name}
+                        >
+                          {t.user_id === "system" ? "⭐ " : ""}{t.name}
+                        </button>
+                      ))}
+                      {templates.filter(t => t.template_type === "message_template").length > 6 && (
+                        <Link href="/templates" className="text-[10px] px-2 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition-all">
+                          +{templates.filter(t => t.template_type === "message_template").length - 6} more...
+                        </Link>
+                      )}
+                    </div>
+                  )}
                   <textarea
                     value={form.message_template}
                     onChange={(e) => setForm({ ...form, message_template: e.target.value })}

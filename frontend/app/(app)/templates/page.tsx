@@ -119,10 +119,24 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleCopy = (t: Template) => {
-    navigator.clipboard.writeText(t.content);
-    setCopiedId(t.id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = async (t: Template) => {
+    try {
+      await navigator.clipboard.writeText(t.content);
+      setCopiedId(t.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Fallback for HTTP (clipboard API requires HTTPS)
+      const ta = document.createElement("textarea");
+      ta.value = t.content;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopiedId(t.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
   };
 
   if (loading) {
