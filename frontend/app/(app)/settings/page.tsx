@@ -80,6 +80,7 @@ export default function SettingsPage() {
         "SKYVERN_LLM_SAMBANOVA_API_KEY", "SKYVERN_LLM_SAMBANOVA_MODEL", "SKYVERN_LLM_SAMBANOVA_BASE_URL", "SKYVERN_LLM_SAMBANOVA_RPM_LIMIT",
         "SKYVERN_LLM_NVIDIA_API_KEY", "SKYVERN_LLM_NVIDIA_MODEL", "SKYVERN_LLM_NVIDIA_BASE_URL", "SKYVERN_LLM_NVIDIA_RPM_LIMIT",
         "SKYVERN_LLM_XIAOMI_MIMO_API_KEY", "SKYVERN_LLM_XIAOMI_MIMO_MODEL", "SKYVERN_LLM_XIAOMI_MIMO_BASE_URL", "SKYVERN_LLM_XIAOMI_MIMO_RPM_LIMIT",
+        "SKYVERN_LLM_DEEPSEEK_API_KEY", "SKYVERN_LLM_DEEPSEEK_MODEL", "SKYVERN_LLM_DEEPSEEK_BASE_URL", "SKYVERN_LLM_DEEPSEEK_RPM_LIMIT",
         "SKYVERN_PROXY_URL", "SKYVERN_PROXY_USERNAME", "SKYVERN_PROXY_PASSWORD",
       ];
       for (const key of envKeys) {
@@ -267,6 +268,36 @@ export default function SettingsPage() {
 
           {/* Provider Config Inputs */}
           <div className="space-y-4">
+            {/* DeepSeek */}
+            <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-2 w-2 rounded-full bg-blue-400" />
+                <h3 className="text-sm font-bold text-white">DeepSeek</h3>
+                <span className="text-[10px] text-blue-400 font-mono">Primary · 2500 RPM</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={settings.SKYVERN_LLM_DEEPSEEK_API_KEY || ""}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_DEEPSEEK_API_KEY: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-400 transition-all"
+                    placeholder="sk-..."
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold text-gray-400 uppercase">Model</label>
+                  <input
+                    type="text"
+                    value={settings.SKYVERN_LLM_DEEPSEEK_MODEL || "deepseek-chat"}
+                    onChange={(e) => setSettings({ ...settings, SKYVERN_LLM_DEEPSEEK_MODEL: e.target.value })}
+                    className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-400 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Groq */}
             <div className="p-4 rounded-xl bg-black/40 border border-gray-800">
               <div className="flex items-center gap-2 mb-3">
@@ -466,14 +497,14 @@ export default function SettingsPage() {
         <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6 backdrop-blur-sm">
           <div className="flex items-center gap-2 mb-6">
             <Wifi className="w-5 h-5 text-cyan-500" />
-            <h2 className="text-xl font-bold text-white">Residential Proxy</h2>
+            <h2 className="text-xl font-bold text-white">Network & Proxy</h2>
             {settings.SKYVERN_PROXY_URL && (
-              <span className="text-[10px] text-emerald-400 font-mono bg-emerald-400/10 px-2 py-0.5 rounded-full">ACTIVE</span>
+              <span className="text-[10px] text-emerald-400 font-mono bg-emerald-400/10 px-2 py-0.5 rounded-full">PROXY ACTIVE</span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mb-4">Route Skyvern browser traffic through a residential proxy to bypass Cloudflare and anti-bot detection. Required for TikTok automation. LLM fallback is handled automatically via LiteLLM (Groq → OpenRouter → Google → SambaNova → NVIDIA).</p>
+          <p className="text-xs text-gray-500 mb-4">Route browser traffic through a residential proxy to bypass anti-bot detection. Required for TikTok.</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Proxy URL</label>
               <input
@@ -506,8 +537,22 @@ export default function SettingsPage() {
             </div>
           </div>
           {envVars.SKYVERN_PROXY_URL && (
-            <p className="mt-2 text-[10px] text-emerald-400 font-mono">● active: {envVars.SKYVERN_PROXY_URL}</p>
+            <p className="mb-4 text-[10px] text-emerald-400 font-mono">● active: {envVars.SKYVERN_PROXY_URL}</p>
           )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-cyan-400 uppercase">Task Delay (seconds)</label>
+              <input
+                type="number"
+                value={settings.SKYVERN_INTER_TASK_DELAY || "5"}
+                onChange={(e) => setSettings({ ...settings, SKYVERN_INTER_TASK_DELAY: e.target.value })}
+                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-cyan-600 transition-all"
+                placeholder="5"
+              />
+              <p className="mt-1 text-[10px] text-gray-600">Min seconds between Skyvern tasks. Lower = faster, higher = safer.</p>
+            </div>
+          </div>
         </div>
 
         {/* Telegram Bot */}
