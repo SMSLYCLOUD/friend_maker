@@ -5,6 +5,7 @@ import { Plus, Save, Trash2, X, FileText, MessageSquare, Bot, Edit3, Loader2, Co
 
 type Template = {
   id: string;
+  user_id: string;
   name: string;
   template_type: string;
   content: string;
@@ -204,6 +205,9 @@ export default function TemplatesPage() {
                   {t.is_default ? (
                     <span className="text-[10px] uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-semibold">default</span>
                   ) : null}
+                  {t.user_id === "system" ? (
+                    <span className="text-[10px] uppercase tracking-wider bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-semibold">preset</span>
+                  ) : null}
                 </div>
 
                 <p className="text-gray-400 text-xs line-clamp-3 mb-4 min-h-[3rem]">{t.content}</p>
@@ -222,18 +226,22 @@ export default function TemplatesPage() {
                     {copiedId === t.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                     {copiedId === t.id ? "Copied" : "Copy"}
                   </button>
-                  <button
-                    onClick={() => openEdit(t)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-xs hover:bg-gray-700 transition-all touch-manipulation"
-                  >
-                    <Edit3 className="w-3 h-3" /> Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(t.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-all touch-manipulation"
-                  >
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </button>
+                  {t.user_id !== "system" && (
+                    <>
+                      <button
+                        onClick={() => openEdit(t)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-xs hover:bg-gray-700 transition-all touch-manipulation"
+                      >
+                        <Edit3 className="w-3 h-3" /> Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(t.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs hover:bg-red-500/20 transition-all touch-manipulation"
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             );

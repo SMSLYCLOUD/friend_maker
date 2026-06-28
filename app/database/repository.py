@@ -556,7 +556,7 @@ class Repository:
         return tid
 
     def get_templates(self, user_id: str, template_type: str = None, platform: str = None) -> List[dict]:
-        conditions = ["user_id = :user_id"]
+        conditions = ["(user_id = :user_id OR user_id = 'system')"]
         params = {"user_id": user_id}
         if template_type:
             conditions.append("template_type = :template_type")
@@ -565,7 +565,8 @@ class Repository:
             conditions.append("(platform = :platform OR platform IS NULL)")
             params["platform"] = platform
         where = " AND ".join(conditions)
-        query = text(f"SELECT * FROM templates WHERE {where} ORDER BY is_default DESC, updated_at DESC")
+        query = text(f"SELECT * FROM templates WHERE {where} ORDER BY user_id = :uid DESC, is_default DESC, updated_at DESC")
+        params["uid"] = user_id
         result = self.session.execute(query, params)
         return [dict(row._asdict()) for row in result.fetchall()]
 
@@ -584,7 +585,7 @@ class Repository:
             updates["is_default"] = 1 if updates["is_default"] else 0
         updates["updated_at"] = int(time.time())
         set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-        query = text(f"UPDATE templates SET {set_clause} WHERE id = :id AND user_id = :user_id")
+        query = text(f"UPDATE templates SET {set_clause} WHERE id = :id AND user_id = :user_id AND user_id != 'system'")
         updates["id"] = template_id
         updates["user_id"] = user_id
         result = self.session.execute(query, updates)
@@ -592,7 +593,7 @@ class Repository:
         return result.rowcount > 0
 
     def delete_template(self, template_id: str, user_id: str) -> bool:
-        query = text("DELETE FROM templates WHERE id = :id AND user_id = :user_id")
+        query = text("DELETE FROM templates WHERE id = :id AND user_id = :user_id AND user_id != 'system'")
         result = self.session.execute(query, {"id": template_id, "user_id": user_id})
         self.session.commit()
         return result.rowcount > 0
