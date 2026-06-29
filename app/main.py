@@ -6,7 +6,7 @@ import base64
 from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import RedirectResponse, FileResponse, Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
