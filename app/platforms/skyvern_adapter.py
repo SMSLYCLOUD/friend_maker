@@ -12,6 +12,7 @@ logger = logging.getLogger("SkyvernAdapter")
 
 SKYVERN_BASE_URL = os.getenv("SKYVERN_API_URL", "http://skyvern:8000")
 INTER_TASK_DELAY = int(os.getenv("SKYVERN_INTER_TASK_DELAY", "300"))
+SKYVERN_TASK_TIMEOUT = int(os.getenv("SKYVERN_TASK_TIMEOUT", "900"))
 
 # Prompt prefix to make Skyvern behave more human-like
 STEALTH_PROMPT_PREFIX = (
@@ -212,7 +213,7 @@ class SkyvernAdapter(PlatformAdapter):
 
     async def _run_task_with_extraction(
         self, prompt: str, url: str, extraction_goal: str, extraction_schema: dict,
-        poll_interval: float = 5.0, timeout: float = 600.0
+        poll_interval: float = 5.0, timeout: Optional[float] = None
     ) -> dict:
         """Run a Skyvern task via httpx directly, passing data_extraction_goal + schema."""
         import httpx as httpx_mod
@@ -255,7 +256,7 @@ class SkyvernAdapter(PlatformAdapter):
             run_id = result.get("run_id")
             logger.info(f"Extraction task created: {run_id}")
 
-            deadline = time.monotonic() + timeout
+            deadline = time.monotonic() + (timeout or SKYVERN_TASK_TIMEOUT)
             while time.monotonic() < deadline:
                 await asyncio.sleep(poll_interval)
                 poll_resp = await client.get(f"{SKYVERN_BASE_URL}/v1/runs/{run_id}", headers=headers)
@@ -281,7 +282,7 @@ class SkyvernAdapter(PlatformAdapter):
                 retry_result = retry_resp.json()
                 retry_run_id = retry_result.get("run_id")
                 logger.info(f"Retry extraction task created: {retry_run_id}")
-                deadline = time.monotonic() + timeout
+                deadline = time.monotonic() + (timeout or SKYVERN_TASK_TIMEOUT)
                 while time.monotonic() < deadline:
                     await asyncio.sleep(poll_interval)
                     poll_resp = await retry_client.get(f"{SKYVERN_BASE_URL}/v1/runs/{retry_run_id}", headers=headers)
@@ -389,7 +390,7 @@ class SkyvernAdapter(PlatformAdapter):
                     result = resp.json()
                     run_id = result.get("run_id")
 
-                    deadline = time.monotonic() + 600.0
+                    deadline = time.monotonic() + SKYVERN_TASK_TIMEOUT
                     while time.monotonic() < deadline:
                         await asyncio.sleep(5)
                         poll_resp = await client.get(f"{SKYVERN_BASE_URL}/v1/runs/{run_id}", headers=headers)
@@ -861,6 +862,34 @@ class SkyvernAdapter(PlatformAdapter):
             return ActionResult(success=True, action_type="comment")
         except Exception as e:
             return ActionResult(success=False, action_type="comment", error=str(e))
+
+    async def is_following_us(self, target_username: str) -> bool:
+        """Check if the target user follows our bot by looking for a 'Follows you' badge."""
+        handle = target_username.lstrip("@")
+        try:
+            task = await self._run_task(
+                prompt=(
+                    f"Go to https://www.{self.platform}.com/@{handle} and check if this user is "
+                    f"following our account. Look for any 'Follows you', 'Follows back', "
+                    f"or similar indicator near their username or bio area. "
+                    f"Also check if our profile picture or username appears in their profile. "
+                    f"Return ONLY 'true' if they follow us, 'false' if they don't."
+                ),
+                url=f"https://www.{self.platform}.com/@{handle}",
+                extraction_schema={
+                    "type": "object",
+                    "properties": {
+                        "follows_us": {"type": "boolean"}
+                    }
+                },
+            )
+            data = task.get("output", {})
+            if isinstance(data, dict):
+                return data.get("follows_us", False)
+            return False
+        except Exception as e:
+            logger.warning(f"is_following_us check for @{handle} failed: {e}")
+            return False
 
     async def capture_screenshot(self) -> Optional[str]:
         """Screenshot not supported via Skyvern task API. Returns None."""

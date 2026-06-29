@@ -119,20 +119,13 @@ Return JSON only:
         }
 
     def _extract_filter_criteria(self, instructions: str) -> str:
+        """Extract ALL filter/subjective instructions for the LLM to judge.
+        Previously this dropped lines that didn't match specific keywords,
+        causing subjective instructions like "Only message AI startups" to be silently lost.
+        Now the full merged instructions are passed so the LLM can interpret them."""
         if not instructions:
             return ""
-        filter_lines = []
-        for line in instructions.split("\n"):
-            lower = line.strip().lower()
-            if any(kw in lower for kw in [
-                "skip", "filter", "only process", "only engage", "only message",
-                "do not", "don't", "no ", "exclude", "avoid", "male only",
-                "female", "gender", "bot", "spam", "fake", "private",
-                "verified", "followers", "no bio", "no profile",
-                "no filtering", "only filter",
-            ]):
-                filter_lines.append(line.strip())
-        return "\n".join(filter_lines) if filter_lines else ""
+        return "\n".join(line.strip() for line in instructions.split("\n") if line.strip())
 
     def _check_text_filters(self, profile_data: Dict[str, Any], instructions: str) -> Optional[str]:
         """Programmatic text-based filter checks. Returns skip_reason or None."""
@@ -232,6 +225,10 @@ Return JSON only:
         # Step 2: LLM verification with screenshot (if available)
         filter_criteria = self._extract_filter_criteria(combined)
 
+        ref_hint = ""
+        if ref_images:
+            ref_hint = f"\n(I have attached {len(ref_images)} reference image(s) showing the visual style and aesthetic of our brand. Use these to help judge if the profile matches our target audience.)"
+
         decision_rules = []
         if filter_criteria:
             decision_rules.append("You MUST check EACH filtering rule below against the profile data and screenshot:")
@@ -248,7 +245,7 @@ Return JSON only:
         if not filter_criteria:
             decision_rules.append("- If no filtering rules are set above → do NOT skip (score >= 0.5)")
 
-        prompt = f"""You are a social media profile classifier. Analyze this profile and decide if it should be SKIPPED or engaged with.
+        prompt = f"""You are a social media profile classifier. Analyze this profile and decide if it should be SKIPPED or engaged with.{ref_hint}
 
 Profile Data:
 Username: {profile_data.get('username')}

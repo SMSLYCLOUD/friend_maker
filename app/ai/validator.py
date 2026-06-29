@@ -5,45 +5,50 @@ from typing import Optional
 logger = logging.getLogger("MessageValidator")
 
 # Patterns that indicate AI refusal or leaked content
+# These are intentionally strict to avoid false-positives on normal conversation.
 REFUSAL_PATTERNS = [
+    # Self-identification as AI
     r"i(?:'m| am) (?:an |a )?ai",
     r"as an ai",
-    r"i (?:can(?:not|'?t)|won't|will not|am not able to|unable to)",
-    r"i (?:don'?t|do not) (?:have|possess|can)",
-    r"my (?:capabilities|abilities|programming)",
+    r"as a (?:language model|AI assistant|virtual assistant)",
+    # Refusing to comply
     r"i (?:must|have to) (?:decline|refuse|refrain)",
     r"sorry,? (?:but |however )?i (?:can(?:not|'?t)|won't|am unable)",
-    r"i (?:apologize|apologise)",
-    r"(?:ethical|safety) (?:guidelines|rules|constraints)",
-    r"i (?:think|believe) (?:it(?:'s| is) (?:important|necessary|appropriate))",
-    r"let me (?:suggest|recommend|advise)",
-    r"have you (?:considered|thought about|tried)",
-    r"i (?:would|could) (?:suggest|recommend|advise)",
-    r"(?:professional|expert|consultant)",
-    r"as a (?:language model|AI assistant|virtual assistant)",
+    r"i (?:apologize|apologise) (?:but |, )?(?:i |i'm )?(?:can(?:not|'?t)|won't)",
     r"i (?:don'?t|do not) (?:make|send|generate) (?:unsolicited|automated)",
-    r"(?:inappropriate|harmful|offensive|explicit)",
+    # Mentioning internal policies
+    r"(?:ethical|safety) (?:guidelines|rules|constraints)",
     r"terms of (?:service|use)",
     r"community (?:guidelines|standards)",
+    # Talking about limitations
+    r"my (?:capabilities|abilities|programming) (?:are|do not|don't|limit)",
+    r"i (?:can(?:not|'?t)|won't|will not|am not able to|unable to) (?:help|assist|do that|complete|fulfill)",
+    # Explicit refusal phrasing
+    r"i (?:would|could) (?:suggest|recommend|advise) (?:reaching|speaking|contacting|talking)",
+    r"(?:inappropriate|harmful|offensive|explicit) (?:content|material|messages)",
 ]
 
 # Patterns that indicate leaked internal reasoning
 LEAKED_THOUGHT_PATTERNS = [
+    # System prompt leakage
     r"(?:system|internal|hidden) (?:prompt|instruction|message)",
-    r"(?:step \d|step\s+\d)",
     r"(?:here(?:'s| is) what (?:i|we) (?:should|will|need to))",
     r"(?:the (?:user|human) (?:wants|needs|is trying))",
     r"(?:let(?:'s| us) (?:think|analyze|consider|break))",
     r"(?:chain of thought|reasoning|analysis):",
-    r"(?:first,?|second,?|third,?|finally,?) (?:i|we|the)",
+    # Internal instruction headers
     r"(?:task|goal|objective):",
     r"(?:instruction|rule|guideline):",
-    r"(?:\{[^}]*\})",
-    r"(?:json|xml|yaml|markdown)",
-    r"(?:\*{2}|_{2}|#{1,3}\s)",
+    r"(?:step \d|step\s+\d)",
+    # JSON/code block dump (not simple template vars)
+    r"(?:\{[\"'](?:[\w_]+)[\"']:[\s\"'])",
     r"(?:```|~~~)",
     r"(?:<\|.*?\|>)",
     r"(?:\[(?:INST|SYS|USER|ASSISTANT)\])",
+    # Full markdown formatting (bold/italic, not single # hashtag)
+    r"(?:\*{2}|_{2})",
+    # Explicit format leakage
+    r"\b(?:json|markdown)(?:\s+(?:object|block|format|response))?(?:s)?\s*(?:\n|$)",
 ]
 
 # Message quality checks

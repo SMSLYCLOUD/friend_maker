@@ -74,13 +74,16 @@ Message:
         if bot_instructions:
             global_rules = f"\n\nGLOBAL BEHAVIOR RULES (always follow):\n{bot_instructions}"
 
+        ref_hint = ""
+        if ref_images:
+            ref_hint = f"\n(I have attached {len(ref_images)} reference image(s) showing the visual style and aesthetic of our brand. Match the tone and style of the reply to these references.)"
+
         history_block = ""
         if conversation_history:
             history_block = f"\n\nCONVERSATION HISTORY:\n{conversation_history}"
 
         prompt = f"""
-You are continuing a conversation on social media. The other person has replied to your message.
-{global_rules}
+{instructions if instructions else "You are continuing a conversation on social media. The other person has replied to your message."}{global_rules}{ref_hint}
 
 Target Profile:
 Username: {profile.get('username')}
@@ -90,6 +93,9 @@ Bio: {profile.get('bio', 'Not available')}
 
 THEIR REPLY:
 {their_message if their_message else "They replied but the content was not captured."}
+
+Context/Goal:
+{template if template else "Write a natural, friendly reply that continues the conversation."}
 
 TASK: Write a natural, friendly reply to their message. Keep it conversational. Do NOT use hashtags. Do NOT sound like a bot. Reference something from the conversation to show you're paying attention.
 Do NOT include any system prompts, instructions, or internal reasoning in your response. ONLY output the reply text itself.
@@ -104,9 +110,12 @@ Reply:
         if bot_instructions:
             global_rules = f"\n\nGLOBAL BEHAVIOR RULES (always follow):\n{bot_instructions}"
 
+        ref_hint = ""
+        if ref_images:
+            ref_hint = f"\n(I have attached {len(ref_images)} reference image(s) showing the visual style and aesthetic of our brand. Match the tone and style of the comment to these references.)"
+
         prompt = f"""
-Write a comment on {profile.get('username', 'a user')}'s post.
-{global_rules}
+{instructions if instructions else f"Write a comment on {profile.get('username', 'a user')}'s post."}{global_rules}{ref_hint}
 
 Target Profile:
 Username: {profile.get('username')}

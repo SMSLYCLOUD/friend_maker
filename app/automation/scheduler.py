@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import json
+import os
+import asyncio
 from datetime import datetime
 from typing import Dict, Optional, List
 from app.database.repository import Repository
@@ -13,6 +15,10 @@ from app.ai.generator import MessageGenerator
 from app.ai.planner import CampaignPlanner
 from app.memory.conversation_memory import get_scheduled_action_manager
 from app.config import settings
+
+# Maximum concurrent Skyvern browser sessions (prevents OOM in swarm mode)
+MAX_CONCURRENT_SESSIONS = int(os.getenv("MAX_CONCURRENT_SESSIONS", "2"))
+
 
 class Scheduler:
     def __init__(self):
@@ -28,6 +34,9 @@ class Scheduler:
         self.classifier = ProfileClassifier(self.ai_manager)
         self.generator = MessageGenerator(self.ai_manager)
         self.planner = CampaignPlanner(self.ai_manager)
+
+        # Concurrency limiter — prevents too many parallel browser sessions
+        self._session_limiter = asyncio.Semaphore(MAX_CONCURRENT_SESSIONS)
 
     async def start(self):
         self.running = True
@@ -141,22 +150,24 @@ class Scheduler:
                 del self.tasks[campaign_id]
 
     async def _run_account_agent(self, campaign_id: str, account_id: str, user_id: str, repo: Repository):
-        """Runs a single agent in the swarm using Skyvern AI browser automation."""
-        account = repo.get_account(account_id, user_id)
-        if not account:
-            self.logger.error(f"Account {account_id} not found. Agent skipped.")
-            return
+        """Runs a single agent in the swarm using Skyvern AI browser automation.
+        Acquires a slot from the session limiter to prevent too many parallel browser sessions."""
+        async with self._session_limiter:
+            account = repo.get_account(account_id, user_id)
+            if not account:
+                self.logger.error(f"Account {account_id} not found. Agent skipped.")
+                return
 
-        try:
-            adapter = get_platform_adapter(account.platform)
-            executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
-            self.executors[campaign_id] = executor
-            await executor.run_campaign(campaign_id, user_id)
+            try:
+                adapter = get_platform_adapter(account.platform)
+                executor = CampaignExecutor(repo, adapter, self.classifier, self.generator, self.planner)
+                self.executors[campaign_id] = executor
+                await executor.run_campaign(campaign_id, user_id)
 
-        except Exception as e:
-            self.logger.error(f"Swarm Agent [{account.username}] crashed: {e}")
-        finally:
-            self.executors.pop(campaign_id, None)
+            except Exception as e:
+                self.logger.error(f"Swarm Agent [{account.username}] crashed: {e}")
+            finally:
+                self.executors.pop(campaign_id, None)
 
     async def _process_scheduled_actions(self):
         """Background task to process scheduled actions"""

@@ -92,3 +92,8 @@ class PlatformAdapter(ABC):
     async def comment_on_recent_post(self, user_id: str, message: str) -> ActionResult:
         """Comment on a user's most recent post"""
         pass
+
+    async def is_following_us(self, target_username: str) -> bool:
+        """Check if the target user is already following our bot account.
+        Returns False by default — override in platform-specific adapters."""
+        return False

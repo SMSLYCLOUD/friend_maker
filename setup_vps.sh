@@ -44,10 +44,15 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
-# Inject Public IP into .env
-sed -i "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8010|" .env
-sed -i "s|FRONTEND_URL=.*|FRONTEND_URL=http://$PUBLIC_IP|" .env
-sed -i "s|CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=http://$PUBLIC_IP,http://$PUBLIC_IP:3000,http://localhost:3000,http://localhost|" .env
+# Inject Public IP into .env (replace if exists, append if missing)
+sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8010|" .env
+grep -q "^NEXT_PUBLIC_API_URL=" .env || echo "NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8010" >> .env
+
+sed -i "s|^FRONTEND_URL=.*|FRONTEND_URL=http://$PUBLIC_IP|" .env
+grep -q "^FRONTEND_URL=" .env || echo "FRONTEND_URL=http://$PUBLIC_IP" >> .env
+
+sed -i "s|^CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=http://$PUBLIC_IP,http://$PUBLIC_IP:3000,http://localhost:3000,http://localhost|" .env
+grep -q "^CORS_ALLOWED_ORIGINS=" .env || echo "CORS_ALLOWED_ORIGINS=http://$PUBLIC_IP,http://$PUBLIC_IP:3000,http://localhost:3000,http://localhost" >> .env
 
 # Inject HOST_IP (required by docker-compose.yml for skyvern-ui)
 sed -i "s|^HOST_IP=.*|HOST_IP=$PUBLIC_IP|" .env
@@ -140,13 +145,13 @@ else:
 echo "-------------------------------------------------------"
 echo "🎉 INSTALLATION COMPLETE!"
 echo "-------------------------------------------------------"
-echo "📍 Frontend:       http://$PUBLIC_IP:3000"
+echo "📍 Frontend:       http://$PUBLIC_IP"
 echo "📍 Backend API:    http://$PUBLIC_IP:8010"
 echo "📍 Skyvern UI:     http://$PUBLIC_IP:8080"
 echo "📍 Skyvern VNC:    http://$PUBLIC_IP:6080"
 echo "📍 VNC (manual):   http://$PUBLIC_IP:6082"
 echo "-------------------------------------------------------"
-echo "🔐 SECURITY: ensure ports 3000, 6082, 8000, 8080, 8010 are open."
+echo "🔐 SECURITY: ensure ports 80, 6082, 8000, 8080, 8010 are open."
 echo "👉 NEXT: nano .env  →  set SKYVERN_LLM_DEEPSEEK_API_KEY and SKYVERN_API_KEY"
 echo "           then run:  sudo docker compose restart python-backend skyvern"
 echo "-------------------------------------------------------"

@@ -3,10 +3,11 @@ import json
 import asyncio
 import os
 import base64
-from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import RedirectResponse, FileResponse, Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from uuid import uuid4
@@ -29,8 +30,35 @@ logger = logging.getLogger("API")
 
 app = FastAPI(title="SocialGrowthAI API")
 
+# Dynamic CORS — echo back the request origin so any host/port works without env config.
+# Falls back to explicit origins from env when Origin header is absent.
 cors_allowed_origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 
+
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    """Echo the request Origin back as Access-Control-Allow-Origin so CORS
+    works from any domain/port without having to list every origin in .env."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Handle preflight
+        if request.method == "OPTIONS":
+            response = Response()
+        else:
+            response = await call_next(request)
+
+        origin = request.headers.get("origin")
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Max-Age"] = "600"
+        return response
+
+
+app.add_middleware(DynamicCORSMiddleware)
+
+# Also apply static CORS middleware as a fallback for requests without Origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_allowed_origins,
@@ -718,22 +746,36 @@ ENV_FILE_PATH = os.path.normpath(ENV_FILE_PATH)
 def _read_env_file() -> Dict[str, str]:
     if not os.path.exists(ENV_FILE_PATH):
         return {}
+    # Docker edge case: volume mount creates a directory when host file doesn't exist
+    if os.path.isdir(ENV_FILE_PATH):
+        logger.warning(".env is a directory (Docker volume edge case), treating as empty")
+        return {}
     result: Dict[str, str] = {}
-    with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if not line.strip() or line.strip().startswith("#"):
-                continue
-            if "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            result[k.strip()] = v
+    try:
+        with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                result[k.strip()] = v.strip()
+    except PermissionError:
+        logger.error(f"Permission denied reading {ENV_FILE_PATH}")
+        return {}
+    except OSError as e:
+        logger.error(f"Failed to read {ENV_FILE_PATH}: {e}")
+        return {}
     return result
 
 
 def _write_env_file(env: Dict[str, str]) -> None:
-    with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    # Read existing lines
+    try:
+        with open(ENV_FILE_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except (FileNotFoundError, PermissionError, OSError):
+        lines = []
+
     updated: Dict[str, str] = {}
     new_lines: List[str] = []
     for line in lines:
@@ -748,10 +790,12 @@ def _write_env_file(env: Dict[str, str]) -> None:
         else:
             new_lines.append(line)
             if key:
-                updated[key] = stripped.split("=", 1)[1].rstrip("\n")
+                # Preserve original value for non-editable vars
+                pass
     for key, value in env.items():
         if key in EDITABLE_ENV_VARS and key not in updated:
             new_lines.append(f"{key}={value}\n")
+
     with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
@@ -785,9 +829,13 @@ def update_env(
             status_code=400,
             detail=f"Only these env vars can be updated: {sorted(EDITABLE_ENV_VARS)}. Rejected: {rejected}",
         )
-    current = _read_env_file()
-    current.update({k: str(v) for k, v in data.items()})
-    _write_env_file(current)
+    try:
+        current = _read_env_file()
+        current.update({k: str(v) for k, v in data.items()})
+        _write_env_file(current)
+    except OSError as e:
+        logger.error(f"Failed to write .env: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to write .env file: {e}")
     _restart_self()
     return {"status": "ok", "updated": list(data.keys()), "restarting": True}
 

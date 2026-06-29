@@ -1433,29 +1433,26 @@ class CampaignExecutor:
                     fb_id = fb["id"]
                     followed_at = fb["followed_at"]
 
-                    # Skip if followed less than 2 minutes ago (give them time)
-                    if int(datetime.now().timestamp()) - followed_at < 120:
+                    # Skip if followed less than 24 hours ago — users need time to see
+                    # the follow notification, check the profile, and decide to follow back.
+                    # Platforms like Instagram can take 24-48h for follow-back updates.
+                    if int(datetime.now().timestamp()) - followed_at < 86400:
                         continue
 
-                    # Check if they follow back by looking at their profile
+                    # Use the adapter's follow-back check (platform-specific).
+                    # Skyvern looks for "Follows you" badges; TikTok checks for
+                    # the "Follows you" DOM element; others fall back to False.
                     try:
-                        profile = await self.adapter.get_user_profile(username)
-                        # On TikTok, if we can see their posts/stories, they likely follow us back
-                        # or have a public account. The real check is if we can DM them.
-                        is_private = profile.get("is_private", False)
+                        follows_back = await self.adapter.is_following_us(username)
 
-                        if is_private:
-                            # Private account that hasn't followed back — skip for now
+                        if not follows_back:
+                            # Didn't follow back within 24h — mark as expired
+                            self.logger.info(f"@{username} did not follow back within 24h, marking expired")
+                            self.repo.expire_follow_back(fb_id)
                             continue
 
-                        # Try to check if they follow us back
-                        # For now, we'll use a heuristic: if we can see their followers count
-                        # and they're not private, they might follow back
-                        # The real test is attempting to DM — if it works, they follow back
-
-                        # Mark as checked
                         self.repo.mark_follow_back(fb_id)
-                        self.logger.info(f"@{username} follow-back check passed (public account)")
+                        self.logger.info(f"@{username} followed back! Sending DM...")
 
                     except Exception as e:
                         self.logger.warning(f"Error checking follow-back for @{username}: {e}")
