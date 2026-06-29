@@ -3,6 +3,7 @@ import json
 import asyncio
 import os
 import base64
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,9 +105,28 @@ async def get_current_user(
 
 scheduler = Scheduler()
 
+
+def _fix_env_permissions():
+    """Ensure .env file is writable by the container's user.
+    Docker volume mounts from the host can be root-owned, which causes
+    PermissionError when the container's non-root user tries to write to it."""
+    env_path = Path(ENV_FILE_PATH)
+    if env_path.exists() and not os.access(env_path, os.W_OK):
+        logger.warning(f".env is not writable at {ENV_FILE_PATH}, attempting to fix permissions")
+        try:
+            env_path.chmod(0o666)
+            logger.info("Fixed .env permissions to 666")
+        except Exception as e:
+            logger.warning(f"Could not fix .env permissions (will attempt at write time): {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting API...")
+
+    # Fix .env permissions if needed (Docker volume mount can be root-owned)
+    _fix_env_permissions()
+
     try:
         init_db()
         await scheduler.start()
@@ -796,8 +816,19 @@ def _write_env_file(env: Dict[str, str]) -> None:
         if key in EDITABLE_ENV_VARS and key not in updated:
             new_lines.append(f"{key}={value}\n")
 
-    with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
+    try:
+        with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except PermissionError:
+        # Attempt to fix permissions and retry once
+        logger.warning(f"Permission denied writing {ENV_FILE_PATH}, attempting to fix permissions")
+        try:
+            os.chmod(ENV_FILE_PATH, 0o666)
+            with open(ENV_FILE_PATH, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+        except Exception as e2:
+            logger.error(f"Still cannot write {ENV_FILE_PATH} after chmod: {e2}")
+            raise OSError(f"Cannot write .env file: {e2}")
 
 
 def _restart_self() -> None:

@@ -44,6 +44,9 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
+# Ensure .env is writable by container's non-root user (fixes Docker volume mount PermissionError)
+chmod 666 .env 2>/dev/null || true
+
 # Inject Public IP into .env (replace if exists, append if missing)
 sed -i "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8010|" .env
 grep -q "^NEXT_PUBLIC_API_URL=" .env || echo "NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8010" >> .env
