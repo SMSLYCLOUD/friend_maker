@@ -233,63 +233,24 @@ class CampaignExecutor:
                 if not user_queue:
                     source = sources[0]
 
-                    # comment_engage: navigate to profile, find one post, engage with commenters
+                    # comment_engage: get user's posts, engage with commenters
                     if action_type == "comment_engage":
                         sources.pop(0)
-                        self.logger.info(f"Comment engage: navigating to @{source} profile...")
+                        self.logger.info(f"Comment engage: getting posts for @{source}...")
 
+                        # Use adapter's public method to get recent posts (platform-agnostic)
                         try:
-                            profile_url = f"https://www.tiktok.com/@{source}"
-                            await self.adapter._page.goto(profile_url, wait_until="domcontentloaded", timeout=120000)
-                            await self.adapter._human_delay(3, 5)
+                            recent_posts = await self.adapter.get_user_recent_posts(source, limit=20)
+                            post_urls = [p.get("url", "") for p in recent_posts if p.get("url")]
                         except Exception as e:
-                            self.logger.warning(f"Failed to navigate to profile: {e}")
-                            continue
-
-                        # Infinite scroll to load all posts
-                        try:
-                            prev_count = 0
-                            for i in range(100):
-                                await self.adapter._page.mouse.wheel(0, 1200)
-                                await self.adapter._human_delay(1.5, 2.5)
-                                links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
-                                curr_count = len(links)
-                                if curr_count == prev_count and i > 2:
-                                    break
-                                prev_count = curr_count
-
-                            import re
-                            post_urls = []
-                            seen_ids = set()
-                            links = await self.adapter._page.query_selector_all('a[href*="/video/"], a[href*="/photo/"]')
-                            for link in links[:50]:
-                                href = await link.get_attribute("href")
-                                if not href:
-                                    continue
-                                vid_match = re.search(r'/(video|photo)/(\d+)', href)
-                                if not vid_match:
-                                    continue
-                                vid_id = vid_match.group(2)
-                                if vid_id in seen_ids:
-                                    continue
-                                seen_ids.add(vid_id)
-                                if not href.startswith("http"):
-                                    href = f"https://www.tiktok.com{href}"
-                                # Normalize: replace numeric user ID with the actual handle
-                                # e.g. /@7286426392387486752/video/... -> /@violinia.de/video/...
-                                numeric_match = re.search(r'/@(\d+)/', href)
-                                if numeric_match:
-                                    href = href.replace(f"/@{numeric_match.group(1)}/", f"/@{source}/")
-                                post_urls.append(href)
-                        except Exception as e:
-                            self.logger.warning(f"Failed to find post links: {e}")
+                            self.logger.warning(f"Failed to get posts for @{source}: {e}")
                             continue
 
                         if not post_urls:
-                            self.logger.info(f"No posts found on @{source} profile")
+                            self.logger.info(f"No posts found for @{source}")
                             continue
 
-                        self.logger.info(f"Found {len(post_urls)} unique posts on @{source}")
+                        self.logger.info(f"Found {len(post_urls)} posts for @{source}")
 
                         processed_commenters = set()
                         consecutive_no_progress = 0
@@ -299,7 +260,6 @@ class CampaignExecutor:
                                 break
 
                             self.logger.info(f"Checking comments on: {post_url}")
-                            await self.adapter._human_delay(2, 4)
 
                             try:
                                 commenters = await self.adapter.get_post_commenters(post_url, limit=20)
@@ -326,12 +286,12 @@ class CampaignExecutor:
                                 h = u.platform_id.lstrip("@")
                                 if not h or h in processed_commenters:
                                     continue
-                                # Skip numeric-only IDs (not real usernames)
                                 if h.isdigit():
                                     self.logger.info(f"Skipping numeric ID @{h}")
                                     continue
                                 # Skip logged-in user's own account
-                                if self.adapter._current_username and h.lower() == self.adapter._current_username:
+                                current_user = getattr(self.adapter, '_current_username', None)
+                                if current_user and h.lower() == current_user:
                                     self.logger.info(f"Skipping logged-in account @{h}")
                                     continue
                                 if self.repo.has_been_contacted(self.user_id, self.adapter.platform_name, h, action_type):
@@ -340,7 +300,7 @@ class CampaignExecutor:
                                 processed_commenters.add(h)
                                 self.logger.info(f"Processing commenter @{h}...")
 
-                                # Profile scrape first (safety check also navigates, can't parallel)
+                                # Profile scrape
                                 for attempt in range(3):
                                     try:
                                         profile_data = await self.adapter.get_user_profile(h)
@@ -352,22 +312,20 @@ class CampaignExecutor:
                                 else:
                                     profile_data = {"username": h, "bio": ""}
 
-                                # Safety check after profile scrape
+                                # Safety check
                                 safety_ok = await self._safety_check(h, [source])
-
                                 if not safety_ok:
                                     self.logger.info(f"Skipping @{h}: safety check failed")
                                     self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                     continue
 
-                                # Screenshot AFTER profile scrape (page is now loaded)
+                                # Screenshot via adapter's public method
                                 screenshot_b64 = None
                                 try:
-                                    ss = await self.adapter._page.screenshot(full_page=False)
-                                    screenshot_b64 = base64.b64encode(ss).decode("utf-8")
+                                    screenshot_b64 = await self.adapter.capture_screenshot()
                                 except: pass
 
-                                # Run classifier with screenshot
+                                # Classifier
                                 if self.classifier:
                                     analysis = await self.classifier.classify(
                                         profile_data, screenshot_b64=screenshot_b64,
@@ -384,7 +342,7 @@ class CampaignExecutor:
                                         self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                         continue
 
-                                # Check if account is private
+                                # Skip private accounts
                                 is_private = profile_data.get("is_private", False)
                                 if is_private:
                                     self.logger.info(f"@{h} is private — skipping (comment_engage)")
@@ -392,24 +350,24 @@ class CampaignExecutor:
                                     continue
 
                                 # Pre-engagement: view stories
-                                try:
-                                    await self.adapter.view_stories(h)
-                                    self.logger.info(f"Viewed stories for @{h}")
-                                except: pass
+                                if hasattr(self.adapter, 'view_stories'):
+                                    try:
+                                        await self.adapter.view_stories(h)
+                                        self.logger.info(f"Viewed stories for @{h}")
+                                    except: pass
 
                                 # Pre-engagement: like recent posts
-                                try:
-                                    user_posts = await self.adapter.get_user_recent_posts(h, limit=2)
-                                    for p in user_posts[:2]:
-                                        url = p.get("url", "")
-                                        if url:
-                                            res = await self.adapter.like_post(url)
-                                            if res.success:
-                                                self.logger.info(f"Liked post by @{h}")
-                                            else:
-                                                self.logger.warning(f"Failed to like post by @{h}: {res.error}")
-                                            await self.anti_detect.random_delay(lambda: self.running)
-                                except: pass
+                                if hasattr(self.adapter, 'like_post'):
+                                    try:
+                                        user_posts = await self.adapter.get_user_recent_posts(h, limit=2)
+                                        for p in user_posts[:2]:
+                                            url = p.get("url", "")
+                                            if url:
+                                                res = await self.adapter.like_post(url)
+                                                if res.success:
+                                                    self.logger.info(f"Liked post by @{h}")
+                                                await self.anti_detect.random_delay(lambda: self.running)
+                                    except: pass
 
                                 # Follow
                                 try:
@@ -432,17 +390,17 @@ class CampaignExecutor:
                                         self.logger.info(f"DM'd @{h}")
                                 except: pass
 
-                                # Also track for follow-back DM if strategy requires it
+                                # Track for follow-back DM
                                 if strategy == "follow_back_dm":
                                     self.repo.create_follow_back(
                                         self.user_id, campaign.id,
                                         self.adapter.platform_name, h
                                     )
-                                    self.logger.info(f"Tracking @{h} for follow-back DM")
 
                                 self.repo.register_contact(self.user_id, self.adapter.platform_name, h, h, action_type, campaign.id)
                                 actions_today += 1
                                 post_got_new = True
+                                self.anti_detect.record_action()
                                 self.logger.info(f"✓ Completed engagement with @{h} ({actions_today}/{limit})")
                                 await self.anti_detect.random_delay(lambda: self.running)
 
@@ -450,10 +408,6 @@ class CampaignExecutor:
                                 consecutive_no_progress = 0
                             else:
                                 consecutive_no_progress += 1
-                                self.logger.info(
-                                    f"No new commenters on this post "
-                                    f"({consecutive_no_progress}/{MAX_NO_PROGRESS_POSTS} consecutive)"
-                                )
                                 if consecutive_no_progress >= MAX_NO_PROGRESS_POSTS:
                                     self.logger.info(
                                         f"{MAX_NO_PROGRESS_POSTS} consecutive posts with no new commenters — stopping comment_engage"
@@ -526,8 +480,7 @@ class CampaignExecutor:
                     # Screenshot AFTER profile scrape
                     screenshot_b64 = None
                     try:
-                        s = await self.adapter._page.screenshot(full_page=False)
-                        screenshot_b64 = base64.b64encode(s).decode("utf-8")
+                        screenshot_b64 = await self.adapter.capture_screenshot()
                     except: pass
 
                     # Safety check: skip if source account is in their followers
@@ -554,14 +507,14 @@ class CampaignExecutor:
                     is_private = profile_data.get("is_private", False)
 
                     # View stories (skip if private)
-                    if not is_private:
+                    if not is_private and hasattr(self.adapter, 'view_stories'):
                         try:
                             await self.adapter.view_stories(handle)
                             self.logger.info(f"Viewed stories for @{handle}")
                         except: pass
 
                     # Like recent posts (skip if private)
-                    if not is_private:
+                    if not is_private and hasattr(self.adapter, 'like_post'):
                         try:
                             user_posts = await self.adapter.get_user_recent_posts(handle, limit=2)
                             for p in user_posts[:2]:
@@ -570,8 +523,6 @@ class CampaignExecutor:
                                     res = await self.adapter.like_post(p_url)
                                     if res.success:
                                         self.logger.info(f"Liked post by @{handle}")
-                                    else:
-                                        self.logger.warning(f"Failed to like post by @{handle}: {res.error}")
                                     await self.anti_detect.random_delay(lambda: self.running)
                         except: pass
 
@@ -613,8 +564,7 @@ class CampaignExecutor:
                     # Screenshot AFTER profile scrape
                     screenshot_b64 = None
                     try:
-                        s = await self.adapter._page.screenshot(full_page=False)
-                        screenshot_b64 = base64.b64encode(s).decode("utf-8")
+                        screenshot_b64 = await self.adapter.capture_screenshot()
                     except: pass
 
                     # Safety check: skip if source account is in their followers

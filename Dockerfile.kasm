@@ -1,0 +1,40 @@
+FROM kasmweb/chrome:1.16.0
+
+USER root
+
+# Install Node.js 20.x
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create app directory and cookie storage
+RUN mkdir -p /app/cookies && \
+    chown -R 1000:1000 /app
+
+WORKDIR /app
+
+# Install Node.js dependencies
+RUN npm init -y && \
+    npm install playwright-core
+
+COPY kasm_login.mjs .
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+# Ensure kasm_user owns the app directory
+RUN chown -R 1000:1000 /app
+
+# Inject --remote-debugging-port=9222 into Chrome startup
+# Kasm's custom_startup.sh reads $APP_ARGS when launching Chrome
+ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu"
+
+# Switch back to kasm_user for runtime
+USER 1000
+
+EXPOSE 6901 6100
+
+# Use wrapper entrypoint: start Node API in background, then exec Kasm's real entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["--wait"]

@@ -306,20 +306,20 @@ PLATFORM_LOGIN_URLS = {
     "gmail": lambda u: f"https://accounts.google.com/signin/v2/identifier?Email={u}&flowName=GlifWebSignIn&flowEntry=ServiceLogin",
 }
 
-VNC_API_HOST = "vnc-social"
+KASM_API_HOST = "kasm-login"
 
-def _vnc_api_url(path: str) -> str:
-    return f"http://{VNC_API_HOST}:6100{path}"
+def _kasm_api_url(path: str) -> str:
+    return f"http://{KASM_API_HOST}:6100{path}"
 
-async def _navigate_vnc(platform: str, account_id: str, nav_url: str):
+async def _navigate_kasm(platform: str, account_id: str, nav_url: str):
     try:
-        url = f"{_vnc_api_url('/navigate')}?url={url_quote(nav_url)}&platform={platform}&account_id={account_id}"
+        url = f"{_kasm_api_url('/navigate')}?url={url_quote(nav_url)}&platform={platform}&account_id={account_id}"
         await asyncio.to_thread(requests.get, url, timeout=15)
     except Exception as e:
-        logger.warning(f"VNC navigate failed (background): {e}")
+        logger.warning(f"Kasm navigate failed (background): {e}")
 
-@app.post("/api/accounts/{account_id}/vnc-login")
-async def vnc_social_login(
+@app.post("/api/accounts/{account_id}/kasm-login")
+async def kasm_social_login(
     account_id: str,
     repo: Repository = Depends(get_repository),
     user: dict = Depends(get_current_user)
@@ -328,16 +328,15 @@ async def vnc_social_login(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     nav_url = PLATFORM_LOGIN_URLS.get(account.platform, lambda u: f"https://{account.platform}.com/login")(account.username)
-    # Navigate VNC browser to the correct platform login page in background
-    asyncio.create_task(_navigate_vnc(account.platform, account_id, nav_url))
+    asyncio.create_task(_navigate_kasm(account.platform, account_id, nav_url))
     return {
-        "vnc_url": f"http://{settings.HOST_IP}:6082/vnc.html",
+        "kasm_url": f"http://{settings.HOST_IP}:6901",
         "platform": account.platform,
-        "message": f"Open VNC to {account.platform} and sign in. Used for OTP/CAPTCHA — Skyvern handles automation."
+        "message": f"Open Kasm Workspace to {account.platform} and sign in. Used for OTP/CAPTCHA — Browser Use handles automation."
     }
 
-@app.get("/api/accounts/{account_id}/vnc-session-status")
-async def vnc_session_status(
+@app.get("/api/accounts/{account_id}/kasm-session-status")
+async def kasm_session_status(
     account_id: str,
     repo: Repository = Depends(get_repository),
     user: dict = Depends(get_current_user)
@@ -346,7 +345,7 @@ async def vnc_session_status(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     try:
-        resp = requests.get(_vnc_api_url("/status"), timeout=5)
+        resp = requests.get(_kasm_api_url("/status"), timeout=5)
         data = resp.json()
         return {
             "login_detected": data.get("loginDetected", False),
@@ -372,17 +371,17 @@ async def capture_cookies(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     try:
-        resp = requests.get(_vnc_api_url("/capture"), timeout=10)
+        resp = requests.get(_kasm_api_url("/capture"), timeout=10)
         data = resp.json()
         if not data.get("success"):
-            raise HTTPException(status_code=502, detail="VNC service failed to capture cookies")
+            raise HTTPException(status_code=502, detail="Kasm service failed to capture cookies")
         cookie_file = data.get("file")
         if cookie_file and os.path.exists(cookie_file):
             with open(cookie_file) as f:
                 cookies = json.load(f)
             result = json.dumps(cookies)
         else:
-            raise HTTPException(status_code=502, detail="Cookie file not found from VNC capture")
+            raise HTTPException(status_code=502, detail="Cookie file not found from Kasm capture")
     except requests.exceptions.ConnectionError:
         cookie_files = [
             f"cookies/{account_id}_cookies.json",
@@ -398,7 +397,7 @@ async def capture_cookies(
             except (FileNotFoundError, json.JSONDecodeError):
                 continue
         if not result:
-            raise HTTPException(status_code=502, detail="VNC login service not running or no cookies yet. Log in via VNC first.")
+            raise HTTPException(status_code=502, detail="Kasm login service not running or no cookies yet. Log in via Kasm first.")
     repo.update_account_session(account_id, user["id"], result)
     return {"status": "success", "message": f"{account.platform} session saved for {account.username}"}
 

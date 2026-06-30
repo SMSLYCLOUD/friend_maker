@@ -2,21 +2,19 @@ import asyncio
 import logging
 import json
 import os
-import asyncio
 from datetime import datetime
 from typing import Dict, Optional, List
 from app.database.repository import Repository
 from app.automation.executor import CampaignExecutor
-from app.platforms.skyvern_adapter import SkyvernAdapter
 from app.platforms import get_platform_adapter
-from app.ai.openrouter_manager import OpenRouterManager
+from app.llm.provider_manager import get_provider_manager
 from app.ai.classifier import ProfileClassifier
 from app.ai.generator import MessageGenerator
 from app.ai.planner import CampaignPlanner
 from app.memory.conversation_memory import get_scheduled_action_manager
 from app.config import settings
 
-# Maximum concurrent Skyvern browser sessions (prevents OOM in swarm mode)
+# Maximum concurrent browser sessions (prevents OOM in swarm mode)
 MAX_CONCURRENT_SESSIONS = int(os.getenv("MAX_CONCURRENT_SESSIONS", "2"))
 
 
@@ -30,10 +28,10 @@ class Scheduler:
         self.playwright = None
         self.browser = None
 
-        self.ai_manager = OpenRouterManager()
-        self.classifier = ProfileClassifier(self.ai_manager)
-        self.generator = MessageGenerator(self.ai_manager)
-        self.planner = CampaignPlanner(self.ai_manager)
+        self.provider_manager = get_provider_manager()
+        self.classifier = ProfileClassifier(self.provider_manager)
+        self.generator = MessageGenerator(self.provider_manager)
+        self.planner = CampaignPlanner(self.provider_manager)
 
         # Concurrency limiter — prevents too many parallel browser sessions
         self._session_limiter = asyncio.Semaphore(MAX_CONCURRENT_SESSIONS)

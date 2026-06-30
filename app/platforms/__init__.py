@@ -1,6 +1,6 @@
-from app.platforms.skyvern_adapter import SkyvernAdapter
+from app.platforms.browser_use_adapter import BrowserUseAdapter
 
-# Platforms that use Camoufox (anti-detection) instead of Skyvern
+# Platforms that use Camoufox (anti-detection) instead of Browser Use
 CAMOUFOX_PLATFORMS = {"tiktok", "facebook"}
 
 
@@ -11,4 +11,4 @@ def get_platform_adapter(platform_name, page=None):
             return FacebookCamoufoxAdapter(platform=platform_name)
         from app.platforms.tiktok import TikTokCamoufoxAdapter
         return TikTokCamoufoxAdapter(platform=platform_name)
-    return SkyvernAdapter(platform=platform_name)
+    return BrowserUseAdapter(platform=platform_name)

@@ -215,20 +215,20 @@ export async function updateGlobalSettings(data: any) {
   return res.json();
 }
 
-export async function vncLogin(accountId: string) {
-  const res = await fetch(`${API_URL}/api/accounts/${accountId}/vnc-login`, {
+export async function kasmLogin(accountId: string) {
+  const res = await fetch(`${API_URL}/api/accounts/${accountId}/kasm-login`, {
     method: "POST",
     headers: authHeaders(),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to start VNC login");
+    throw new Error(err.detail || "Failed to start Kasm login");
   }
   return res.json();
 }
 
-export async function vncSessionStatus(accountId: string) {
-  const res = await fetch(`${API_URL}/api/accounts/${accountId}/vnc-session-status`, {
+export async function kasmSessionStatus(accountId: string) {
+  const res = await fetch(`${API_URL}/api/accounts/${accountId}/kasm-session-status`, {
     headers: authHeaders(),
   });
   if (!res.ok) return { login_detected: false, has_session: false, cookies_available: false };

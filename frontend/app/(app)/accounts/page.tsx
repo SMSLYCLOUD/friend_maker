@@ -10,8 +10,8 @@ export default function AccountsPage() {
   const [error, setError] = useState("");
   const [selectedAccount, setSelectedAccount] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [vncMsg, setVncMsg] = useState("");
-  const [vncPolling, setVncPolling] = useState(false);
+  const [kasmMsg, setKasmMsg] = useState("");
+  const [kasmPolling, setKasmPolling] = useState(false);
 
   useEffect(() => {
     import("@/lib/api").then(({ fetchAccounts }) => {
@@ -25,28 +25,28 @@ export default function AccountsPage() {
   }, []);
 
   useEffect(() => {
-    if (!vncPolling || !selectedAccount) return;
+    if (!kasmPolling || !selectedAccount) return;
     const interval = setInterval(async () => {
       try {
-        const { vncSessionStatus, captureCookies, fetchAccounts } = await import("@/lib/api");
-        const status = await vncSessionStatus(selectedAccount.id);
+        const { kasmSessionStatus, captureCookies, fetchAccounts } = await import("@/lib/api");
+        const status = await kasmSessionStatus(selectedAccount.id);
         if (status.login_detected && !status.has_session) {
           const result = await captureCookies(selectedAccount.id);
-          setVncMsg(result.message || "Session saved!");
-          setVncPolling(false);
+          setKasmMsg(result.message || "Session saved!");
+          setKasmPolling(false);
           const updated = await fetchAccounts();
           setAccounts(updated);
           setSelectedAccount((prev: any) => ({ ...prev, has_session: true }));
         } else if (status.has_session) {
-          setVncMsg("Already connected!");
-          setVncPolling(false);
+          setKasmMsg("Already connected!");
+          setKasmPolling(false);
         }
       } catch {
-        setVncMsg("Waiting for login...");
+        setKasmMsg("Waiting for login...");
       }
     }, 2000);
     return () => clearInterval(interval);
-  }, [vncPolling, selectedAccount?.id]);
+  }, [kasmPolling, selectedAccount?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,30 +72,30 @@ export default function AccountsPage() {
     }
   };
 
-  const handleVncLogin = async (accountId: string) => {
-    setVncMsg("Launching VNC browser...");
+  const handleKasmLogin = async (accountId: string) => {
+    setKasmMsg("Launching Kasm Workspace...");
     try {
-      const { vncLogin } = await import("@/lib/api");
-      const data = await vncLogin(accountId);
-      window.open(data.vnc_url, "_blank");
-      setVncMsg(`Sign in to ${data.platform || "platform"} in the VNC tab...`);
-      setVncPolling(true);
+      const { kasmLogin } = await import("@/lib/api");
+      const data = await kasmLogin(accountId);
+      window.open(data.kasm_url, "_blank");
+      setKasmMsg(`Sign in to ${data.platform || "platform"} in the Kasm tab...`);
+      setKasmPolling(true);
     } catch (err: any) {
-      setVncMsg(err.message || "Failed");
+      setKasmMsg(err.message || "Failed");
     }
   };
 
   const handleCaptureCookies = async (accountId: string) => {
-    setVncMsg("Capturing cookies...");
+    setKasmMsg("Capturing cookies...");
     try {
       const { captureCookies, fetchAccounts } = await import("@/lib/api");
       const data = await captureCookies(accountId);
-      setVncMsg(data.message);
+      setKasmMsg(data.message);
       const updated = await fetchAccounts();
       setAccounts(updated);
       setSelectedAccount((prev: any) => prev?.id === accountId ? { ...prev, has_session: true } : prev);
     } catch (err: any) {
-      setVncMsg(err.message || "Failed");
+      setKasmMsg(err.message || "Failed");
     }
   };
 
@@ -136,10 +136,10 @@ export default function AccountsPage() {
         </div>
       )}
 
-      {vncMsg && (
+      {kasmMsg && (
         <div className="flex items-center gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
           <ExternalLink className="w-5 h-5" />
-          {vncMsg}
+          {kasmMsg}
         </div>
       )}
 
@@ -201,7 +201,7 @@ export default function AccountsPage() {
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-black text-white">Node <span className="text-blue-500">Details</span></h2>
-                 <button onClick={() => { setShowDetailModal(false); setVncMsg(""); }} className="p-3 sm:p-2 rounded-xl sm:rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors touch-manipulation">
+                 <button onClick={() => { setShowDetailModal(false); setKasmMsg(""); }} className="p-3 sm:p-2 rounded-xl sm:rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors touch-manipulation">
                    <X className="w-6 h-6 sm:w-5 sm:h-5" />
                  </button>
               </div>
@@ -237,13 +237,13 @@ export default function AccountsPage() {
                 </div>
               </div>
 
-              {!selectedAccount.has_session && !vncPolling && (
+              {!selectedAccount.has_session && !kasmPolling && (
                 <div className="mt-4 space-y-2">
                    <button
-                     onClick={() => handleVncLogin(selectedAccount.id)}
+                     onClick={() => handleKasmLogin(selectedAccount.id)}
                      className="w-full rounded-xl bg-purple-600 py-3 text-sm font-bold text-white transition-all hover:bg-purple-500 flex items-center justify-center gap-2 touch-manipulation"
                    >
-                     <ExternalLink className="w-4 h-4" /> Sign in via VNC
+                     <ExternalLink className="w-4 h-4" /> Sign in via Kasm
                    </button>
                    <button
                      onClick={() => handleCaptureCookies(selectedAccount.id)}
@@ -254,14 +254,14 @@ export default function AccountsPage() {
                 </div>
               )}
 
-              {!selectedAccount.has_session && vncPolling && (
+              {!selectedAccount.has_session && kasmPolling && (
                 <div className="mt-4 space-y-2">
                   <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-center">
                     <p className="text-purple-400 font-bold animate-pulse text-sm">Waiting for {selectedAccount.platform} login...</p>
-                    <p className="text-xs text-gray-400 mt-1">Complete sign-in in the VNC tab.</p>
+                    <p className="text-xs text-gray-400 mt-1">Complete sign-in in the Kasm tab.</p>
                   </div>
                    <button
-                     onClick={() => { setVncPolling(false); setVncMsg(""); }}
+                     onClick={() => { setKasmPolling(false); setKasmMsg(""); }}
                      className="w-full rounded-xl border border-white/10 py-3 text-sm font-bold text-gray-400 hover:text-white transition-colors touch-manipulation"
                    >
                      Cancel
@@ -276,10 +276,10 @@ export default function AccountsPage() {
                     <p className="text-xs text-gray-400 mt-1">{selectedAccount.platform} session is active</p>
                   </div>
                    <button
-                     onClick={() => handleVncLogin(selectedAccount.id)}
+                     onClick={() => handleKasmLogin(selectedAccount.id)}
                      className="w-full rounded-xl bg-purple-600/50 py-3 text-sm font-bold text-white transition-all hover:bg-purple-500 flex items-center justify-center gap-2 touch-manipulation"
                    >
-                     <ExternalLink className="w-4 h-4" /> Re-sign in via VNC
+                     <ExternalLink className="w-4 h-4" /> Re-sign in via Kasm
                    </button>
                    <button
                      onClick={() => handleCaptureCookies(selectedAccount.id)}
@@ -291,7 +291,7 @@ export default function AccountsPage() {
               )}
 
                <button
-                 onClick={() => { setShowDetailModal(false); setVncMsg(""); }}
+                 onClick={() => { setShowDetailModal(false); setKasmMsg(""); }}
                  className="w-full mt-4 rounded-xl bg-blue-600 py-3 text-sm font-bold text-white transition-all hover:bg-blue-500 touch-manipulation"
                >
                  Close

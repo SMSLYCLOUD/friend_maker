@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== VNC reachable from container? ==="
+echo "=== Kasm login service reachable from container? ==="
 docker exec socialgrowthai-python-backend sh -c 'python3 -c "import requests; r = requests.get(\"http://host.docker.internal:6100/capture\", timeout=10); print(r.json())"'
 echo ""
 echo "=== Backend capture via API ==="

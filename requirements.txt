@@ -16,4 +16,5 @@ Appium-Python-Client>=3.0.0
 python-telegram-bot>=21.0.0
 pyjwt>=2.8.0
 python-multipart>=0.0.9
-skyvern[local]>=1.0.0
+browser-use[core]>=0.13.0
+langchain-openai>=0.3.0

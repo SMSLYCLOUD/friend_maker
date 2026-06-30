@@ -117,26 +117,27 @@ services:
     networks:
       - social-network
 
-  # ── VNC browser for OTP / CAPTCHA manual intervention ─────
-  vnc-social:
+  # ── Kasm Workspace for OTP / CAPTCHA manual intervention ──
+  kasm-login:
     build:
       context: .
-      dockerfile: Dockerfile.backend
-    container_name: socialgrowthai-vnc-social
-    command: ["node", "vnc_social.mjs"]
+      dockerfile: Dockerfile.kasm
+    container_name: socialgrowthai-kasm-login
     ports:
-      - "6100:6100"
-      - "6082:6082"
+      - "6901:6901"   # Kasm VNC web viewer
+      - "6100:6100"   # Login API
     volumes:
       - cookies:/app/cookies
     env_file:
       - ./.env
     environment:
-      - VNC_PORT=5901
-      - NOVNC_PORT=6082
+      - KASM_PORT=6901
+      - CDP_ENDPOINT=http://localhost:9222
+      - HOST_IP=${HOST_IP:-127.0.0.1}
     networks:
       - social-network
     restart: always
+    shm_size: '2gb'
 
   # ── Python backend ────────────────────────────────────────
   python-backend:

@@ -9,17 +9,8 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
     libgtk-3-0 libgbm-dev libxshmfence1 \
     wget gnupg \
-    curl x11vnc xvfb git \
+    curl git \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js 20.x
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs
-
-# Install noVNC
-RUN git clone https://github.com/novnc/noVNC /opt/noVNC
-RUN cd /opt/noVNC && npm install
-RUN cd /opt/noVNC/utils && npm install
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -33,14 +24,6 @@ RUN useradd -m -u 1000 appuser && \
 RUN python -m camoufox fetch && \
     mv /root/.cache/camoufox /home/appuser/.cache/camoufox && \
     chown -R appuser:appuser /home/appuser/.cache/camoufox
-
-# Grant appuser access to noVNC
-USER root
-RUN chown -R appuser:appuser /opt/noVNC
-USER appuser
-
-# Install Node.js dependencies with proper permissions
-RUN npm init -y && npm install playwright-extra puppeteer-extra-plugin-stealth cloakbrowser playwright-core
 
 COPY --chown=appuser:appuser . .
 

@@ -11,7 +11,7 @@ from app.config import settings
 logger = logging.getLogger("TelegramBot")
 
 INTERNAL_API = "http://localhost:8000"
-VNC_BASE_URL = f"http://{settings.HOST_IP}:6080"
+KASM_BASE_URL = f"http://{settings.HOST_IP}:6901"
 
 
 class TelegramBot:
@@ -98,7 +98,7 @@ class TelegramBot:
 
     async def send_blocker_alert(self, campaign, blocker):
         """Send a blocker alert with inline keyboard buttons."""
-        vnc_url = f"{VNC_BASE_URL}"
+        kasm_url = f"{KASM_BASE_URL}"
         campaign_id = campaign.id
         short_id = campaign_id[:12]
 
@@ -112,7 +112,7 @@ class TelegramBot:
         if blocker.url:
             text += f"*URL:* {blocker.url}\n"
         text += (
-            f"\n👉 *Fix via VNC:* {vnc_url}\n\n"
+            f"\n👉 *Fix via Kasm:* {kasm_url}\n\n"
             f"Once you've resolved the issue, click *Resume* or type `/resume {short_id}`"
         )
 
