@@ -43,9 +43,11 @@ RUN VNC_SCRIPT=$(find /dockerstartup -name 'vnc_startup.sh' -type f 2>/dev/null 
         echo "WARN: vnc_startup.sh not found"; \
     fi
 
-# Write nginx config (stream module demuxes TLS vs plain HTTP on 6901)
+# Write nginx config + create required dirs with proper permissions
 RUN cp /app/nginx-kasm.conf /etc/nginx/nginx.conf && \
-    chown root:root /etc/nginx/nginx.conf
+    chown root:root /etc/nginx/nginx.conf && \
+    mkdir -p /var/log/nginx /var/lib/nginx/body /tmp/nginx_body /tmp/nginx_proxy && \
+    chmod -R 777 /var/log/nginx /var/lib/nginx /tmp/nginx_body /tmp/nginx_proxy
 
 # Switch back to kasm_user for runtime
 USER 1000
