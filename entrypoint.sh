@@ -1,6 +1,12 @@
 #!/bin/bash
 echo "[kasm-login] Starting Kasm login wrapper..."
 
+# ── 0. Inject proxy into Chrome args if PROXY env is set ──
+if [ -n "$PROXY" ]; then
+  export APP_ARGS="$APP_ARGS --proxy-server=$PROXY"
+  echo "[kasm-login] Proxy enabled: $PROXY"
+fi
+
 # ── 1. Start nginx (HTTP/HTTPS demux on port 6901) ───────
 if nginx -t 2>&1; then
   nginx
