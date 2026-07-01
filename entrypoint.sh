@@ -2,8 +2,12 @@
 echo "[kasm-login] Starting Kasm login wrapper..."
 
 # ── 1. Start nginx (HTTP/HTTPS demux on port 6901) ───────
-nginx -t 2>&1 && nginx || echo "[WARN] nginx failed to start — HTTP redirect won't work"
-echo "[kasm-login] nginx started (6901→TLS:6903, HTTP→redirect)"
+if nginx -t 2>&1; then
+  nginx
+  echo "[kasm-login] nginx started — port 6901 demuxes TLS→6903 / HTTP→redirect"
+else
+  echo "[WARN] nginx config test failed — skipping (direct HTTPS only)"
+fi
 
 # ── 2. Start Node.js login API ───────────────────────────
 cd /app && node kasm_login.mjs &
@@ -17,7 +21,8 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# ── 3. Start Kasm display + Chrome (in subshell so exec doesn't kill us) ──
+# ── 3. Start Kasm display + Chrome ───────────────────────
+# Run in subshell so exec inside Kasm scripts doesn't kill this process
 (
   trap - SIGTERM SIGINT
   exec /dockerstartup/kasm_default_profile.sh \
@@ -29,6 +34,5 @@ KASM_PID=$!
 
 wait $KASM_PID
 EXIT_CODE=$?
-kill $NODE_PID 2>/dev/null || true
-nginx -s stop 2>/dev/null || true
+cleanup
 exit $EXIT_CODE

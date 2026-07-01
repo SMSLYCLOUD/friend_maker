@@ -4,9 +4,9 @@ USER root
 
 # Install Node.js 20.x and nginx with stream module
 RUN apt-get update && \
-    apt-get install -y curl nginx libnginx-mod-stream && \
+    apt-get install -y curl && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
+    apt-get install -y nodejs nginx libnginx-mod-stream && \
     rm -rf /var/lib/apt/lists/*
 
 # Create app directory and cookie storage
@@ -28,34 +28,30 @@ RUN chmod +x entrypoint.sh
 RUN chown -R 1000:1000 /app
 
 # Inject --remote-debugging-port=9222 into Chrome startup
-# Kasm's custom_startup.sh reads $APP_ARGS when launching Chrome
 ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu --user-data-dir=/tmp/chrome-debug"
 
-# Move KasmVNC to port 6903 (nginx on 6901 handles HTTP/HTTPS demux)
-# Try kasmvnc.yaml, VNC_PORT env, and sed on startup script
-RUN mkdir -p /home/kasm-user/.vnc && \
-    printf 'network:\n  websocket:\n    port: 6903\n' > /home/kasm-user/.vnc/kasmvnc.yaml && \
-    chown -R 1000:1000 /home/kasm-user/.vnc
-ENV VNC_PORT=6903
+# Move KasmVNC websocket to port 6903 so nginx can take 6901
+# NO_VNC_PORT is the env var vnc_startup.sh uses for -websocketPort
+ENV NO_VNC_PORT=6903
 
-# Patch vnc_startup.sh to use port 6903 if it hardcodes 6901
-RUN if [ -f /dockerstartup/vnc_startup.sh ]; then \
-        sed -i 's/-websocket_port 6901/-websocket_port 6903/g' /dockerstartup/vnc_startup.sh || true; \
-        sed -i 's/PORT=6901/PORT=6903/g' /dockerstartup/vnc_startup.sh || true; \
+# Patch vnc_startup.sh: change port + remove -sslOnly (nginx handles TLS demux)
+RUN VNC_SCRIPT=$(find /dockerstartup -name 'vnc_startup.sh' -type f 2>/dev/null | head -1) && \
+    if [ -n "$VNC_SCRIPT" ]; then \
+        sed -i 's/-websocketPort $NO_VNC_PORT/-websocketPort 6903/g' "$VNC_SCRIPT" && \
+        sed -i 's/ -sslOnly//g' "$VNC_SCRIPT" && \
+        echo "Patched $VNC_SCRIPT: port=6903, removed -sslOnly"; \
+    else \
+        echo "WARN: vnc_startup.sh not found"; \
     fi
 
 # Write nginx config (stream module demuxes TLS vs plain HTTP on 6901)
 RUN cp /app/nginx-kasm.conf /etc/nginx/nginx.conf && \
     chown root:root /etc/nginx/nginx.conf
 
-# Make nginx log/pid dirs writable by kasm-user
-RUN mkdir -p /tmp/nginx && chown -R 1000:1000 /tmp/nginx
-
 # Switch back to kasm_user for runtime
 USER 1000
 
 EXPOSE 6901 6100
 
-# Use wrapper entrypoint: nginx + Node API + Kasm's real entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["--wait"]
