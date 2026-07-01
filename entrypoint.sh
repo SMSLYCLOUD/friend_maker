@@ -30,10 +30,10 @@ CLEANER_PID=$!
 
 cleanup() {
   echo "[kasm-login] Shutting down..."
-  kill $NODE_PID 2>/dev/null || true
-  kill $CLEANER_PID 2>/dev/null || true
+  [ -n "$NODE_PID" ] && kill "$NODE_PID" 2>/dev/null || true
+  [ -n "$CLEANER_PID" ] && kill "$CLEANER_PID" 2>/dev/null || true
   nginx -s stop 2>/dev/null || true
-  wait $NODE_PID 2>/dev/null || true
+  wait "$NODE_PID" 2>/dev/null || true
 }
 trap cleanup SIGTERM SIGINT
 
