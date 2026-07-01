@@ -134,7 +134,7 @@ services:
       - KASM_PORT=6901
       - CDP_ENDPOINT=http://localhost:9222
       - HOST_IP=${HOST_IP:-127.0.0.1}
-      - VNC_PW=
+      - VNC_PW=a
       - VNC_RESOLUTION=1920x1080
       - VNC_COL_DEPTH=24
       - MAX_FRAME_RATE=30

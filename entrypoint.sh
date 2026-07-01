@@ -13,16 +13,31 @@ fi
 cd /app && node kasm_login.mjs &
 NODE_PID=$!
 
+# ── 3. Auto-login: disable VNC password after Kasm sets it up ──
+(
+  for i in $(seq 1 60); do
+    sleep 1
+    # Clear VNC password files so browser connects without prompting
+    for f in /home/kasm-user/.vnc/passwd /home/kasm-user/.vnc/.vnc_pass; do
+      if [ -f "$f" ]; then
+        > "$f" 2>/dev/null || true
+        echo "[auto-login] Cleared $f"
+      fi
+    done
+  done
+) &
+CLEANER_PID=$!
+
 cleanup() {
   echo "[kasm-login] Shutting down..."
   kill $NODE_PID 2>/dev/null || true
+  kill $CLEANER_PID 2>/dev/null || true
   nginx -s stop 2>/dev/null || true
   wait $NODE_PID 2>/dev/null || true
 }
 trap cleanup SIGTERM SIGINT
 
-# ── 3. Start Kasm display + Chrome ───────────────────────
-# Run in subshell so exec inside Kasm scripts doesn't kill this process
+# ── 4. Start Kasm display + Chrome ───────────────────────
 (
   trap - SIGTERM SIGINT
   exec /dockerstartup/kasm_default_profile.sh \
