@@ -22,19 +22,25 @@ RUN npm init -y && \
 COPY kasm_login.mjs .
 COPY entrypoint.sh .
 COPY nginx-kasm.conf .
+COPY kasmvnc.yaml .
 RUN chmod +x entrypoint.sh
 
 # Ensure kasm_user owns the app directory
 RUN chown -R 1000:1000 /app
 
-# Inject --remote-debugging-port=9222 into Chrome startup
-ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu --user-data-dir=/tmp/chrome-debug"
+# ── KasmVNC native experience settings ────────────────────
+# Resolution: 1920x1080 for desktop, Kasm viewer auto-scales for mobile
+ENV VNC_RESOLUTION=1920x1080
+ENV VNC_COL_DEPTH=24
+ENV MAX_FRAME_RATE=30
+
+# Chrome: optimized for VNC streaming (remove --disable-gpu, add perf flags)
+ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --user-data-dir=/tmp/chrome-debug --disable-dev-shm-usage --disable-extensions --disable-background-networking --no-sandbox"
 
 # Move KasmVNC websocket to port 6903 so nginx can take 6901
-# NO_VNC_PORT is the env var vnc_startup.sh uses for -websocketPort
 ENV NO_VNC_PORT=6903
 
-# Patch vnc_startup.sh: change port + remove -sslOnly (nginx handles TLS demux)
+# Patch vnc_startup.sh: remove -sslOnly (nginx handles TLS demux)
 RUN VNC_SCRIPT=$(find /dockerstartup -name 'vnc_startup.sh' -type f 2>/dev/null | head -1) && \
     if [ -n "$VNC_SCRIPT" ]; then \
         sed -i 's/ -sslOnly//g' "$VNC_SCRIPT" && \
@@ -42,6 +48,11 @@ RUN VNC_SCRIPT=$(find /dockerstartup -name 'vnc_startup.sh' -type f 2>/dev/null 
     else \
         echo "WARN: vnc_startup.sh not found"; \
     fi
+
+# Install kasmvnc.yaml for native experience config
+RUN mkdir -p /home/kasm-user/.vnc && \
+    cp /app/kasmvnc.yaml /home/kasm-user/.vnc/kasmvnc.yaml && \
+    chown -R 1000:1000 /home/kasm-user/.vnc
 
 # Write nginx config + create required dirs with proper permissions
 RUN cp /app/nginx-kasm.conf /etc/nginx/nginx.conf && \
