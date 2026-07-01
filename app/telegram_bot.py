@@ -11,7 +11,7 @@ from app.config import settings
 logger = logging.getLogger("TelegramBot")
 
 INTERNAL_API = "http://localhost:8000"
-KASM_BASE_URL = f"http://{settings.HOST_IP}:6901"
+KASM_BASE_URL = f"https://{settings.HOST_IP}:6901"
 
 
 class TelegramBot:

@@ -330,7 +330,7 @@ async def kasm_social_login(
     nav_url = PLATFORM_LOGIN_URLS.get(account.platform, lambda u: f"https://{account.platform}.com/login")(account.username)
     asyncio.create_task(_navigate_kasm(account.platform, account_id, nav_url))
     return {
-        "kasm_url": f"http://{settings.HOST_IP}:6901",
+        "kasm_url": f"https://{settings.HOST_IP}:6901",
         "platform": account.platform,
         "message": f"Open Kasm Workspace to {account.platform} and sign in. Used for OTP/CAPTCHA — Browser Use handles automation."
     }

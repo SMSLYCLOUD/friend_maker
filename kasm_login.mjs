@@ -220,7 +220,7 @@ function startApi() {
           loginDetected,
           platform,
           cookiesFile: fs.existsSync(file) ? file : null,
-          kasmUrl: `http://${hostIp}:${KASM_PORT}`,
+          kasmUrl: `https://${hostIp}:${KASM_PORT}`,
         }));
 
       } else {
@@ -238,11 +238,25 @@ function startApi() {
   console.log(`Kasm login API listening on port ${API_PORT}`);
 }
 
+// HTTP → HTTPS redirect server (port 6902 → 6901)
+function startRedirect() {
+  const REDIRECT_PORT = 6902;
+  const redirectServer = http.createServer((req, res) => {
+    const hostIp = process.env.HOST_IP || "localhost";
+    const target = `https://${hostIp}:${KASM_PORT}${req.url || "/"}`;
+    res.writeHead(301, { Location: target });
+    res.end(`Redirecting to ${target}`);
+  });
+  redirectServer.listen(REDIRECT_PORT, "0.0.0.0");
+  console.log(`HTTP→HTTPS redirect listening on port ${REDIRECT_PORT} → https port ${KASM_PORT}`);
+}
+
 // ── Main ─────────────────────────────────────────────────────
 ensureCookieDir();
 
 // Start the API server first so the backend can reach us immediately
 startApi();
+startRedirect();
 
 console.log("[START] Waiting for Chrome CDP endpoint...");
 
@@ -282,7 +296,7 @@ console.log(`\n========================================`);
 console.log(`KASM SOCIAL LOGIN HELPER`);
 console.log(`Platform: ${platform || "auto (set via API)"}`);
 console.log(`Viewport: ${isDesktop ? "Desktop" : `Mobile (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height})`}`);
-console.log(`Kasm: http://${hostIp}:${KASM_PORT}`);
+console.log(`Kasm: https://${hostIp}:${KASM_PORT}`);
 console.log(`API:  http://${hostIp}:${API_PORT}`);
 if (accountId) console.log(`Account: ${accountId}`);
 console.log(`========================================\n`);
