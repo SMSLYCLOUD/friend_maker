@@ -28,7 +28,7 @@ RUN chown -R 1000:1000 /app
 
 # Inject --remote-debugging-port=9222 into Chrome startup
 # Kasm's custom_startup.sh reads $APP_ARGS when launching Chrome
-ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu"
+ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu --user-data-dir=/tmp/chrome-debug"
 
 # Switch back to kasm_user for runtime
 USER 1000
