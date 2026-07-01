@@ -4,7 +4,7 @@ set -e
 echo "[kasm-login] Starting Kasm login wrapper..."
 
 # Start the Node.js API server in the background.
-# It will wait for Chrome's debug port to become available before connecting.
+# It will retry CDP connection until Chrome starts.
 cd /app && node kasm_login.mjs &
 NODE_PID=$!
 
@@ -16,11 +16,15 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# Exec into Kasm's real entrypoint chain.
-# This sets up the display (Xorg), KasmVNC, window manager, and Chrome.
-# The Node.js process continues running as a background child.
-echo "[kasm-login] Handing off to Kasm entrypoint..."
-exec /dockerstartup/kasm_default_profile.sh \
-     /dockerstartup/vnc_startup.sh \
-     /dockerstartup/kasm_startup.sh \
-     "$@"
+# Run the Kasm entrypoint scripts sequentially.
+# kasm_default_profile.sh — sets up user profile
+# vnc_startup.sh — starts KasmVNC + display server
+# kasm_startup.sh — starts window manager + Chrome (keeps running)
+echo "[kasm-login] Running Kasm profile setup..."
+source /dockerstartup/kasm_default_profile.sh
+
+echo "[kasm-login] Starting VNC display..."
+source /dockerstartup/vnc_startup.sh
+
+echo "[kasm-login] Starting Kasm desktop + Chrome..."
+exec /dockerstartup/kasm_startup.sh "$@"
