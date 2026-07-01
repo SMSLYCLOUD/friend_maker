@@ -37,9 +37,8 @@ ENV NO_VNC_PORT=6903
 # Patch vnc_startup.sh: change port + remove -sslOnly (nginx handles TLS demux)
 RUN VNC_SCRIPT=$(find /dockerstartup -name 'vnc_startup.sh' -type f 2>/dev/null | head -1) && \
     if [ -n "$VNC_SCRIPT" ]; then \
-        sed -i 's/-websocketPort $NO_VNC_PORT/-websocketPort 6903/g' "$VNC_SCRIPT" && \
         sed -i 's/ -sslOnly//g' "$VNC_SCRIPT" && \
-        echo "Patched $VNC_SCRIPT: port=6903, removed -sslOnly"; \
+        echo "Patched $VNC_SCRIPT: removed -sslOnly (port via NO_VNC_PORT=6903 env)"; \
     else \
         echo "WARN: vnc_startup.sh not found"; \
     fi
