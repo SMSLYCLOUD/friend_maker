@@ -2,9 +2,9 @@ FROM kasmweb/chrome:1.16.0
 
 USER root
 
-# Install Node.js 20.x
+# Install Node.js 20.x and nginx with stream module
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y curl nginx libnginx-mod-stream && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
@@ -21,6 +21,7 @@ RUN npm init -y && \
 
 COPY kasm_login.mjs .
 COPY entrypoint.sh .
+COPY nginx-kasm.conf .
 RUN chmod +x entrypoint.sh
 
 # Ensure kasm_user owns the app directory
@@ -30,16 +31,31 @@ RUN chown -R 1000:1000 /app
 # Kasm's custom_startup.sh reads $APP_ARGS when launching Chrome
 ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu --user-data-dir=/tmp/chrome-debug"
 
-# Allow non-SSL connections (for reverse proxies / direct HTTP access)
+# Move KasmVNC to port 6903 (nginx on 6901 handles HTTP/HTTPS demux)
+# Try kasmvnc.yaml, VNC_PORT env, and sed on startup script
 RUN mkdir -p /home/kasm-user/.vnc && \
-    printf 'network:\n  ssl:\n    require_ssl: false\n' > /home/kasm-user/.vnc/kasmvnc.yaml && \
+    printf 'network:\n  websocket:\n    port: 6903\n' > /home/kasm-user/.vnc/kasmvnc.yaml && \
     chown -R 1000:1000 /home/kasm-user/.vnc
+ENV VNC_PORT=6903
+
+# Patch vnc_startup.sh to use port 6903 if it hardcodes 6901
+RUN if [ -f /dockerstartup/vnc_startup.sh ]; then \
+        sed -i 's/-websocket_port 6901/-websocket_port 6903/g' /dockerstartup/vnc_startup.sh || true; \
+        sed -i 's/PORT=6901/PORT=6903/g' /dockerstartup/vnc_startup.sh || true; \
+    fi
+
+# Write nginx config (stream module demuxes TLS vs plain HTTP on 6901)
+RUN cp /app/nginx-kasm.conf /etc/nginx/nginx.conf && \
+    chown root:root /etc/nginx/nginx.conf
+
+# Make nginx log/pid dirs writable by kasm-user
+RUN mkdir -p /tmp/nginx && chown -R 1000:1000 /tmp/nginx
 
 # Switch back to kasm_user for runtime
 USER 1000
 
-EXPOSE 6901 6100 6902
+EXPOSE 6901 6100
 
-# Use wrapper entrypoint: start Node API in background, then exec Kasm's real entrypoint
+# Use wrapper entrypoint: nginx + Node API + Kasm's real entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["--wait"]

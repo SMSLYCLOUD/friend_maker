@@ -124,8 +124,7 @@ services:
       dockerfile: Dockerfile.kasm
     container_name: socialgrowthai-kasm-login
     ports:
-      - "6901:6901"   # Kasm VNC web viewer (HTTPS)
-      - "6902:6902"   # HTTP → HTTPS redirect
+      - "6901:6901"   # Kasm VNC web viewer (HTTPS + HTTP redirect via nginx)
       - "6100:6100"   # Login API
     volumes:
       - cookies:/app/cookies
