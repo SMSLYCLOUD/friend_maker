@@ -40,11 +40,12 @@ ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --us
 # Move KasmVNC websocket to port 6903 so nginx can take 6901
 ENV NO_VNC_PORT=6903
 
-# Patch vnc_startup.sh: remove -sslOnly (nginx handles TLS demux)
+# Patch vnc_startup.sh: remove -sslOnly, disable password auth
 RUN VNC_SCRIPT=$(find /dockerstartup -name 'vnc_startup.sh' -type f 2>/dev/null | head -1) && \
     if [ -n "$VNC_SCRIPT" ]; then \
         sed -i 's/ -sslOnly//g' "$VNC_SCRIPT" && \
-        echo "Patched $VNC_SCRIPT: removed -sslOnly (port via NO_VNC_PORT=6903 env)"; \
+        sed -i '/purging existing VNC password/,+10d' "$VNC_SCRIPT" && \
+        echo "Patched $VNC_SCRIPT: removed -sslOnly + password auth"; \
     else \
         echo "WARN: vnc_startup.sh not found"; \
     fi
