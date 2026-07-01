@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 echo "[kasm-login] Starting Kasm login wrapper..."
 
@@ -8,23 +7,21 @@ echo "[kasm-login] Starting Kasm login wrapper..."
 cd /app && node kasm_login.mjs &
 NODE_PID=$!
 
-# Trap signals to clean up both processes
-cleanup() {
-  echo "[kasm-login] Shutting down..."
-  kill $NODE_PID 2>/dev/null || true
-  wait $NODE_PID 2>/dev/null || true
-}
-trap cleanup SIGTERM SIGINT
+# Run the Kasm startup chain in a subshell.
+# The scripts chain via `exec "$@"` internally — this replaces the subshell
+# process, not our parent shell. So our Node.js background process survives.
+# The chain: kasm_default_profile.sh → vnc_startup.sh → kasm_startup.sh --wait
+(
+  trap - SIGTERM SIGINT  # Don't inherit parent's signal traps
+  exec /dockerstartup/kasm_default_profile.sh \
+       /dockerstartup/vnc_startup.sh \
+       /dockerstartup/kasm_startup.sh \
+       "$@"
+) &
+KASM_PID=$!
 
-# Run the Kasm entrypoint scripts sequentially.
-# kasm_default_profile.sh — sets up user profile
-# vnc_startup.sh — starts KasmVNC + display server
-# kasm_startup.sh — starts window manager + Chrome (keeps running)
-echo "[kasm-login] Running Kasm profile setup..."
-source /dockerstartup/kasm_default_profile.sh
-
-echo "[kasm-login] Starting VNC display..."
-source /dockerstartup/vnc_startup.sh
-
-echo "[kasm-login] Starting Kasm desktop + Chrome..."
-exec /dockerstartup/kasm_startup.sh "$@"
+# Wait for either process — if one dies, kill the other
+wait $KASM_PID
+EXIT_CODE=$?
+kill $NODE_PID 2>/dev/null || true
+exit $EXIT_CODE
