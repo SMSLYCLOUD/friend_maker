@@ -30,6 +30,11 @@ RUN chown -R 1000:1000 /app
 # Kasm's custom_startup.sh reads $APP_ARGS when launching Chrome
 ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --disable-gpu --user-data-dir=/tmp/chrome-debug"
 
+# Allow non-SSL connections (for reverse proxies / direct HTTP access)
+RUN mkdir -p /home/kasm-user/.vnc && \
+    echo '{"network": {"ssl_only": 0}}' > /home/kasm-user/.vnc/kasmvnc.yaml && \
+    chown -R 1000:1000 /home/kasm-user/.vnc
+
 # Switch back to kasm_user for runtime
 USER 1000
 
