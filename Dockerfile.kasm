@@ -32,7 +32,7 @@ ENV APP_ARGS="--start-maximized --remote-debugging-port=9222 --no-first-run --di
 
 # Allow non-SSL connections (for reverse proxies / direct HTTP access)
 RUN mkdir -p /home/kasm-user/.vnc && \
-    printf 'network:\n  ssl_only: 0\n' > /home/kasm-user/.vnc/kasmvnc.yaml && \
+    printf 'network:\n  ssl:\n    require_ssl: false\n' > /home/kasm-user/.vnc/kasmvnc.yaml && \
     chown -R 1000:1000 /home/kasm-user/.vnc
 
 # Switch back to kasm_user for runtime
